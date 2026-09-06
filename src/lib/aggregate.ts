@@ -13,14 +13,30 @@ export type ParticipantRow = {
 // matching what Riot's own `win` boolean reflected in the old 2v2 format.
 export const WIN_PLACEMENT_THRESHOLD = 3;
 
+// Supabase/PostgREST caps every response at 1000 rows server-side (the "Max Rows"
+// project setting) regardless of the .limit() a client asks for — paginate with
+// .range() to actually fetch everything. Capped at 30 pages (30k rows) as a safety
+// net; past that, this should become a real SQL aggregation instead of pulling
+// every row into app memory.
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 30;
+
 export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
   if (!supabaseAdmin) return [];
-  const { data, error } = await supabaseAdmin
-    .from("match_participants")
-    .select("puuid, riot_id, champion, placement, augments, items")
-    .limit(5000);
-  if (error) throw error;
-  return data ?? [];
+
+  const allRows: ParticipantRow[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const from = page * PAGE_SIZE;
+    const { data, error } = await supabaseAdmin
+      .from("match_participants")
+      .select("puuid, riot_id, champion, placement, augments, items")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
+  return allRows;
 }
 
 type Stat = { games: number; winRate: number; avgPlacement: number };
