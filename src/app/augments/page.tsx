@@ -8,7 +8,7 @@ const augmentsById = new Map(augmentsData.map((a) => [a.id, a]));
 export const dynamic = "force-dynamic";
 
 export default async function AugmentsPage() {
-  const { totalGames, augments } = await getAugmentStats();
+  const { totalMatches, augments } = await getAugmentStats();
 
   const rowsByTier: Record<string, StatsRow[]> = { silver: [], gold: [], prismatic: [] };
   for (const entry of augments) {
@@ -32,7 +32,7 @@ export default async function AugmentsPage() {
         Win rate and average placement per augment, split by rarity.
       </p>
       <div className="mt-4 mb-6">
-        <SampleSizeBadge totalGames={totalGames} />
+        <SampleSizeBadge totalMatches={totalMatches} />
       </div>
       <AugmentTabs rowsByTier={rowsByTier} />
     </div>

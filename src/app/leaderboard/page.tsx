@@ -4,7 +4,7 @@ import { StatsTable, SampleSizeBadge, type StatsRow } from "@/components/StatsTa
 export const dynamic = "force-dynamic";
 
 export default async function LeaderboardPage() {
-  const { totalGames, players } = await getLeaderboardStats();
+  const { totalMatches, players } = await getLeaderboardStats();
 
   const rows: StatsRow[] = players.map((p) => ({
     key: p.puuid,
@@ -30,7 +30,7 @@ export default async function LeaderboardPage() {
         here — this grows over time, it&apos;s not the full EUW player base.
       </p>
       <div className="mt-4 mb-6">
-        <SampleSizeBadge totalGames={totalGames} />
+        <SampleSizeBadge totalMatches={totalMatches} />
       </div>
       <StatsTable rows={rows} />
     </div>

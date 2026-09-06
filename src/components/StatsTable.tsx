@@ -19,11 +19,11 @@ function winRateColor(winRate: number) {
   return "text-red-400";
 }
 
-export function SampleSizeBadge({ totalGames }: { totalGames: number }) {
+export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
     <span className="rounded-full border border-amber-900/50 bg-amber-950/40 px-3 py-1 text-xs text-amber-300">
-      Sample size: {totalGames} game{totalGames === 1 ? "" : "s"} tracked so far — data grows with
-      every search
+      Sample size: {totalMatches} match{totalMatches === 1 ? "" : "es"} tracked so far — data
+      grows with every search
     </span>
   );
 }

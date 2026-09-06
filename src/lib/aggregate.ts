@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 
 export type ParticipantRow = {
+  match_id: string;
   puuid: string;
   riot_id: string;
   champion: string;
@@ -29,7 +30,7 @@ export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
     const from = page * PAGE_SIZE;
     const { data, error } = await supabaseAdmin
       .from("match_participants")
-      .select("puuid, riot_id, champion, placement, augments, items")
+      .select("match_id, puuid, riot_id, champion, placement, augments, items")
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -37,6 +38,12 @@ export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
     if (data.length < PAGE_SIZE) break;
   }
   return allRows;
+}
+
+// Rows are per-participant (18 per match, since we save all 6 teams) — the
+// number of *matches* tracked is the count of distinct match IDs, not rows.
+function countMatches(rows: ParticipantRow[]): number {
+  return new Set(rows.map((r) => r.match_id)).size;
 }
 
 type Stat = { games: number; winRate: number; avgPlacement: number };
@@ -62,7 +69,7 @@ export async function getChampionStats() {
   const champions = Array.from(byChampion.entries())
     .map(([champion, s]) => ({ champion, ...toStat(s) }))
     .sort((a, b) => b.winRate - a.winRate);
-  return { totalGames: rows.length, champions };
+  return { totalMatches: countMatches(rows), champions };
 }
 
 export async function getItemStats() {
@@ -80,7 +87,7 @@ export async function getItemStats() {
   const items = Array.from(byItem.entries())
     .map(([itemId, s]) => ({ itemId, ...toStat(s) }))
     .sort((a, b) => b.winRate - a.winRate);
-  return { totalGames: rows.length, items };
+  return { totalMatches: countMatches(rows), items };
 }
 
 export async function getAugmentStats() {
@@ -98,7 +105,7 @@ export async function getAugmentStats() {
   const augments = Array.from(byAugment.entries())
     .map(([augmentId, s]) => ({ augmentId, ...toStat(s) }))
     .sort((a, b) => b.winRate - a.winRate);
-  return { totalGames: rows.length, augments };
+  return { totalMatches: countMatches(rows), augments };
 }
 
 export async function getLeaderboardStats() {
@@ -123,5 +130,5 @@ export async function getLeaderboardStats() {
   const players = Array.from(byPlayer.entries())
     .map(([puuid, s]) => ({ puuid, riotId: s.riotId, ...toStat(s) }))
     .sort((a, b) => b.winRate - a.winRate || b.games - a.games);
-  return { totalGames: rows.length, players };
+  return { totalMatches: countMatches(rows), players };
 }

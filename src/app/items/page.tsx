@@ -7,7 +7,7 @@ const itemsById = new Map(itemsData.map((i) => [i.id, i]));
 export const dynamic = "force-dynamic";
 
 export default async function ItemsPage() {
-  const { totalGames, items } = await getItemStats();
+  const { totalMatches, items } = await getItemStats();
 
   const rows: StatsRow[] = items.map((entry) => {
     const info = itemsById.get(entry.itemId);
@@ -31,7 +31,7 @@ export default async function ItemsPage() {
         Legendary / Mythic split is coming soon — showing all items together for now.
       </p>
       <div className="mt-4 mb-6">
-        <SampleSizeBadge totalGames={totalGames} />
+        <SampleSizeBadge totalMatches={totalMatches} />
       </div>
       <StatsTable rows={rows} />
     </div>

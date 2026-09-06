@@ -7,7 +7,7 @@ const championsById = new Map(championsData.map((c) => [c.id, c]));
 export const dynamic = "force-dynamic";
 
 export default async function ChampionsPage() {
-  const { totalGames, champions } = await getChampionStats();
+  const { totalMatches, champions } = await getChampionStats();
 
   const rows: StatsRow[] = champions.map((c) => {
     const info = championsById.get(c.champion);
@@ -28,7 +28,7 @@ export default async function ChampionsPage() {
         Win rate and average placement across tracked Arena games, ranked highest win rate first.
       </p>
       <div className="mt-4 mb-6">
-        <SampleSizeBadge totalGames={totalGames} />
+        <SampleSizeBadge totalMatches={totalMatches} />
       </div>
       <StatsTable rows={rows} />
     </div>
