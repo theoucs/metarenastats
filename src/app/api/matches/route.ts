@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// Queue Arena actuelle depuis le patch 26.10 (mai 2026, format "Three by Six", 6 équipes de 3).
-// 1700 est l'ancienne queue Arena 2v2, obsolète.
+// Current Arena queue since patch 26.10 (May 2026, "Three by Six" 3v3 format, 6 teams of 3).
+// 1700 is the legacy 2v2 Arena queue, obsolete.
 const ARENA_QUEUE_ID = 1750;
 const MATCH_COUNT = 10;
 
@@ -22,6 +22,13 @@ type RiotParticipant = {
   playerAugment4: number;
   playerAugment5: number;
   playerAugment6: number;
+  item0: number;
+  item1: number;
+  item2: number;
+  item3: number;
+  item4: number;
+  item5: number;
+  item6: number;
 };
 
 type MatchResult = {
@@ -37,6 +44,7 @@ type MatchResult = {
     deaths: number;
     assists: number;
     augments: number[];
+    items: number[];
     isSearchedPlayer: boolean;
   }[];
 };
@@ -51,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   if (!gameName || !tagLine) {
     return NextResponse.json(
-      { error: "Format attendu : Pseudo#TAG (ex: Theoucs#EUW)" },
+      { error: "Expected format: Name#TAG (e.g. Theoucs#EUW)" },
       { status: 400 }
     );
   }
@@ -62,7 +70,7 @@ export async function GET(req: NextRequest) {
   );
   if (!accountRes.ok) {
     return NextResponse.json(
-      { error: "Joueur introuvable sur EUW" },
+      { error: "Player not found on EUW" },
       { status: accountRes.status === 404 ? 404 : 502 }
     );
   }
@@ -73,7 +81,7 @@ export async function GET(req: NextRequest) {
     { headers: riotHeaders(), cache: "no-store" }
   );
   if (!idsRes.ok) {
-    return NextResponse.json({ error: "Erreur Riot API" }, { status: 502 });
+    return NextResponse.json({ error: "Riot API error" }, { status: 502 });
   }
   const matchIds: string[] = await idsRes.json();
 
@@ -103,6 +111,9 @@ export async function GET(req: NextRequest) {
             p.playerAugment5,
             p.playerAugment6,
           ].filter((a) => a > 0),
+          items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6].filter(
+            (i) => i > 0
+          ),
           isSearchedPlayer: p.puuid === account.puuid,
         }));
 
@@ -116,13 +127,13 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  persistMatches(matches).catch((err) => console.error("Erreur de sauvegarde Supabase:", err));
+  persistMatches(matches).catch((err) => console.error("Supabase save error:", err));
 
   return NextResponse.json({ account, matches });
 }
 
 async function persistMatches(matches: MatchResult[]) {
-  if (!supabaseAdmin) return; // Supabase pas encore configuré, on ignore silencieusement
+  if (!supabaseAdmin) return; // Supabase not configured yet, silently skip
 
   const matchRows = matches.map((m) => ({
     match_id: m.matchId,
@@ -146,6 +157,7 @@ async function persistMatches(matches: MatchResult[]) {
       deaths: p.deaths,
       assists: p.assists,
       augments: p.augments,
+      items: p.items,
     }))
   );
   const { error: participantsError } = await supabaseAdmin

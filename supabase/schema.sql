@@ -19,9 +19,13 @@ create table if not exists match_participants (
   deaths integer not null,
   assists integer not null,
   augments integer[] not null default '{}',
+  items integer[] not null default '{}',
   created_at timestamptz not null default now(),
   unique (match_id, puuid)
 );
+
+-- Migration (si la table existe déjà sans cette colonne) :
+-- alter table match_participants add column if not exists items integer[] not null default '{}';
 
 create index if not exists match_participants_puuid_idx on match_participants (puuid);
 create index if not exists match_participants_champion_idx on match_participants (champion);

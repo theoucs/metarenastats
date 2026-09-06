@@ -1,0 +1,867 @@
+[
+  {
+    "id": "Aatrox",
+    "name": "Aatrox",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Aatrox.png"
+  },
+  {
+    "id": "Ahri",
+    "name": "Ahri",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ahri.png"
+  },
+  {
+    "id": "Akali",
+    "name": "Akali",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Akali.png"
+  },
+  {
+    "id": "Akshan",
+    "name": "Akshan",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Akshan.png"
+  },
+  {
+    "id": "Alistar",
+    "name": "Alistar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Alistar.png"
+  },
+  {
+    "id": "Ambessa",
+    "name": "Ambessa",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ambessa.png"
+  },
+  {
+    "id": "Amumu",
+    "name": "Amumu",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Amumu.png"
+  },
+  {
+    "id": "Anivia",
+    "name": "Anivia",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Anivia.png"
+  },
+  {
+    "id": "Annie",
+    "name": "Annie",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Annie.png"
+  },
+  {
+    "id": "Aphelios",
+    "name": "Aphelios",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Aphelios.png"
+  },
+  {
+    "id": "Ashe",
+    "name": "Ashe",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ashe.png"
+  },
+  {
+    "id": "AurelionSol",
+    "name": "Aurelion Sol",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/AurelionSol.png"
+  },
+  {
+    "id": "Aurora",
+    "name": "Aurora",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Aurora.png"
+  },
+  {
+    "id": "Azir",
+    "name": "Azir",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Azir.png"
+  },
+  {
+    "id": "Bard",
+    "name": "Bard",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Bard.png"
+  },
+  {
+    "id": "Belveth",
+    "name": "Bel'Veth",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Belveth.png"
+  },
+  {
+    "id": "Blitzcrank",
+    "name": "Blitzcrank",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Blitzcrank.png"
+  },
+  {
+    "id": "Brand",
+    "name": "Brand",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Brand.png"
+  },
+  {
+    "id": "Braum",
+    "name": "Braum",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Braum.png"
+  },
+  {
+    "id": "Briar",
+    "name": "Briar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Briar.png"
+  },
+  {
+    "id": "Caitlyn",
+    "name": "Caitlyn",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Caitlyn.png"
+  },
+  {
+    "id": "Camille",
+    "name": "Camille",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Camille.png"
+  },
+  {
+    "id": "Cassiopeia",
+    "name": "Cassiopeia",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Cassiopeia.png"
+  },
+  {
+    "id": "Chogath",
+    "name": "Cho'Gath",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Chogath.png"
+  },
+  {
+    "id": "Corki",
+    "name": "Corki",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Corki.png"
+  },
+  {
+    "id": "Darius",
+    "name": "Darius",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Darius.png"
+  },
+  {
+    "id": "Diana",
+    "name": "Diana",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Diana.png"
+  },
+  {
+    "id": "Draven",
+    "name": "Draven",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Draven.png"
+  },
+  {
+    "id": "DrMundo",
+    "name": "Dr. Mundo",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/DrMundo.png"
+  },
+  {
+    "id": "Ekko",
+    "name": "Ekko",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ekko.png"
+  },
+  {
+    "id": "Elise",
+    "name": "Elise",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Elise.png"
+  },
+  {
+    "id": "Evelynn",
+    "name": "Evelynn",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Evelynn.png"
+  },
+  {
+    "id": "Ezreal",
+    "name": "Ezreal",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ezreal.png"
+  },
+  {
+    "id": "Fiddlesticks",
+    "name": "Fiddlesticks",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Fiddlesticks.png"
+  },
+  {
+    "id": "Fiora",
+    "name": "Fiora",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Fiora.png"
+  },
+  {
+    "id": "Fizz",
+    "name": "Fizz",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Fizz.png"
+  },
+  {
+    "id": "Galio",
+    "name": "Galio",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Galio.png"
+  },
+  {
+    "id": "Gangplank",
+    "name": "Gangplank",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Gangplank.png"
+  },
+  {
+    "id": "Garen",
+    "name": "Garen",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Garen.png"
+  },
+  {
+    "id": "Gnar",
+    "name": "Gnar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Gnar.png"
+  },
+  {
+    "id": "Gragas",
+    "name": "Gragas",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Gragas.png"
+  },
+  {
+    "id": "Graves",
+    "name": "Graves",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Graves.png"
+  },
+  {
+    "id": "Gwen",
+    "name": "Gwen",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Gwen.png"
+  },
+  {
+    "id": "Hecarim",
+    "name": "Hecarim",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Hecarim.png"
+  },
+  {
+    "id": "Heimerdinger",
+    "name": "Heimerdinger",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Heimerdinger.png"
+  },
+  {
+    "id": "Hwei",
+    "name": "Hwei",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Hwei.png"
+  },
+  {
+    "id": "Illaoi",
+    "name": "Illaoi",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Illaoi.png"
+  },
+  {
+    "id": "Irelia",
+    "name": "Irelia",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Irelia.png"
+  },
+  {
+    "id": "Ivern",
+    "name": "Ivern",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ivern.png"
+  },
+  {
+    "id": "Janna",
+    "name": "Janna",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Janna.png"
+  },
+  {
+    "id": "JarvanIV",
+    "name": "Jarvan IV",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/JarvanIV.png"
+  },
+  {
+    "id": "Jax",
+    "name": "Jax",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Jax.png"
+  },
+  {
+    "id": "Jayce",
+    "name": "Jayce",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Jayce.png"
+  },
+  {
+    "id": "Jhin",
+    "name": "Jhin",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Jhin.png"
+  },
+  {
+    "id": "Jinx",
+    "name": "Jinx",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Jinx.png"
+  },
+  {
+    "id": "Kaisa",
+    "name": "Kai'Sa",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kaisa.png"
+  },
+  {
+    "id": "Kalista",
+    "name": "Kalista",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kalista.png"
+  },
+  {
+    "id": "Karma",
+    "name": "Karma",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Karma.png"
+  },
+  {
+    "id": "Karthus",
+    "name": "Karthus",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Karthus.png"
+  },
+  {
+    "id": "Kassadin",
+    "name": "Kassadin",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kassadin.png"
+  },
+  {
+    "id": "Katarina",
+    "name": "Katarina",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Katarina.png"
+  },
+  {
+    "id": "Kayle",
+    "name": "Kayle",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kayle.png"
+  },
+  {
+    "id": "Kayn",
+    "name": "Kayn",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kayn.png"
+  },
+  {
+    "id": "Kennen",
+    "name": "Kennen",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kennen.png"
+  },
+  {
+    "id": "Khazix",
+    "name": "Kha'Zix",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Khazix.png"
+  },
+  {
+    "id": "Kindred",
+    "name": "Kindred",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kindred.png"
+  },
+  {
+    "id": "Kled",
+    "name": "Kled",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Kled.png"
+  },
+  {
+    "id": "KogMaw",
+    "name": "Kog'Maw",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/KogMaw.png"
+  },
+  {
+    "id": "KSante",
+    "name": "K'Sante",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/KSante.png"
+  },
+  {
+    "id": "Leblanc",
+    "name": "LeBlanc",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Leblanc.png"
+  },
+  {
+    "id": "LeeSin",
+    "name": "Lee Sin",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/LeeSin.png"
+  },
+  {
+    "id": "Leona",
+    "name": "Leona",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Leona.png"
+  },
+  {
+    "id": "Lillia",
+    "name": "Lillia",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Lillia.png"
+  },
+  {
+    "id": "Lissandra",
+    "name": "Lissandra",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Lissandra.png"
+  },
+  {
+    "id": "Locke",
+    "name": "Locke",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Locke.png"
+  },
+  {
+    "id": "Lucian",
+    "name": "Lucian",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Lucian.png"
+  },
+  {
+    "id": "Lulu",
+    "name": "Lulu",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Lulu.png"
+  },
+  {
+    "id": "Lux",
+    "name": "Lux",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Lux.png"
+  },
+  {
+    "id": "Malphite",
+    "name": "Malphite",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Malphite.png"
+  },
+  {
+    "id": "Malzahar",
+    "name": "Malzahar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Malzahar.png"
+  },
+  {
+    "id": "Maokai",
+    "name": "Maokai",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Maokai.png"
+  },
+  {
+    "id": "MasterYi",
+    "name": "Master Yi",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/MasterYi.png"
+  },
+  {
+    "id": "Mel",
+    "name": "Mel",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Mel.png"
+  },
+  {
+    "id": "Milio",
+    "name": "Milio",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Milio.png"
+  },
+  {
+    "id": "MissFortune",
+    "name": "Miss Fortune",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/MissFortune.png"
+  },
+  {
+    "id": "MonkeyKing",
+    "name": "Wukong",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/MonkeyKing.png"
+  },
+  {
+    "id": "Mordekaiser",
+    "name": "Mordekaiser",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Mordekaiser.png"
+  },
+  {
+    "id": "Morgana",
+    "name": "Morgana",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Morgana.png"
+  },
+  {
+    "id": "Naafiri",
+    "name": "Naafiri",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Naafiri.png"
+  },
+  {
+    "id": "Nami",
+    "name": "Nami",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nami.png"
+  },
+  {
+    "id": "Nasus",
+    "name": "Nasus",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nasus.png"
+  },
+  {
+    "id": "Nautilus",
+    "name": "Nautilus",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nautilus.png"
+  },
+  {
+    "id": "Neeko",
+    "name": "Neeko",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Neeko.png"
+  },
+  {
+    "id": "Nidalee",
+    "name": "Nidalee",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nidalee.png"
+  },
+  {
+    "id": "Nilah",
+    "name": "Nilah",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nilah.png"
+  },
+  {
+    "id": "Nocturne",
+    "name": "Nocturne",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nocturne.png"
+  },
+  {
+    "id": "Nunu",
+    "name": "Nunu & Willump",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Nunu.png"
+  },
+  {
+    "id": "Olaf",
+    "name": "Olaf",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Olaf.png"
+  },
+  {
+    "id": "Orianna",
+    "name": "Orianna",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Orianna.png"
+  },
+  {
+    "id": "Ornn",
+    "name": "Ornn",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ornn.png"
+  },
+  {
+    "id": "Pantheon",
+    "name": "Pantheon",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Pantheon.png"
+  },
+  {
+    "id": "Poppy",
+    "name": "Poppy",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Poppy.png"
+  },
+  {
+    "id": "Pyke",
+    "name": "Pyke",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Pyke.png"
+  },
+  {
+    "id": "Qiyana",
+    "name": "Qiyana",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Qiyana.png"
+  },
+  {
+    "id": "Quinn",
+    "name": "Quinn",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Quinn.png"
+  },
+  {
+    "id": "Rakan",
+    "name": "Rakan",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Rakan.png"
+  },
+  {
+    "id": "Rammus",
+    "name": "Rammus",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Rammus.png"
+  },
+  {
+    "id": "RekSai",
+    "name": "Rek'Sai",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/RekSai.png"
+  },
+  {
+    "id": "Rell",
+    "name": "Rell",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Rell.png"
+  },
+  {
+    "id": "Renata",
+    "name": "Renata Glasc",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Renata.png"
+  },
+  {
+    "id": "Renekton",
+    "name": "Renekton",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Renekton.png"
+  },
+  {
+    "id": "Rengar",
+    "name": "Rengar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Rengar.png"
+  },
+  {
+    "id": "Riven",
+    "name": "Riven",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Riven.png"
+  },
+  {
+    "id": "Rumble",
+    "name": "Rumble",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Rumble.png"
+  },
+  {
+    "id": "Ryze",
+    "name": "Ryze",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ryze.png"
+  },
+  {
+    "id": "Samira",
+    "name": "Samira",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Samira.png"
+  },
+  {
+    "id": "Sejuani",
+    "name": "Sejuani",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sejuani.png"
+  },
+  {
+    "id": "Senna",
+    "name": "Senna",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Senna.png"
+  },
+  {
+    "id": "Seraphine",
+    "name": "Seraphine",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Seraphine.png"
+  },
+  {
+    "id": "Sett",
+    "name": "Sett",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sett.png"
+  },
+  {
+    "id": "Shaco",
+    "name": "Shaco",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Shaco.png"
+  },
+  {
+    "id": "Shen",
+    "name": "Shen",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Shen.png"
+  },
+  {
+    "id": "Shyvana",
+    "name": "Shyvana",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Shyvana.png"
+  },
+  {
+    "id": "Singed",
+    "name": "Singed",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Singed.png"
+  },
+  {
+    "id": "Sion",
+    "name": "Sion",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sion.png"
+  },
+  {
+    "id": "Sivir",
+    "name": "Sivir",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sivir.png"
+  },
+  {
+    "id": "Skarner",
+    "name": "Skarner",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Skarner.png"
+  },
+  {
+    "id": "Smolder",
+    "name": "Smolder",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Smolder.png"
+  },
+  {
+    "id": "Sona",
+    "name": "Sona",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sona.png"
+  },
+  {
+    "id": "Soraka",
+    "name": "Soraka",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Soraka.png"
+  },
+  {
+    "id": "Swain",
+    "name": "Swain",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Swain.png"
+  },
+  {
+    "id": "Sylas",
+    "name": "Sylas",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Sylas.png"
+  },
+  {
+    "id": "Syndra",
+    "name": "Syndra",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Syndra.png"
+  },
+  {
+    "id": "TahmKench",
+    "name": "Tahm Kench",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/TahmKench.png"
+  },
+  {
+    "id": "Taliyah",
+    "name": "Taliyah",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Taliyah.png"
+  },
+  {
+    "id": "Talon",
+    "name": "Talon",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Talon.png"
+  },
+  {
+    "id": "Taric",
+    "name": "Taric",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Taric.png"
+  },
+  {
+    "id": "Teemo",
+    "name": "Teemo",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Teemo.png"
+  },
+  {
+    "id": "Thresh",
+    "name": "Thresh",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Thresh.png"
+  },
+  {
+    "id": "Tristana",
+    "name": "Tristana",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Tristana.png"
+  },
+  {
+    "id": "Trundle",
+    "name": "Trundle",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Trundle.png"
+  },
+  {
+    "id": "Tryndamere",
+    "name": "Tryndamere",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Tryndamere.png"
+  },
+  {
+    "id": "TwistedFate",
+    "name": "Twisted Fate",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/TwistedFate.png"
+  },
+  {
+    "id": "Twitch",
+    "name": "Twitch",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Twitch.png"
+  },
+  {
+    "id": "Udyr",
+    "name": "Udyr",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Udyr.png"
+  },
+  {
+    "id": "Urgot",
+    "name": "Urgot",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Urgot.png"
+  },
+  {
+    "id": "Varus",
+    "name": "Varus",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Varus.png"
+  },
+  {
+    "id": "Vayne",
+    "name": "Vayne",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Vayne.png"
+  },
+  {
+    "id": "Veigar",
+    "name": "Veigar",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Veigar.png"
+  },
+  {
+    "id": "Velkoz",
+    "name": "Vel'Koz",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Velkoz.png"
+  },
+  {
+    "id": "Vex",
+    "name": "Vex",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Vex.png"
+  },
+  {
+    "id": "Vi",
+    "name": "Vi",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Vi.png"
+  },
+  {
+    "id": "Viego",
+    "name": "Viego",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Viego.png"
+  },
+  {
+    "id": "Viktor",
+    "name": "Viktor",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Viktor.png"
+  },
+  {
+    "id": "Vladimir",
+    "name": "Vladimir",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Vladimir.png"
+  },
+  {
+    "id": "Volibear",
+    "name": "Volibear",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Volibear.png"
+  },
+  {
+    "id": "Warwick",
+    "name": "Warwick",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Warwick.png"
+  },
+  {
+    "id": "Xayah",
+    "name": "Xayah",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Xayah.png"
+  },
+  {
+    "id": "Xerath",
+    "name": "Xerath",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Xerath.png"
+  },
+  {
+    "id": "XinZhao",
+    "name": "Xin Zhao",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/XinZhao.png"
+  },
+  {
+    "id": "Yasuo",
+    "name": "Yasuo",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Yasuo.png"
+  },
+  {
+    "id": "Yone",
+    "name": "Yone",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Yone.png"
+  },
+  {
+    "id": "Yorick",
+    "name": "Yorick",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Yorick.png"
+  },
+  {
+    "id": "Yunara",
+    "name": "Yunara",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Yunara.png"
+  },
+  {
+    "id": "Yuumi",
+    "name": "Yuumi",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Yuumi.png"
+  },
+  {
+    "id": "Zaahen",
+    "name": "Zaahen",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zaahen.png"
+  },
+  {
+    "id": "Zac",
+    "name": "Zac",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zac.png"
+  },
+  {
+    "id": "Zed",
+    "name": "Zed",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zed.png"
+  },
+  {
+    "id": "Zeri",
+    "name": "Zeri",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zeri.png"
+  },
+  {
+    "id": "Ziggs",
+    "name": "Ziggs",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Ziggs.png"
+  },
+  {
+    "id": "Zilean",
+    "name": "Zilean",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zilean.png"
+  },
+  {
+    "id": "Zoe",
+    "name": "Zoe",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zoe.png"
+  },
+  {
+    "id": "Zyra",
+    "name": "Zyra",
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/champion/Zyra.png"
+  }
+]
