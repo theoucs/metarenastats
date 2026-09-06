@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 
 // Queue Arena actuelle depuis le patch 26.10 (mai 2026, format "Three by Six", 6 équipes de 3).
 // 1700 est l'ancienne queue Arena 2v2, obsolète.
@@ -21,6 +22,23 @@ type RiotParticipant = {
   playerAugment4: number;
   playerAugment5: number;
   playerAugment6: number;
+};
+
+type MatchResult = {
+  matchId: string;
+  gameCreation: number;
+  subteamId: number;
+  placement: number;
+  team: {
+    puuid: string;
+    riotId: string;
+    champion: string;
+    kills: number;
+    deaths: number;
+    assists: number;
+    augments: number[];
+    isSearchedPlayer: boolean;
+  }[];
 };
 
 function riotHeaders() {
@@ -71,6 +89,7 @@ export async function GET(req: NextRequest) {
       const team = participants
         .filter((p) => p.playerSubteamId === me.playerSubteamId)
         .map((p) => ({
+          puuid: p.puuid,
           riotId: `${p.riotIdGameName}#${p.riotIdTagline}`,
           champion: p.championName,
           kills: p.kills,
@@ -90,11 +109,47 @@ export async function GET(req: NextRequest) {
       return {
         matchId,
         gameCreation: data.info.gameCreation,
+        subteamId: me.playerSubteamId,
         placement: me.placement,
         team,
       };
     })
   );
 
+  persistMatches(matches).catch((err) => console.error("Erreur de sauvegarde Supabase:", err));
+
   return NextResponse.json({ account, matches });
+}
+
+async function persistMatches(matches: MatchResult[]) {
+  if (!supabaseAdmin) return; // Supabase pas encore configuré, on ignore silencieusement
+
+  const matchRows = matches.map((m) => ({
+    match_id: m.matchId,
+    game_creation: new Date(m.gameCreation).toISOString(),
+    queue_id: ARENA_QUEUE_ID,
+  }));
+  const { error: matchesError } = await supabaseAdmin.from("matches").upsert(matchRows, {
+    onConflict: "match_id",
+  });
+  if (matchesError) throw matchesError;
+
+  const participantRows = matches.flatMap((m) =>
+    m.team.map((p) => ({
+      match_id: m.matchId,
+      puuid: p.puuid,
+      riot_id: p.riotId,
+      subteam_id: m.subteamId,
+      placement: m.placement,
+      champion: p.champion,
+      kills: p.kills,
+      deaths: p.deaths,
+      assists: p.assists,
+      augments: p.augments,
+    }))
+  );
+  const { error: participantsError } = await supabaseAdmin
+    .from("match_participants")
+    .upsert(participantRows, { onConflict: "match_id,puuid" });
+  if (participantsError) throw participantsError;
 }
