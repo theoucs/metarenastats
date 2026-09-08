@@ -41,6 +41,27 @@ const RARITY_RING: Record<string, string> = {
   prismatic: "ring-1 ring-fuchsia-400/80",
 };
 
+/** Small icon with a custom hover bubble showing its name (instant, styled — not the native title="" tooltip). */
+function IconTooltip({
+  src,
+  name,
+  className,
+}: {
+  src: string;
+  name: string;
+  className: string;
+}) {
+  return (
+    <span className="group/tip relative inline-flex shrink-0">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" className={className} />
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-100 opacity-0 shadow-lg transition-opacity duration-100 group-hover/tip:opacity-100">
+        {name}
+      </span>
+    </span>
+  );
+}
+
 function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boolean }) {
   const champ = resolveChampion(player.champion);
 
@@ -75,12 +96,10 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
           const item = resolveItem(id);
           if (!item) return null;
           return (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <IconTooltip
               key={`item-${id}-${i}`}
               src={item.iconUrl}
-              alt=""
-              title={item.name}
+              name={item.name}
               className="h-[22px] w-[22px] rounded border border-zinc-800 object-cover"
             />
           );
@@ -90,12 +109,10 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
           const aug = resolveAugment(id);
           if (!aug) return null;
           return (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <IconTooltip
               key={`aug-${id}-${i}`}
               src={aug.iconUrl}
-              alt=""
-              title={aug.name}
+              name={aug.name}
               className={`h-5 w-5 rounded-full object-cover ${RARITY_RING[aug.tier] ?? ""}`}
             />
           );
