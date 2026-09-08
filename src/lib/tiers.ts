@@ -4,36 +4,49 @@ export const TIER_ORDER: Tier[] = ["S", "A", "B", "C", "D"];
 
 /**
  * Assigns a fixed S/A/B/C/D tier to every row, independent of whichever sort
- * the user currently has selected. Each row gets a combined score: its rank
- * position when the whole list is sorted by win rate, averaged with its rank
- * position when sorted by avg placement (e.g. 10th by win rate + 2nd by
- * placement -> average rank 6). Rows are then sorted by that combined score
- * and split into 5 equal-size bands (quintiles) — S is the best-ranked 20%,
- * D the worst-ranked 20%, regardless of which single metric you're viewing.
+ * the user currently has selected. Each row gets a combined score: the
+ * average of its rank position across four metrics — games played (more is
+ * better, so low-sample flukes don't outrank proven performers), avg
+ * placement, % top 1, and % top 3. Rows are then sorted by that combined
+ * score and split into 5 equal-size bands (quintiles) — S is the
+ * best-ranked 20%, D the worst-ranked 20%, regardless of which single
+ * metric you're currently viewing.
  */
 export type TierInfo = { tier: Tier; score: number };
 
-export function computeTiers<T extends { key: string; winRate: number; avgPlacement: number }>(
-  rows: T[]
-): Map<string, TierInfo> {
+type TierableRow = {
+  key: string;
+  games: number;
+  top3Rate: number;
+  top1Rate: number;
+  avgPlacement: number;
+};
+
+function rankBy<T extends { key: string }>(rows: T[], compare: (a: T, b: T) => number) {
+  const rank = new Map<string, number>();
+  [...rows].sort(compare).forEach((r, i) => rank.set(r.key, i + 1));
+  return rank;
+}
+
+export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, TierInfo> {
   const n = rows.length;
   const tierMap = new Map<string, TierInfo>();
   if (n === 0) return tierMap;
 
-  const winRateRank = new Map<string, number>();
-  [...rows]
-    .sort((a, b) => b.winRate - a.winRate)
-    .forEach((r, i) => winRateRank.set(r.key, i + 1));
-
-  const placementRank = new Map<string, number>();
-  [...rows]
-    .sort((a, b) => a.avgPlacement - b.avgPlacement)
-    .forEach((r, i) => placementRank.set(r.key, i + 1));
+  const gamesRank = rankBy(rows, (a, b) => b.games - a.games);
+  const placementRank = rankBy(rows, (a, b) => a.avgPlacement - b.avgPlacement);
+  const top1Rank = rankBy(rows, (a, b) => b.top1Rate - a.top1Rate);
+  const top3Rank = rankBy(rows, (a, b) => b.top3Rate - a.top3Rate);
 
   const byCombinedScore = rows
     .map((r) => ({
       key: r.key,
-      score: (winRateRank.get(r.key)! + placementRank.get(r.key)!) / 2,
+      score:
+        (gamesRank.get(r.key)! +
+          placementRank.get(r.key)! +
+          top1Rank.get(r.key)! +
+          top3Rank.get(r.key)!) /
+        4,
     }))
     .sort((a, b) => a.score - b.score);
 

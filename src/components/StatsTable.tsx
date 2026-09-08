@@ -8,15 +8,18 @@ export type StatsRow = {
   name: string;
   iconUrl?: string;
   games: number;
-  winRate: number;
+  top3Rate: number;
+  top1Rate: number;
   avgPlacement: number;
+  /** Augment rarity (silver/gold/prismatic) — colors the icon frame like in-game. */
+  rarity?: "silver" | "gold" | "prismatic";
 };
 
-type SortKey = "tier" | "winRate" | "avgPlacement";
+type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement";
 
-function winRateColor(winRate: number) {
-  if (winRate >= 0.55) return "text-emerald-400";
-  if (winRate >= 0.4) return "text-zinc-200";
+function rateColor(rate: number) {
+  if (rate >= 0.55) return "text-emerald-400";
+  if (rate >= 0.4) return "text-zinc-200";
   return "text-red-400";
 }
 
@@ -57,6 +60,34 @@ function TierBadge({ tier }: { tier: "S" | "A" | "B" | "C" | "D" }) {
     >
       {tier}
     </span>
+  );
+}
+
+// Matches the in-game augment rarity frame colors — silver/gold border, a
+// holo gradient ring for prismatic (plain items/champions get a neutral border).
+const RARITY_BORDER: Record<string, string> = {
+  silver: "border-2 border-slate-300/70",
+  gold: "border-2 border-amber-400/90",
+};
+
+function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: StatsRow["rarity"] }) {
+  if (rarity === "prismatic") {
+    return (
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-fuchsia-400 via-purple-400 to-cyan-300 p-[2px]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={iconUrl} alt="" className="h-full w-full rounded-[4px] object-cover" />
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={iconUrl}
+      alt=""
+      className={`h-7 w-7 shrink-0 rounded-md object-cover ${
+        rarity ? RARITY_BORDER[rarity] : "border border-zinc-800"
+      }`}
+    />
   );
 }
 
@@ -104,16 +135,18 @@ export function StatsTable({
   rows: StatsRow[];
   variant?: "tiers" | "ranked";
 }) {
-  const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "winRate");
+  const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
 
-  // Every row gets a fixed tier from the combined win-rate + avg-placement
+  // Every row gets a fixed tier from the combined games/placement/top1/top3
   // rank, independent of whatever sort is currently selected.
   const tierMap = useMemo(() => computeTiers(rows), [rows]);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
-    if (sortBy === "winRate") {
-      copy.sort((a, b) => b.winRate - a.winRate);
+    if (sortBy === "top3Rate") {
+      copy.sort((a, b) => b.top3Rate - a.top3Rate);
+    } else if (sortBy === "top1Rate") {
+      copy.sort((a, b) => b.top1Rate - a.top1Rate);
     } else if (sortBy === "avgPlacement") {
       copy.sort((a, b) => a.avgPlacement - b.avgPlacement);
     } else {
@@ -128,11 +161,12 @@ export function StatsTable({
     variant === "tiers"
       ? [
           { key: "tier", label: "Tier" },
-          { key: "winRate", label: "Win Rate" },
+          { key: "top3Rate", label: "% Top 3" },
+          { key: "top1Rate", label: "% Top 1" },
           { key: "avgPlacement", label: "Avg Placement" },
         ]
       : [
-          { key: "winRate", label: "Win Rate" },
+          { key: "top3Rate", label: "% Top 3" },
           { key: "avgPlacement", label: "Avg Placement" },
         ];
 
@@ -147,7 +181,10 @@ export function StatsTable({
               {variant === "tiers" && <th className="w-14 px-4 py-3 font-medium">Tier</th>}
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 text-right font-medium">Games</th>
-              <th className="px-4 py-3 text-right font-medium">Win Rate</th>
+              <th className="px-4 py-3 text-right font-medium">% Top 3</th>
+              {variant === "tiers" && (
+                <th className="px-4 py-3 text-right font-medium">% Top 1</th>
+              )}
               <th className="px-4 py-3 text-right font-medium">Avg Placement</th>
             </tr>
           </thead>
@@ -172,21 +209,19 @@ export function StatsTable({
                 )}
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2.5">
-                    {row.iconUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={row.iconUrl}
-                        alt=""
-                        className="h-7 w-7 rounded-md border border-zinc-800 object-cover"
-                      />
-                    )}
+                    {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
                     <span className="font-medium text-zinc-100">{row.name}</span>
                   </div>
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-zinc-400">{row.games}</td>
-                <td className={`px-4 py-2.5 text-right font-mono ${winRateColor(row.winRate)}`}>
-                  {(row.winRate * 100).toFixed(1)}%
+                <td className={`px-4 py-2.5 text-right font-mono ${rateColor(row.top3Rate)}`}>
+                  {(row.top3Rate * 100).toFixed(1)}%
                 </td>
+                {variant === "tiers" && (
+                  <td className={`px-4 py-2.5 text-right font-mono ${rateColor(row.top1Rate)}`}>
+                    {(row.top1Rate * 100).toFixed(1)}%
+                  </td>
+                )}
                 <td className="px-4 py-2.5 text-right font-mono text-zinc-400">
                   {row.avgPlacement.toFixed(2)}
                 </td>

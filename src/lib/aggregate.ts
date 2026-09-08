@@ -10,9 +10,10 @@ export type ParticipantRow = {
   items: number[];
 };
 
-// Arena is 6 teams of 3 — top half (placement <= 3) counts as a "win",
-// matching what Riot's own `win` boolean reflected in the old 2v2 format.
-export const WIN_PLACEMENT_THRESHOLD = 3;
+// Arena is 6 teams of 3 — top half (placement <= 3) is what we surface as
+// "% Top 3", matching what Riot's own `win` boolean reflected in the old
+// 2v2 format.
+export const TOP3_PLACEMENT_THRESHOLD = 3;
 
 // Supabase/PostgREST caps every response at 1000 rows server-side (the "Max Rows"
 // project setting) regardless of the .limit() a client asks for — paginate with
@@ -55,89 +56,82 @@ export async function getSiteStats() {
   };
 }
 
-type Stat = { games: number; winRate: number; avgPlacement: number };
+export type Stat = { games: number; top3Rate: number; top1Rate: number; avgPlacement: number };
 
-function toStat(s: { games: number; wins: number; placementSum: number }): Stat {
+type Accumulator = { games: number; top3Wins: number; top1Wins: number; placementSum: number };
+
+function toStat(s: Accumulator): Stat {
   return {
     games: s.games,
-    winRate: s.wins / s.games,
+    top3Rate: s.top3Wins / s.games,
+    top1Rate: s.top1Wins / s.games,
     avgPlacement: s.placementSum / s.games,
   };
 }
 
+function accumulate(map: Map<string | number, Accumulator>, key: string | number, placement: number) {
+  const entry = map.get(key) ?? { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+  entry.games += 1;
+  entry.placementSum += placement;
+  if (placement <= TOP3_PLACEMENT_THRESHOLD) entry.top3Wins += 1;
+  if (placement === 1) entry.top1Wins += 1;
+  map.set(key, entry);
+}
+
 export async function getChampionStats() {
   const rows = await fetchAllParticipants();
-  const byChampion = new Map<string, { games: number; wins: number; placementSum: number }>();
-  for (const r of rows) {
-    const entry = byChampion.get(r.champion) ?? { games: 0, wins: 0, placementSum: 0 };
-    entry.games += 1;
-    entry.placementSum += r.placement;
-    if (r.placement <= WIN_PLACEMENT_THRESHOLD) entry.wins += 1;
-    byChampion.set(r.champion, entry);
-  }
+  const byChampion = new Map<string, Accumulator>();
+  for (const r of rows) accumulate(byChampion, r.champion, r.placement);
   const champions = Array.from(byChampion.entries())
     .map(([champion, s]) => ({ champion, ...toStat(s) }))
-    .sort((a, b) => b.winRate - a.winRate);
+    .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches: countMatches(rows), champions };
 }
 
 export async function getItemStats() {
   const rows = await fetchAllParticipants();
-  const byItem = new Map<number, { games: number; wins: number; placementSum: number }>();
+  const byItem = new Map<number, Accumulator>();
   for (const r of rows) {
-    for (const itemId of r.items) {
-      const entry = byItem.get(itemId) ?? { games: 0, wins: 0, placementSum: 0 };
-      entry.games += 1;
-      entry.placementSum += r.placement;
-      if (r.placement <= WIN_PLACEMENT_THRESHOLD) entry.wins += 1;
-      byItem.set(itemId, entry);
-    }
+    for (const itemId of r.items) accumulate(byItem, itemId, r.placement);
   }
   const items = Array.from(byItem.entries())
     .map(([itemId, s]) => ({ itemId, ...toStat(s) }))
-    .sort((a, b) => b.winRate - a.winRate);
+    .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches: countMatches(rows), items };
 }
 
 export async function getAugmentStats() {
   const rows = await fetchAllParticipants();
-  const byAugment = new Map<number, { games: number; wins: number; placementSum: number }>();
+  const byAugment = new Map<number, Accumulator>();
   for (const r of rows) {
-    for (const augmentId of r.augments) {
-      const entry = byAugment.get(augmentId) ?? { games: 0, wins: 0, placementSum: 0 };
-      entry.games += 1;
-      entry.placementSum += r.placement;
-      if (r.placement <= WIN_PLACEMENT_THRESHOLD) entry.wins += 1;
-      byAugment.set(augmentId, entry);
-    }
+    for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
   }
   const augments = Array.from(byAugment.entries())
     .map(([augmentId, s]) => ({ augmentId, ...toStat(s) }))
-    .sort((a, b) => b.winRate - a.winRate);
+    .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches: countMatches(rows), augments };
 }
 
 export async function getLeaderboardStats() {
   const rows = await fetchAllParticipants();
-  const byPlayer = new Map<
-    string,
-    { riotId: string; games: number; wins: number; placementSum: number }
-  >();
+  const byPlayer = new Map<string, Accumulator & { riotId: string }>();
   for (const r of rows) {
     const entry = byPlayer.get(r.puuid) ?? {
       riotId: r.riot_id,
       games: 0,
-      wins: 0,
+      top3Wins: 0,
+      top1Wins: 0,
       placementSum: 0,
     };
     entry.riotId = r.riot_id;
     entry.games += 1;
     entry.placementSum += r.placement;
-    if (r.placement <= WIN_PLACEMENT_THRESHOLD) entry.wins += 1;
+    if (r.placement <= TOP3_PLACEMENT_THRESHOLD) entry.top3Wins += 1;
+    if (r.placement === 1) entry.top1Wins += 1;
     byPlayer.set(r.puuid, entry);
   }
   const players = Array.from(byPlayer.entries())
     .map(([puuid, s]) => ({ puuid, riotId: s.riotId, ...toStat(s) }))
-    .sort((a, b) => b.winRate - a.winRate || b.games - a.games);
+    .sort((a, b) => b.top3Rate - a.top3Rate || b.games - a.games);
   return { totalMatches: countMatches(rows), players };
 }

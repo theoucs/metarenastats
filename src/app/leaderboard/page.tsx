@@ -10,7 +10,8 @@ export default async function LeaderboardPage() {
     key: p.puuid,
     name: p.riotId,
     games: p.games,
-    winRate: p.winRate,
+    top3Rate: p.top3Rate,
+    top1Rate: p.top1Rate,
     avgPlacement: p.avgPlacement,
   }));
 
@@ -18,7 +19,7 @@ export default async function LeaderboardPage() {
     <div className="mx-auto max-w-4xl px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Player Leaderboard</h1>
       <p className="mt-2 text-zinc-400">
-        Ranked by win rate among tracked EUW players. This is a provisional ranking — the
+        Ranked by % Top 3 among tracked EUW players. This is a provisional ranking — the
         methodology will evolve as we track more games (see{" "}
         <a href="/info" className="text-blue-400 hover:underline">
           Info &amp; Tips

@@ -21,7 +21,8 @@ export default async function ChampionsPage() {
       name: info?.name ?? c.champion,
       iconUrl: info?.iconUrl,
       games: c.games,
-      winRate: c.winRate,
+      top3Rate: c.top3Rate,
+      top1Rate: c.top1Rate,
       avgPlacement: c.avgPlacement,
     };
   });
@@ -30,7 +31,7 @@ export default async function ChampionsPage() {
     <div className="mx-auto max-w-4xl px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Champion Tier List</h1>
       <p className="mt-2 text-zinc-400">
-        Win rate and average placement across tracked Arena games, ranked highest win rate first.
+        % Top 3 and average placement across tracked Arena games, ranked highest % Top 3 first.
       </p>
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
