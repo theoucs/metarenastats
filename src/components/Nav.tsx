@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoMark } from "@/components/Logo";
+import { Wordmark } from "@/components/Wordmark";
 
 const LINKS = [
   { href: "/", label: "Home" },
@@ -21,7 +22,7 @@ export function Nav() {
       <nav className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-4">
         <Link href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-50">
           <LogoMark />
-          Meta<span className="text-blue-500">Arena</span>Stats
+          <Wordmark />
         </Link>
         <ul className="flex flex-1 items-center gap-1 text-sm">
           {LINKS.slice(1).map((link) => {

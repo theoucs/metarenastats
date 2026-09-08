@@ -1,6 +1,7 @@
 import { getSiteStats } from "@/lib/aggregate";
 import { HomeSearch } from "@/components/HomeSearch";
 import { LogoMark } from "@/components/Logo";
+import { Wordmark } from "@/components/Wordmark";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function Home() {
       <div className="relative mx-auto flex max-w-3xl flex-col items-center px-6 py-20 text-center">
         <LogoMark className="h-14 w-14" />
         <h1 className="mt-5 text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">
-          Meta<span className="text-blue-500">Arena</span>Stats
+          <Wordmark />
         </h1>
         <p className="mt-4 max-w-xl text-balance text-zinc-400">
           Free stats, tier lists and leaderboards for League of Legends Arena — the 3v3 &quot;Three
