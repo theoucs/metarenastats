@@ -17,9 +17,18 @@ export type StatsRow = {
 
 type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement";
 
-function rateColor(rate: number) {
+// % Top 3 averages ~50% (3 of 6 teams) — thresholds centered on that.
+function top3Color(rate: number) {
   if (rate >= 0.55) return "text-emerald-400";
   if (rate >= 0.4) return "text-zinc-200";
+  return "text-red-400";
+}
+
+// % Top 1 averages ~16.7% (1 of 6 teams) — a much lower baseline, needs its
+// own thresholds or almost everything reads as "bad" red.
+function top1Color(rate: number) {
+  if (rate >= 0.25) return "text-emerald-400";
+  if (rate >= 0.1) return "text-zinc-200";
   return "text-red-400";
 }
 
@@ -214,11 +223,11 @@ export function StatsTable({
                   </div>
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-zinc-400">{row.games}</td>
-                <td className={`px-4 py-2.5 text-right font-mono ${rateColor(row.top3Rate)}`}>
+                <td className={`px-4 py-2.5 text-right font-mono ${top3Color(row.top3Rate)}`}>
                   {(row.top3Rate * 100).toFixed(1)}%
                 </td>
                 {variant === "tiers" && (
-                  <td className={`px-4 py-2.5 text-right font-mono ${rateColor(row.top1Rate)}`}>
+                  <td className={`px-4 py-2.5 text-right font-mono ${top1Color(row.top1Rate)}`}>
                     {(row.top1Rate * 100).toFixed(1)}%
                   </td>
                 )}
