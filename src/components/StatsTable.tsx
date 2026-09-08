@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getTier, TIER_ORDER, TIER_STYLES } from "@/lib/tiers";
+import { computeTiers, TIER_ORDER, TIER_STYLES } from "@/lib/tiers";
 
 export type StatsRow = {
   key: string;
@@ -157,19 +157,25 @@ function RankedTable({ rows, sortBy }: { rows: StatsRow[]; sortBy: SortKey }) {
   );
 }
 
-/** Grouped by power tier (S/A/B/C/D from win rate) — real tier-list bands, sorted within each band. */
+/**
+ * Grouped by a fixed power tier (S/A/B/C/D), computed once from the combined
+ * win-rate + avg-placement ranking — tier membership does NOT change when you
+ * flip the sort toggle, only the order of rows within each band does.
+ */
 function TieredTable({ rows, sortBy }: { rows: StatsRow[]; sortBy: SortKey }) {
+  const tierMap = useMemo(() => computeTiers(rows), [rows]);
+
   const groups = useMemo(() => {
     const byTier = new Map<string, StatsRow[]>();
     for (const row of rows) {
-      const tier = getTier(row.winRate);
+      const tier = tierMap.get(row.key)!;
       (byTier.get(tier) ?? byTier.set(tier, []).get(tier)!).push(row);
     }
     return TIER_ORDER.filter((t) => byTier.has(t)).map((tier) => ({
       tier,
       rows: sortRows(byTier.get(tier)!, sortBy),
     }));
-  }, [rows, sortBy]);
+  }, [rows, sortBy, tierMap]);
 
   let runningRank = 0;
 
@@ -185,7 +191,7 @@ function TieredTable({ rows, sortBy }: { rows: StatsRow[]; sortBy: SortKey }) {
             <div className={`flex items-center gap-2 border-b ${style.border} ${style.bg} px-4 py-2`}>
               <span className={`text-sm font-bold tracking-wide ${style.text}`}>{tier} TIER</span>
               <span className="text-xs text-zinc-500">
-                {tierRows.length} champion{tierRows.length === 1 ? "" : "s"}
+                {tierRows.length} entr{tierRows.length === 1 ? "y" : "ies"}
               </span>
             </div>
             <table className="w-full text-sm">

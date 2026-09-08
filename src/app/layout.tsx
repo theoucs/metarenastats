@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MetaRenaStats — League of Legends Arena stats & tier lists",
+  title: "MetArenaStats — League of Legends Arena stats & tier lists",
   description: "Free stats, tier lists and leaderboards for League of Legends Arena (EUW).",
 };
 
