@@ -11,11 +11,13 @@ export const TIER_ORDER: Tier[] = ["S", "A", "B", "C", "D"];
  * and split into 5 equal-size bands (quintiles) — S is the best-ranked 20%,
  * D the worst-ranked 20%, regardless of which single metric you're viewing.
  */
+export type TierInfo = { tier: Tier; score: number };
+
 export function computeTiers<T extends { key: string; winRate: number; avgPlacement: number }>(
   rows: T[]
-): Map<string, Tier> {
+): Map<string, TierInfo> {
   const n = rows.length;
-  const tierMap = new Map<string, Tier>();
+  const tierMap = new Map<string, TierInfo>();
   if (n === 0) return tierMap;
 
   const winRateRank = new Map<string, number>();
@@ -43,7 +45,7 @@ export function computeTiers<T extends { key: string; winRate: number; avgPlacem
     else if (percentile < 0.6) tier = "B";
     else if (percentile < 0.8) tier = "C";
     else tier = "D";
-    tierMap.set(entry.key, tier);
+    tierMap.set(entry.key, { tier, score: entry.score });
   });
 
   return tierMap;
