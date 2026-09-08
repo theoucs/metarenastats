@@ -1,9 +1,7 @@
 import { getAugmentStats } from "@/lib/aggregate";
 import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
 import { AugmentTabs } from "@/components/AugmentTabs";
-import augmentsData from "@/lib/data/augments.json";
-
-const augmentsById = new Map(augmentsData.map((a) => [a.id, a]));
+import { resolveAugment } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +10,7 @@ export default async function AugmentsPage() {
 
   const rowsByTier: Record<string, StatsRow[]> = { silver: [], gold: [], prismatic: [] };
   for (const entry of augments) {
-    const info = augmentsById.get(entry.augmentId);
+    const info = resolveAugment(entry.augmentId);
     const tier = info?.tier ?? "gold";
     const row: StatsRow = {
       key: String(entry.augmentId),

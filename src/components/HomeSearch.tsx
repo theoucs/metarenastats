@@ -3,35 +3,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { searchEntities } from "@/lib/searchIndex";
-
-type TeammateStats = {
-  riotId: string;
-  champion: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  augments: number[];
-  isSearchedPlayer: boolean;
-};
-
-type MatchResult = {
-  matchId: string;
-  gameCreation: number;
-  placement: number;
-  team: TeammateStats[];
-};
+import { MatchCard, type MatchCardData } from "@/components/MatchCard";
 
 type ApiResponse = {
   account?: { gameName: string; tagLine: string };
-  matches?: MatchResult[];
+  matches?: MatchCardData[];
   error?: string;
 };
-
-function placementColor(placement: number) {
-  if (placement === 1) return "text-yellow-400";
-  if (placement <= 3) return "text-emerald-400";
-  return "text-zinc-400";
-}
 
 export function HomeSearch() {
   const router = useRouter();
@@ -116,39 +94,9 @@ export function HomeSearch() {
           {data.matches.length === 0 && (
             <p className="text-zinc-400">No recent Arena games found.</p>
           )}
-          {data.matches.map((match) => {
-            const me = match.team.find((p) => p.isSearchedPlayer);
-            return (
-              <div
-                key={match.matchId}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-xl font-bold ${placementColor(match.placement)}`}>
-                    #{match.placement}
-                  </span>
-                  <span className="text-sm text-zinc-500">
-                    {new Date(match.gameCreation).toLocaleString("en-GB")}
-                  </span>
-                </div>
-                {me && (
-                  <p className="mt-1 text-zinc-300">
-                    <span className="font-medium text-zinc-100">{me.champion}</span> — {me.kills}/
-                    {me.deaths}/{me.assists}
-                  </p>
-                )}
-                <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-500">
-                  {match.team
-                    .filter((p) => !p.isSearchedPlayer)
-                    .map((p) => (
-                      <span key={p.riotId} className="rounded bg-zinc-800 px-2 py-0.5">
-                        {p.champion} ({p.riotId})
-                      </span>
-                    ))}
-                </div>
-              </div>
-            );
-          })}
+          {data.matches.map((match) => (
+            <MatchCard key={match.matchId} match={match} />
+          ))}
         </div>
       )}
     </div>

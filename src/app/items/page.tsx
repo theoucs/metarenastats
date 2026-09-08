@@ -1,8 +1,6 @@
 import { getItemStats } from "@/lib/aggregate";
 import { StatsTable, SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
-import itemsData from "@/lib/data/items.json";
-
-const itemsById = new Map(itemsData.map((i) => [i.id, i]));
+import { resolveItem } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +8,7 @@ export default async function ItemsPage() {
   const { totalMatches, items } = await getItemStats();
 
   const rows: StatsRow[] = items.map((entry) => {
-    const info = itemsById.get(entry.itemId);
+    const info = resolveItem(entry.itemId);
     return {
       key: String(entry.itemId),
       name: info?.name ?? `Item ${entry.itemId}`,

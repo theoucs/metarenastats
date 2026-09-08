@@ -146,18 +146,31 @@ export async function GET(req: NextRequest) {
 
   persistMatches(matches).catch((err) => console.error("Supabase save error:", err));
 
-  // The response only shows the searched player's own team (3 players) — the
-  // homepage is about "your matches", even though we saved all 18 to the DB.
+  // Group every match's 18 participants into their 6 teams, sorted by
+  // placement, so the UI can show the searched player's team by default and
+  // expand to the full lobby on demand.
   const displayMatches = matches.map((m) => {
     const me = m.participants.find((p) => p.puuid === account.puuid)!;
-    const team = m.participants
-      .filter((p) => p.subteamId === me.subteamId)
-      .map((p) => ({ ...p, isSearchedPlayer: p.puuid === account.puuid }));
+
+    const bySubteam = new Map<number, typeof m.participants>();
+    for (const p of m.participants) {
+      const arr = bySubteam.get(p.subteamId) ?? [];
+      arr.push(p);
+      bySubteam.set(p.subteamId, arr);
+    }
+    const teams = Array.from(bySubteam.entries())
+      .map(([subteamId, players]) => ({
+        subteamId,
+        placement: players[0].placement,
+        players: players.map((p) => ({ ...p, isSearchedPlayer: p.puuid === account.puuid })),
+      }))
+      .sort((a, b) => a.placement - b.placement);
+
     return {
       matchId: m.matchId,
       gameCreation: m.gameCreation,
       placement: me.placement,
-      team,
+      teams,
     };
   });
 
