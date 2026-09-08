@@ -46,6 +46,15 @@ function countMatches(rows: ParticipantRow[]): number {
   return new Set(rows.map((r) => r.match_id)).size;
 }
 
+export async function getSiteStats() {
+  const rows = await fetchAllParticipants();
+  return {
+    totalMatches: countMatches(rows),
+    totalChampions: new Set(rows.map((r) => r.champion)).size,
+    totalPlayers: new Set(rows.map((r) => r.puuid)).size,
+  };
+}
+
 type Stat = { games: number; winRate: number; avgPlacement: number };
 
 function toStat(s: { games: number; wins: number; placementSum: number }): Stat {

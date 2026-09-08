@@ -32,7 +32,7 @@ export default async function LeaderboardPage() {
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
       </div>
-      <StatsTable rows={rows} />
+      <StatsTable rows={rows} variant="ranked" />
     </div>
   );
 }
