@@ -40,16 +40,38 @@ const items = Object.entries(itemData.data)
   }));
 
 // --- Augments (Community Dragon — not in official Data Dragon) ---
-const arenaData = await fetchJson(
-  "https://raw.communitydragon.org/latest/cdragon/arena/en_us.json"
+// cdragon/arena/en_us.json only had 225 legacy ("Cherry") augments and was
+// missing most of the newer patch-26.10 ("Kiwi") ones — cherry-augments.json
+// is the fuller, current source (657 entries, covers both).
+const cherryAugments = await fetchJson(
+  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/cherry-augments.json"
 );
-const RARITY_TO_TIER = { 0: "silver", 1: "gold", 2: "prismatic", 4: "prismatic" };
-const augments = arenaData.augments.map((a) => ({
-  id: a.id,
-  name: a.name,
-  tier: RARITY_TO_TIER[a.rarity] ?? "gold",
-  iconUrl: `https://raw.communitydragon.org/latest/game/${a.iconSmall.toLowerCase()}`,
-}));
+const RARITY_TO_TIER = {
+  kSilver: "silver",
+  kGold: "gold",
+  kPrismatic: "prismatic",
+  kBronze: "silver", // lower tier, not part of normal rotation — closest bucket
+  kEventChoice: "prismatic", // special event-only augments — closest bucket
+};
+const augments = cherryAugments
+  .filter((a) => a.nameTRA) // skip disabled/placeholder entries with no display name
+  .filter((a) => {
+    // The feed also bundles augments/blessings from other modes (Swarm =
+    // "Strawberry" internally) that reuse low numeric IDs — e.g. id 1379
+    // means "Upgrade Sword of Blossoming Dawn" in Swarm AND a real Arena
+    // augment. Only keep entries whose icon path is actually Cherry (old
+    // 2v2) or Kiwi (current 3v3) to avoid these silent ID collisions.
+    const path = a.augmentSmallIconPath || "";
+    return /\/(Cherry|Kiwi)\//i.test(path) && !/strawberry/i.test(path);
+  })
+  .map((a) => ({
+    id: a.id,
+    name: a.nameTRA,
+    tier: RARITY_TO_TIER[a.rarity] ?? "gold",
+    iconUrl: `https://raw.communitydragon.org/latest/game/${a.augmentSmallIconPath
+      .replace(/^\/lol-game-data\/assets\//i, "")
+      .toLowerCase()}`,
+  }));
 
 await writeFile(new URL("champions.json", OUT_DIR), JSON.stringify(champions, null, 2));
 await writeFile(new URL("items.json", OUT_DIR), JSON.stringify(items, null, 2));

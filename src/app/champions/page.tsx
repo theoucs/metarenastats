@@ -2,7 +2,9 @@ import { getChampionStats } from "@/lib/aggregate";
 import { StatsTable, SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
 import championsData from "@/lib/data/champions.json";
 
-const championsById = new Map(championsData.map((c) => [c.id, c]));
+// Case-insensitive: Riot's match API returns "FiddleSticks" while Data Dragon's
+// champion id is "Fiddlesticks" — a known casing mismatch specific to that champion.
+const championsById = new Map(championsData.map((c) => [c.id.toLowerCase(), c]));
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +12,12 @@ export default async function ChampionsPage() {
   const { totalMatches, champions } = await getChampionStats();
 
   const rows: StatsRow[] = champions.map((c) => {
-    const info = championsById.get(c.champion);
+    const info = championsById.get(c.champion.toLowerCase());
     return {
-      key: c.champion,
+      // Use Data Dragon's canonical casing as the key so search-result anchor
+      // links (which are built from the same reference data) land on the
+      // right row — falls back to the raw value if we don't recognize it.
+      key: info?.id ?? c.champion,
       name: info?.name ?? c.champion,
       iconUrl: info?.iconUrl,
       games: c.games,
