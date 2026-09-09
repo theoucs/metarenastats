@@ -79,9 +79,9 @@ type Accumulator = { games: number; top3Wins: number; top1Wins: number; placemen
 function toStat(s: Accumulator, denominator: number): Stat {
   return {
     games: s.games,
-    top3Rate: s.top3Wins / s.games,
-    top1Rate: s.top1Wins / s.games,
-    avgPlacement: s.placementSum / s.games,
+    top3Rate: s.games > 0 ? s.top3Wins / s.games : 0,
+    top1Rate: s.games > 0 ? s.top1Wins / s.games : 0,
+    avgPlacement: s.games > 0 ? s.placementSum / s.games : 0,
     playRate: denominator > 0 ? s.games / denominator : 0,
   };
 }
@@ -106,12 +106,20 @@ export async function getChampionStats() {
   return { totalMatches, champions };
 }
 
-export async function getItemStats() {
+// "excluded" items (quest-only rewards like Shardblade, or auto-granted ones
+// like Arcane Sweeper) are never a real shop choice — so they're excluded
+// from item stats/recommendations wherever this is passed.
+type ItemCategoryLookup = (itemId: number) => "boots" | "prismatic" | "excluded" | undefined;
+
+export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
   const totalMatches = countMatches(rows);
   const byItem = new Map<number, Accumulator>();
   for (const r of rows) {
-    for (const itemId of r.items) accumulate(byItem, itemId, r.placement);
+    for (const itemId of r.items) {
+      if (categoryOf(itemId) === "excluded") continue;
+      accumulate(byItem, itemId, r.placement);
+    }
   }
   const items = Array.from(byItem.entries())
     .map(([itemId, s]) => ({ itemId, ...toStat(s, totalMatches) }))
@@ -167,7 +175,21 @@ export type ChampionDetail = {
 } & Stat & {
     augmentsByRarity: Record<"silver" | "gold" | "prismatic", ChampionAugmentStat[]>;
     itemBuild: ChampionItemSlot[];
+    /** Stats for the "anvil run" playstyle (stat anvils instead of items) — see isAnvilBuild. */
+    anvilStat: Stat;
   };
+
+// A participant is playing an "anvil run" if every item in their final
+// inventory is either a free Prismatic item or an "excluded" item (Shardblade,
+// Arcane Sweeper, ...) — i.e. they bought zero boots and zero normal shop
+// items. Neither category requires spending gold, so their presence doesn't
+// disqualify the run; a plain Legendary/Mythic item or a pair of boots does.
+function isAnvilBuild(items: number[], categoryOf: ItemCategoryLookup): boolean {
+  return items.every((id) => {
+    const category = categoryOf(id);
+    return category === "prismatic" || category === "excluded";
+  });
+}
 
 /**
  * Everything about one champion: overall stats (scoped to all tracked matches,
@@ -177,7 +199,8 @@ export type ChampionDetail = {
  */
 export async function getChampionDetail(
   championIdLower: string,
-  rarityOf: (augmentId: number) => "silver" | "gold" | "prismatic" | undefined
+  rarityOf: (augmentId: number) => "silver" | "gold" | "prismatic" | undefined,
+  itemCategoryOf: ItemCategoryLookup
 ): Promise<ChampionDetail | null> {
   const rows = await fetchAllParticipants();
   const totalMatches = countMatches(rows);
@@ -215,11 +238,14 @@ export async function getChampionDetail(
   }
 
   // Item build: for each build-order position, which items show up there most
-  // often, most-frequent first.
+  // often, most-frequent first. "excluded" items (Shardblade, Arcane Sweeper,
+  // ...) are skipped — they're never a real build choice, so recommending
+  // them would be noise.
   const bySlot: Map<number, Accumulator>[] = Array.from({ length: BUILD_SLOT_COUNT }, () => new Map());
   for (const r of champRows) {
-    for (let slot = 0; slot < Math.min(BUILD_SLOT_COUNT, r.items.length); slot++) {
-      accumulate(bySlot[slot], r.items[slot], r.placement);
+    const buildableItems = r.items.filter((id) => itemCategoryOf(id) !== "excluded");
+    for (let slot = 0; slot < Math.min(BUILD_SLOT_COUNT, buildableItems.length); slot++) {
+      accumulate(bySlot[slot], buildableItems[slot], r.placement);
     }
   }
   const itemBuild: ChampionItemSlot[] = bySlot
@@ -232,11 +258,21 @@ export async function getChampionDetail(
     })
     .filter((s) => s.items.length > 0);
 
+  const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+  for (const r of champRows) {
+    if (!isAnvilBuild(r.items, itemCategoryOf)) continue;
+    anvilAcc.games += 1;
+    anvilAcc.placementSum += r.placement;
+    if (r.placement <= TOP3_PLACEMENT_THRESHOLD) anvilAcc.top3Wins += 1;
+    if (r.placement === 1) anvilAcc.top1Wins += 1;
+  }
+
   return {
     champion: champRows[0].champion,
     totalMatches,
     ...toStat(championAcc, totalMatches),
     augmentsByRarity,
     itemBuild,
+    anvilStat: toStat(anvilAcc, champGames),
   };
 }

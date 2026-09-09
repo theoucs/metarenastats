@@ -5,7 +5,7 @@ import {
   type ChampionItemSlot,
   type Stat,
 } from "@/lib/aggregate";
-import { resolveChampion, resolveItem, resolveAugment } from "@/lib/gameData";
+import { resolveChampion, resolveItem, resolveAugment, itemCategory } from "@/lib/gameData";
 import { EntityIcon, top1Color, top3Color } from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
 
@@ -101,6 +101,32 @@ function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugment
   );
 }
 
+// Compact enough to sit beside the Item Build header, in the space left over
+// by the (usually shorter) augment columns above it.
+function AnvilRunCard({ stat }: { stat: Stat }) {
+  return (
+    <div className="w-full shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 sm:w-64">
+      <h3 className="text-sm font-semibold text-zinc-100">Anvil Run</h3>
+      <p className="mt-0.5 text-[11px] text-zinc-500">Stat anvils only, no items bought.</p>
+      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+        <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
+        <MiniStat
+          label="Top 1"
+          value={`${(stat.top1Rate * 100).toFixed(0)}%`}
+          colorClass={top1Color(stat.top1Rate)}
+        />
+        <MiniStat
+          label="Top 3"
+          value={`${(stat.top3Rate * 100).toFixed(0)}%`}
+          colorClass={top3Color(stat.top3Rate)}
+        />
+        <MiniStat label="Games" value={String(stat.games)} />
+        <MiniStat label="Played" value={`${(stat.playRate * 100).toFixed(0)}%`} />
+      </div>
+    </div>
+  );
+}
+
 function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
   const [primary, ...alts] = slot.items;
   const primaryInfo = primary ? resolveItem(primary.itemId) : undefined;
@@ -160,7 +186,8 @@ export default async function ChampionDetailPage({
 
   const detail = await getChampionDetail(
     slug.toLowerCase(),
-    (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined
+    (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined,
+    itemCategory
   );
 
   return (
@@ -214,11 +241,16 @@ export default async function ChampionDetailPage({
           </section>
 
           <section className="mt-10">
-            <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Approximate build order (based on final inventory slot) — hover an item for its full
-              stats.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Approximate build order (based on final inventory slot) — hover an item for its
+                  full stats.
+                </p>
+              </div>
+              {detail.anvilStat.games > 0 && <AnvilRunCard stat={detail.anvilStat} />}
+            </div>
             {detail.itemBuild.length === 0 ? (
               <p className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
                 No item data yet.
