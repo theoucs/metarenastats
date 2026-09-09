@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/champions", label: "Champions" },
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
+  { href: "/anvil", label: "Anvil Run" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/info", label: "Info & Tips" },
 ];

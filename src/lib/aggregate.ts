@@ -106,6 +106,20 @@ export async function getChampionStats() {
   return { totalMatches, champions };
 }
 
+// Same shape as getChampionStats, scoped to participants playing an "anvil
+// run" (see isAnvilBuild below) — powers the dedicated Anvil Run tier list.
+export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) {
+  const rows = await fetchAllParticipants();
+  const anvilRows = rows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
+  const totalMatches = countMatches(anvilRows);
+  const byChampion = new Map<string, Accumulator>();
+  for (const r of anvilRows) accumulate(byChampion, r.champion, r.placement);
+  const champions = Array.from(byChampion.entries())
+    .map(([champion, s]) => ({ champion, ...toStat(s, totalMatches) }))
+    .sort((a, b) => b.top3Rate - a.top3Rate);
+  return { totalMatches, champions };
+}
+
 // "excluded" items (quest-only rewards like Shardblade, or auto-granted ones
 // like Arcane Sweeper) are never a real shop choice — so they're excluded
 // from item stats/recommendations wherever this is passed.
