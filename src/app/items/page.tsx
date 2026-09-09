@@ -17,6 +17,7 @@ export default async function ItemsPage() {
       top3Rate: entry.top3Rate,
       top1Rate: entry.top1Rate,
       avgPlacement: entry.avgPlacement,
+      playRate: entry.playRate,
     };
   });
 

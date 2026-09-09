@@ -16,7 +16,7 @@ export const SEARCH_INDEX: SearchEntity[] = [
     id: c.id,
     name: c.name,
     iconUrl: c.iconUrl,
-    href: `/champions#entity-${c.id}`,
+    href: `/champions/${c.id}`,
   })),
   ...items.map((i) => ({
     type: "item" as const,

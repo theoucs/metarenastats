@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES } from "@/lib/tiers";
+import { top1Color, top3Color, EntityIcon, type EntityRarity } from "@/lib/statsDisplay";
 
 export type StatsRow = {
   key: string;
@@ -11,26 +13,12 @@ export type StatsRow = {
   top3Rate: number;
   top1Rate: number;
   avgPlacement: number;
+  playRate: number;
   /** Augment rarity (silver/gold/prismatic) — colors the icon frame like in-game. */
-  rarity?: "silver" | "gold" | "prismatic";
+  rarity?: EntityRarity;
 };
 
-type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement";
-
-// % Top 3 averages ~50% (3 of 6 teams) — thresholds centered on that.
-function top3Color(rate: number) {
-  if (rate >= 0.55) return "text-emerald-400";
-  if (rate >= 0.4) return "text-zinc-200";
-  return "text-red-400";
-}
-
-// % Top 1 averages ~16.7% (1 of 6 teams) — a much lower baseline, needs its
-// own thresholds or almost everything reads as "bad" red.
-function top1Color(rate: number) {
-  if (rate >= 0.25) return "text-emerald-400";
-  if (rate >= 0.1) return "text-zinc-200";
-  return "text-red-400";
-}
+type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
 
 export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
@@ -72,34 +60,6 @@ function TierBadge({ tier }: { tier: "S" | "A" | "B" | "C" | "D" }) {
   );
 }
 
-// Matches the in-game augment rarity frame colors — silver/gold border, a
-// holo gradient ring for prismatic (plain items/champions get a neutral border).
-const RARITY_BORDER: Record<string, string> = {
-  silver: "border-2 border-slate-300/70",
-  gold: "border-2 border-amber-400/90",
-};
-
-function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: StatsRow["rarity"] }) {
-  if (rarity === "prismatic") {
-    return (
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-fuchsia-400 via-purple-400 to-cyan-300 p-[2px]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={iconUrl} alt="" className="h-full w-full rounded-[4px] object-cover" />
-      </span>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={iconUrl}
-      alt=""
-      className={`h-7 w-7 shrink-0 rounded-md object-cover ${
-        rarity ? RARITY_BORDER[rarity] : "border border-zinc-800"
-      }`}
-    />
-  );
-}
-
 function SortControl({
   sortBy,
   onChange,
@@ -112,7 +72,7 @@ function SortControl({
   return (
     <div className="mb-3 flex items-center gap-2 text-sm">
       <span className="text-zinc-500">Sort by:</span>
-      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900/40 p-1">
+      <div className="inline-flex flex-wrap rounded-lg border border-zinc-800 bg-zinc-900/40 p-1">
         {options.map((opt) => (
           <button
             key={opt.key}
@@ -140,9 +100,12 @@ function EmptyState() {
 export function StatsTable({
   rows,
   variant = "tiers",
+  linkPrefix,
 }: {
   rows: StatsRow[];
   variant?: "tiers" | "ranked";
+  /** When set, the name cell links to `${linkPrefix}${row.key}` — used for Champions -> champion detail page. */
+  linkPrefix?: string;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
 
@@ -158,6 +121,8 @@ export function StatsTable({
       copy.sort((a, b) => b.top1Rate - a.top1Rate);
     } else if (sortBy === "avgPlacement") {
       copy.sort((a, b) => a.avgPlacement - b.avgPlacement);
+    } else if (sortBy === "playRate") {
+      copy.sort((a, b) => b.playRate - a.playRate);
     } else {
       copy.sort((a, b) => tierMap.get(a.key)!.score - tierMap.get(b.key)!.score);
     }
@@ -173,6 +138,7 @@ export function StatsTable({
           { key: "top3Rate", label: "% Top 3" },
           { key: "top1Rate", label: "% Top 1" },
           { key: "avgPlacement", label: "Avg Placement" },
+          { key: "playRate", label: "% Played" },
         ]
       : [
           { key: "top3Rate", label: "% Top 3" },
@@ -195,6 +161,9 @@ export function StatsTable({
                 <th className="px-4 py-3 text-right font-medium">% Top 1</th>
               )}
               <th className="px-4 py-3 text-right font-medium">Avg Placement</th>
+              {variant === "tiers" && (
+                <th className="px-4 py-3 text-right font-medium">% Played</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -217,10 +186,20 @@ export function StatsTable({
                   </td>
                 )}
                 <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
-                    <span className="font-medium text-zinc-100">{row.name}</span>
-                  </div>
+                  {linkPrefix ? (
+                    <Link
+                      href={`${linkPrefix}${row.key}`}
+                      className="flex items-center gap-2.5 hover:underline"
+                    >
+                      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
+                      <span className="font-medium text-zinc-100">{row.name}</span>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-2.5">
+                      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
+                      <span className="font-medium text-zinc-100">{row.name}</span>
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-zinc-400">{row.games}</td>
                 <td className={`px-4 py-2.5 text-right font-mono ${top3Color(row.top3Rate)}`}>
@@ -234,6 +213,11 @@ export function StatsTable({
                 <td className="px-4 py-2.5 text-right font-mono text-zinc-400">
                   {row.avgPlacement.toFixed(2)}
                 </td>
+                {variant === "tiers" && (
+                  <td className="px-4 py-2.5 text-right font-mono text-zinc-400">
+                    {(row.playRate * 100).toFixed(1)}%
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

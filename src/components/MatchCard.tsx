@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { resolveChampion, resolveItem, resolveAugment } from "@/lib/gameData";
 
 export type MatchPlayer = {
@@ -72,17 +73,30 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
       }`}
     >
       <div className="flex items-center gap-2.5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={champ?.iconUrl}
-          alt=""
-          className="h-9 w-9 shrink-0 rounded-md border border-zinc-800 object-cover"
-        />
+        {champ ? (
+          <Link href={`/champions/${player.champion}`} className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={champ.iconUrl}
+              alt=""
+              className="h-9 w-9 rounded-md border border-zinc-800 object-cover transition-opacity hover:opacity-80"
+            />
+          </Link>
+        ) : (
+          <span className="h-9 w-9 shrink-0 rounded-md border border-zinc-800 bg-zinc-900" />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-medium text-zinc-100">
-              {champ?.name ?? player.champion}
-            </span>
+            {champ ? (
+              <Link
+                href={`/champions/${player.champion}`}
+                className="truncate text-sm font-medium text-zinc-100 hover:underline"
+              >
+                {champ.name}
+              </Link>
+            ) : (
+              <span className="truncate text-sm font-medium text-zinc-100">{player.champion}</span>
+            )}
             <span className="shrink-0 font-mono text-xs text-zinc-400">
               {player.kills}/{player.deaths}/{player.assists}
             </span>

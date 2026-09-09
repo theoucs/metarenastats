@@ -13,6 +13,7 @@ export default async function LeaderboardPage() {
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
     avgPlacement: p.avgPlacement,
+    playRate: p.playRate,
   }));
 
   return (

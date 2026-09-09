@@ -1,0 +1,238 @@
+import { notFound } from "next/navigation";
+import {
+  getChampionDetail,
+  type ChampionAugmentStat,
+  type ChampionItemSlot,
+  type Stat,
+} from "@/lib/aggregate";
+import { resolveChampion, resolveItem, resolveAugment } from "@/lib/gameData";
+import { EntityIcon, top1Color, top3Color } from "@/lib/statsDisplay";
+import { Tooltip } from "@/components/Tooltip";
+
+export const dynamic = "force-dynamic";
+
+function StatPill({
+  label,
+  value,
+  colorClass,
+}: {
+  label: string;
+  value: string;
+  colorClass?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-center">
+      <div className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${colorClass ?? "text-zinc-100"}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-zinc-600">{label}</div>
+      <div className={`font-mono text-xs ${colorClass ?? "text-zinc-300"}`}>{value}</div>
+    </div>
+  );
+}
+
+function StatTooltipContent({ name, stat }: { name: string; stat: Stat }) {
+  return (
+    <div className="text-left">
+      <div className="font-semibold text-zinc-50">{name}</div>
+      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-zinc-300">
+        <span>Avg: {stat.avgPlacement.toFixed(2)}</span>
+        <span>Games: {stat.games}</span>
+        <span>Top 1: {(stat.top1Rate * 100).toFixed(0)}%</span>
+        <span>Top 3: {(stat.top3Rate * 100).toFixed(0)}%</span>
+        <span>Played: {(stat.playRate * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
+  const info = resolveAugment(stat.augmentId);
+  if (!info) return null;
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+      <div className="flex items-center gap-2.5">
+        <EntityIcon iconUrl={info.iconUrl} rarity={info.tier as "silver" | "gold" | "prismatic"} />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
+          {info.name}
+        </span>
+      </div>
+      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+        <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
+        <MiniStat
+          label="Top 1"
+          value={`${(stat.top1Rate * 100).toFixed(0)}%`}
+          colorClass={top1Color(stat.top1Rate)}
+        />
+        <MiniStat
+          label="Top 3"
+          value={`${(stat.top3Rate * 100).toFixed(0)}%`}
+          colorClass={top3Color(stat.top3Rate)}
+        />
+        <MiniStat label="Games" value={String(stat.games)} />
+        <MiniStat label="Played" value={`${(stat.playRate * 100).toFixed(0)}%`} />
+      </div>
+    </div>
+  );
+}
+
+function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugmentStat[] }) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+      <div className="flex flex-col gap-2">
+        {stats.length === 0 ? (
+          <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+            No data yet.
+          </p>
+        ) : (
+          stats.map((s) => <AugmentCard key={s.augmentId} stat={s} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
+  const [primary, ...alts] = slot.items;
+  const primaryInfo = primary ? resolveItem(primary.itemId) : undefined;
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        Slot {slot.slot}
+      </div>
+
+      {primaryInfo && primary && (
+        <>
+          <Tooltip content={<StatTooltipContent name={primaryInfo.name} stat={primary} />}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={primaryInfo.iconUrl}
+              alt=""
+              className="h-16 w-16 rounded-lg border border-zinc-800 object-cover"
+            />
+          </Tooltip>
+          <div className="font-mono text-[11px] text-zinc-400">
+            {(primary.playRate * 100).toFixed(0)}%
+          </div>
+        </>
+      )}
+
+      {alts.length > 0 && (
+        <div className="flex gap-1.5">
+          {alts.map((alt) => {
+            const info = resolveItem(alt.itemId);
+            if (!info) return null;
+            return (
+              <Tooltip key={alt.itemId} content={<StatTooltipContent name={info.name} stat={alt} />}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={info.iconUrl}
+                  alt=""
+                  className="h-[30px] w-[30px] rounded border border-zinc-800 object-cover"
+                />
+              </Tooltip>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default async function ChampionDetailPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const champInfo = resolveChampion(slug);
+  if (!champInfo) notFound();
+
+  const detail = await getChampionDetail(
+    slug.toLowerCase(),
+    (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined
+  );
+
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-12">
+      <div className="flex items-center gap-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={champInfo.iconUrl}
+          alt=""
+          className="h-16 w-16 rounded-xl border border-zinc-800 object-cover"
+        />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{champInfo.name}</h1>
+          <p className="text-sm text-zinc-500">Arena build summary</p>
+        </div>
+      </div>
+
+      {!detail ? (
+        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/40 p-10 text-center text-zinc-500">
+          No data yet for {champInfo.name}. Search a player who played this champion to start
+          populating stats.
+        </div>
+      ) : (
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatPill label="Avg Placement" value={detail.avgPlacement.toFixed(2)} />
+            <StatPill
+              label="% Top 1"
+              value={`${(detail.top1Rate * 100).toFixed(1)}%`}
+              colorClass={top1Color(detail.top1Rate)}
+            />
+            <StatPill
+              label="% Top 3"
+              value={`${(detail.top3Rate * 100).toFixed(1)}%`}
+              colorClass={top3Color(detail.top3Rate)}
+            />
+            <StatPill label="Games" value={String(detail.games)} />
+            <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
+          </div>
+
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold text-zinc-100">Best Augments</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Ranked by % Top 3 among this champion&apos;s own games.
+            </p>
+            <div className="mt-4 grid gap-6 md:grid-cols-3">
+              <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />
+              <AugmentColumn title="Gold" stats={detail.augmentsByRarity.gold} />
+              <AugmentColumn title="Prismatic" stats={detail.augmentsByRarity.prismatic} />
+            </div>
+          </section>
+
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Approximate build order (based on final inventory slot) — hover an item for its full
+              stats.
+            </p>
+            {detail.itemBuild.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+                No item data yet.
+              </p>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-6">
+                {detail.itemBuild.map((slot) => (
+                  <ItemSlotBlock key={slot.slot} slot={slot} />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
