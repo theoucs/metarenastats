@@ -12,6 +12,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  /* Safety net against any element that overflows its container on narrow
+     screens — real fixes belong on the element itself, this just stops a
+     stray one from adding a page-wide horizontal scrollbar. */
+  overflow-x: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

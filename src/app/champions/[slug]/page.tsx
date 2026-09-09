@@ -191,7 +191,7 @@ export default async function ChampionDetailPage({
   );
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -233,7 +233,7 @@ export default async function ChampionDetailPage({
             <p className="mt-1 text-sm text-zinc-500">
               Ranked by % Top 3 among this champion&apos;s own games.
             </p>
-            <div className="mt-4 grid gap-6 md:grid-cols-3">
+            <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
               <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />
               <AugmentColumn title="Gold" stats={detail.augmentsByRarity.gold} />
               <AugmentColumn title="Prismatic" stats={detail.augmentsByRarity.prismatic} />
@@ -256,7 +256,7 @@ export default async function ChampionDetailPage({
                 No item data yet.
               </p>
             ) : (
-              <div className="mt-4 flex flex-wrap gap-6">
+              <div className="mt-4 flex flex-wrap gap-4 sm:gap-6">
                 {detail.itemBuild.map((slot) => (
                   <ItemSlotBlock key={slot.slot} slot={slot} />
                 ))}

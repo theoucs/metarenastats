@@ -22,7 +22,7 @@ type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
 
 export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
-    <span className="rounded-full border border-zinc-700 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-400">
+    <span className="inline-block rounded-2xl border border-zinc-700 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-400 sm:rounded-full">
       Sample size: {totalMatches} match{totalMatches === 1 ? "" : "es"} tracked so far — data
       grows with every search
     </span>
@@ -148,8 +148,8 @@ export function StatsTable({
   return (
     <div>
       <SortControl sortBy={sortBy} onChange={setSortBy} options={sortOptions} />
-      <div className="overflow-hidden rounded-lg border border-zinc-800">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-zinc-800">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-zinc-800 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
               <th className="w-12 px-4 py-3 font-medium">#</th>

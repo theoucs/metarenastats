@@ -1,6 +1,6 @@
 export default function InfoPage() {
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Info &amp; Tips</h1>
 
       <section className="mt-8">

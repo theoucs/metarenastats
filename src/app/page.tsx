@@ -25,7 +25,7 @@ export default async function Home() {
           by Six&quot; mode.
         </p>
 
-        <div className="mt-6 flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-4 py-1.5 text-sm text-zinc-500">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-2 text-center text-sm text-zinc-500 sm:rounded-full sm:py-1.5">
           <span>
             <span className="font-mono font-medium text-zinc-200">{totalMatches}</span> matches
           </span>

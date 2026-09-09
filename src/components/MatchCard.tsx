@@ -56,7 +56,7 @@ function IconTooltip({
     <span className="group/tip relative inline-flex shrink-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt="" className={className} />
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-100 opacity-0 shadow-lg transition-opacity duration-100 group-hover/tip:opacity-100">
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-100 opacity-0 shadow-lg transition-opacity duration-100 group-hover/tip:opacity-100">
         {name}
       </span>
     </span>

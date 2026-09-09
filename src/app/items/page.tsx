@@ -22,7 +22,7 @@ export default async function ItemsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Item Tier List</h1>
       <p className="mt-2 text-zinc-400">
         % Top 3 and average placement for items across tracked Arena games.
