@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { computeTiers } from "@/lib/tiers";
 
 export type ParticipantRow = {
   match_id: string;
@@ -192,7 +193,10 @@ export async function getChampionDetail(
   }
   const champGames = champRows.length;
 
-  // Augments used on this champion, split by rarity, top 5 each by % top 3.
+  // Augments used on this champion, split by rarity, top 5 each. "Best" uses
+  // the same combined rank score as the tier lists (games, avg placement,
+  // %top1, %top3 averaged) rather than raw %top3, so a 2-game 100%-top3
+  // augment doesn't outrank a proven 40-game pick.
   const byAugment = new Map<number, Accumulator>();
   for (const r of champRows) {
     for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
@@ -204,8 +208,10 @@ export async function getChampionDetail(
     augmentsByRarity[rarity].push({ augmentId, ...toStat(s, champGames) });
   }
   for (const rarity of Object.keys(augmentsByRarity) as (keyof typeof augmentsByRarity)[]) {
-    augmentsByRarity[rarity].sort((a, b) => b.top3Rate - a.top3Rate);
-    augmentsByRarity[rarity] = augmentsByRarity[rarity].slice(0, 5);
+    const stats = augmentsByRarity[rarity];
+    const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.augmentId) })));
+    stats.sort((a, b) => tierMap.get(String(a.augmentId))!.score - tierMap.get(String(b.augmentId))!.score);
+    augmentsByRarity[rarity] = stats.slice(0, 5);
   }
 
   // Item build: for each build-order position, which items show up there most
