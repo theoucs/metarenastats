@@ -60,6 +60,32 @@ function riotHeaders() {
   return { "X-Riot-Token": process.env.RIOT_API_KEY ?? "" };
 }
 
+// A non-404 failure from Riot (expired/invalid key, rate limit, Riot-side
+// outage) is not "player not found" — surfacing it as such is misleading and,
+// on a dev key that expires every 24h, this is the failure mode we're most
+// likely to actually hit. Give a distinct, honest message per case instead.
+function riotErrorResponse(status: number) {
+  if (status === 404) {
+    return NextResponse.json({ error: "Player not found on EUW" }, { status: 404 });
+  }
+  if (status === 401 || status === 403) {
+    return NextResponse.json(
+      { error: "Search is temporarily unavailable (API key issue) — please try again shortly." },
+      { status: 502 }
+    );
+  }
+  if (status === 429) {
+    return NextResponse.json(
+      { error: "Too many searches right now — please try again in a moment." },
+      { status: 502 }
+    );
+  }
+  return NextResponse.json(
+    { error: "Riot API is temporarily unavailable — please try again shortly." },
+    { status: 502 }
+  );
+}
+
 function toParticipantDetail(p: RiotParticipant): ParticipantDetail {
   return {
     puuid: p.puuid,
@@ -98,10 +124,7 @@ export async function GET(req: NextRequest) {
     { headers: riotHeaders(), cache: "no-store" }
   );
   if (!accountRes.ok) {
-    return NextResponse.json(
-      { error: "Player not found on EUW" },
-      { status: accountRes.status === 404 ? 404 : 502 }
-    );
+    return riotErrorResponse(accountRes.status);
   }
   const account: { puuid: string; gameName: string; tagLine: string } = await accountRes.json();
 
@@ -110,7 +133,7 @@ export async function GET(req: NextRequest) {
     { headers: riotHeaders(), cache: "no-store" }
   );
   if (!idsRes.ok) {
-    return NextResponse.json({ error: "Riot API error" }, { status: 502 });
+    return riotErrorResponse(idsRes.status);
   }
   const matchIds: string[] = await idsRes.json();
 
