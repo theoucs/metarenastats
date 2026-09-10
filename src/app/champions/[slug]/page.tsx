@@ -106,7 +106,7 @@ function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugment
 function ShardbladeRateBlock({ rate }: { rate: number }) {
   const info = resolveItem(SHARDBLADE_ITEM_ID);
   return (
-    <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2.5">
+    <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2">
       {info && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -168,11 +168,11 @@ function AnvilRunPanel({
   topPrismaticItems: ChampionItemSlotStat[];
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
       <h2 className="text-lg font-semibold text-zinc-100">Anvil Run</h2>
-      <p className="mt-1 text-sm text-zinc-500">Stat anvils only, no items bought.</p>
+      <p className="mt-0.5 text-sm text-zinc-500">Stat anvils only, no items bought.</p>
 
-      <div className="mt-3 grid grid-cols-5 gap-1 text-center">
+      <div className="mt-2 grid grid-cols-5 gap-1 text-center">
         <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
         <MiniStat
           label="Top 1"
@@ -190,11 +190,11 @@ function AnvilRunPanel({
 
       <ShardbladeRateBlock rate={shardbladeRate} />
 
-      <div className="mt-4">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="mt-3">
+        <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-zinc-500">
           Top Prismatic Items
         </h3>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {topPrismaticItems.length === 0 ? (
             <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
               No data yet.
@@ -326,16 +326,12 @@ export default async function ChampionDetailPage({
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                 <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Approximate build order (based on final inventory slot) — hover an item for its
-                  full stats.
-                </p>
                 {detail.itemBuild.length === 0 ? (
-                  <p className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+                  <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
                     No item data yet.
                   </p>
                 ) : (
-                  <div className="mt-4 flex flex-wrap gap-4 sm:gap-6">
+                  <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
                     {detail.itemBuild.map((slot) => (
                       <ItemSlotBlock key={slot.slot} slot={slot} />
                     ))}
