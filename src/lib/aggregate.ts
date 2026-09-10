@@ -142,6 +142,10 @@ export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) 
 // from item stats/recommendations wherever this is passed.
 type ItemCategoryLookup = (itemId: number) => "boots" | "prismatic" | "excluded" | undefined;
 
+// Shared with the champion page, which needs the id to resolve the icon for
+// the "% of anvil games that got a Shardblade" stat.
+export const SHARDBLADE_ITEM_ID = 220012;
+
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
   const totalMatches = countMatches(rows);
@@ -208,6 +212,10 @@ export type ChampionDetail = {
     itemBuild: ChampionItemSlot[];
     /** Stats for the "anvil run" playstyle (stat anvils instead of items) — see isAnvilBuild. */
     anvilStat: Stat;
+    /** % of this champion's anvil-run games (not all games) where Shardblade was obtained. */
+    anvilShardbladeRate: number;
+    /** Top 3 Prismatic items among this champion's anvil-run games, ranked by tier score. */
+    anvilTopPrismaticItems: ChampionItemSlotStat[];
   };
 
 // A participant is playing an "anvil run" if every item in their final
@@ -289,14 +297,37 @@ export async function getChampionDetail(
     })
     .filter((s) => s.items.length > 0);
 
+  const anvilRows = champRows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
-  for (const r of champRows) {
-    if (!isAnvilBuild(r.items, itemCategoryOf)) continue;
+  let anvilShardbladeCount = 0;
+  const byAnvilPrismaticItem = new Map<number, Accumulator>();
+  for (const r of anvilRows) {
     anvilAcc.games += 1;
     anvilAcc.placementSum += r.placement;
     if (r.placement <= TOP3_PLACEMENT_THRESHOLD) anvilAcc.top3Wins += 1;
     if (r.placement === 1) anvilAcc.top1Wins += 1;
+    if (r.items.includes(SHARDBLADE_ITEM_ID)) anvilShardbladeCount += 1;
+    for (const itemId of r.items) {
+      if (itemCategoryOf(itemId) !== "prismatic") continue;
+      accumulate(byAnvilPrismaticItem, itemId, r.placement);
+    }
   }
+  const anvilShardbladeRate = anvilAcc.games > 0 ? anvilShardbladeCount / anvilAcc.games : 0;
+
+  // Same tier-score ranking as the augments above, but scoped to Prismatic
+  // items seen specifically during this champion's anvil-run games.
+  const anvilPrismaticStats = Array.from(byAnvilPrismaticItem.entries()).map(([itemId, s]) => ({
+    itemId,
+    ...toStat(s, anvilAcc.games),
+  }));
+  const anvilPrismaticTierMap = computeTiers(
+    anvilPrismaticStats.map((s) => ({ ...s, key: String(s.itemId) }))
+  );
+  anvilPrismaticStats.sort(
+    (a, b) =>
+      anvilPrismaticTierMap.get(String(a.itemId))!.score - anvilPrismaticTierMap.get(String(b.itemId))!.score
+  );
+  const anvilTopPrismaticItems = anvilPrismaticStats.slice(0, 3);
 
   return {
     champion: champRows[0].champion,
@@ -305,5 +336,7 @@ export async function getChampionDetail(
     augmentsByRarity,
     itemBuild,
     anvilStat: toStat(anvilAcc, champGames),
+    anvilShardbladeRate,
+    anvilTopPrismaticItems,
   };
 }
