@@ -1,9 +1,15 @@
 import { getAugmentStats } from "@/lib/aggregate";
 import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
-import { AugmentTabs } from "@/components/AugmentTabs";
+import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { resolveAugment } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
+
+const TABS = [
+  { key: "prismatic", label: "Prismatic" },
+  { key: "gold", label: "Gold" },
+  { key: "silver", label: "Silver" },
+] as const;
 
 export default async function AugmentsPage() {
   const { totalMatches, augments } = await getAugmentStats();
@@ -36,7 +42,7 @@ export default async function AugmentsPage() {
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
       </div>
-      <AugmentTabs rowsByTier={rowsByTier} />
+      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} />
     </div>
   );
 }
