@@ -31,7 +31,7 @@ export default async function AnvilPage() {
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
       </div>
-      <StatsTable rows={rows} linkPrefix="/champions/" />
+      <StatsTable rows={rows} linkPrefix="/champions/" playRateLabel="% Anvil Run" />
     </div>
   );
 }

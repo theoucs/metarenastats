@@ -108,14 +108,25 @@ export async function getChampionStats() {
 
 // Same shape as getChampionStats, scoped to participants playing an "anvil
 // run" (see isAnvilBuild below) — powers the dedicated Anvil Run tier list.
+// playRate here is "% of this champion's own games (any playstyle) that were
+// an anvil run" rather than a pick rate over the anvil population — matching
+// the anvilStat.playRate shown on the champion detail page.
 export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
+  const totalGamesByChampion = new Map<string, number>();
+  for (const r of rows) {
+    totalGamesByChampion.set(r.champion, (totalGamesByChampion.get(r.champion) ?? 0) + 1);
+  }
+
   const anvilRows = rows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const totalMatches = countMatches(anvilRows);
   const byChampion = new Map<string, Accumulator>();
   for (const r of anvilRows) accumulate(byChampion, r.champion, r.placement);
   const champions = Array.from(byChampion.entries())
-    .map(([champion, s]) => ({ champion, ...toStat(s, totalMatches) }))
+    .map(([champion, s]) => ({
+      champion,
+      ...toStat(s, totalGamesByChampion.get(champion) ?? 0),
+    }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, champions };
 }

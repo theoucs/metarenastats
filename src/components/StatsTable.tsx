@@ -101,11 +101,14 @@ export function StatsTable({
   rows,
   variant = "tiers",
   linkPrefix,
+  playRateLabel = "% Played",
 }: {
   rows: StatsRow[];
   variant?: "tiers" | "ranked";
   /** When set, the name cell links to `${linkPrefix}${row.key}` — used for Champions -> champion detail page. */
   linkPrefix?: string;
+  /** Column/sort label for `playRate` — its meaning (and denominator) varies by page. */
+  playRateLabel?: string;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
 
@@ -138,7 +141,7 @@ export function StatsTable({
           { key: "top3Rate", label: "% Top 3" },
           { key: "top1Rate", label: "% Top 1" },
           { key: "avgPlacement", label: "Avg Placement" },
-          { key: "playRate", label: "% Played" },
+          { key: "playRate", label: playRateLabel },
         ]
       : [
           { key: "top3Rate", label: "% Top 3" },
@@ -162,7 +165,7 @@ export function StatsTable({
               )}
               <th className="px-4 py-3 text-right font-medium">Avg Placement</th>
               {variant === "tiers" && (
-                <th className="px-4 py-3 text-right font-medium">% Played</th>
+                <th className="px-4 py-3 text-right font-medium">{playRateLabel}</th>
               )}
             </tr>
           </thead>
