@@ -122,7 +122,8 @@
   {
     "id": 3330,
     "name": "Scarecrow Effigy",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/3330.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/3330.png",
+    "category": "excluded"
   },
   {
     "id": 3348,
@@ -238,22 +239,26 @@
   {
     "id": 220008,
     "name": "Anvil Voucher",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220008.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220008.png",
+    "category": "excluded"
   },
   {
     "id": 220009,
     "name": "Gold Stat Anvil Voucher",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220009.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220009.png",
+    "category": "excluded"
   },
   {
     "id": 220010,
     "name": "Prismatic Stat Voucher",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220010.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220010.png",
+    "category": "excluded"
   },
   {
     "id": 220011,
     "name": "Bravery Voucher",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220011.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/220011.png",
+    "category": "excluded"
   },
   {
     "id": 220012,
@@ -723,7 +728,8 @@
   {
     "id": 224403,
     "name": "The Golden Spatula",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/224403.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/224403.png",
+    "category": "excluded"
   },
   {
     "id": 224628,
@@ -814,7 +820,8 @@
   {
     "id": 226660,
     "name": "",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/226660.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.17.1/img/item/226660.png",
+    "category": "excluded"
   },
   {
     "id": 226662,

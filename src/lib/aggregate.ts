@@ -5,11 +5,22 @@ export type ParticipantRow = {
   match_id: string;
   puuid: string;
   riot_id: string;
+  subteam_id: number;
   champion: string;
   placement: number;
   augments: number[];
   items: number[];
 };
+
+// The "Anvil Voucher" family (early-game stat-anvil choice screens) get
+// consumed into a real Prismatic/Legendary/Excluded item within a minute or
+// two of normal play — a voucher still sitting in a *final* inventory means
+// that player never played the game (AFK/disconnected). Riot still records a
+// placement for their team in that case, but it's not a real result: the
+// team is essentially playing 2v3 (or worse) and the placement reflects that
+// handicap, not genuine performance — so the whole team is dropped from
+// every stat for that one match (see fetchAllParticipants).
+const AFK_VOUCHER_ITEM_IDS = new Set([220008, 220009, 220010, 220011]);
 
 // Arena is 6 teams of 3 — top half (placement <= 3) is what we surface as
 // "% Top 3", matching what Riot's own `win` boolean reflected in the old
@@ -44,14 +55,28 @@ export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
     const from = page * PAGE_SIZE;
     const { data, error } = await supabaseAdmin
       .from("match_participants")
-      .select("match_id, puuid, riot_id, champion, placement, augments, items")
+      .select("match_id, puuid, riot_id, subteam_id, champion, placement, augments, items")
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     allRows.push(...data);
     if (data.length < PAGE_SIZE) break;
   }
-  return allRows;
+  return dropAfkTeams(allRows);
+}
+
+// Drops every row belonging to a (match, subteam) where at least one
+// teammate still had an Anvil/Bravery Voucher at game end — see
+// AFK_VOUCHER_ITEM_IDS.
+function dropAfkTeams(rows: ParticipantRow[]): ParticipantRow[] {
+  const afkTeams = new Set<string>();
+  for (const r of rows) {
+    if (r.items.some((id) => AFK_VOUCHER_ITEM_IDS.has(id))) {
+      afkTeams.add(`${r.match_id}:${r.subteam_id}`);
+    }
+  }
+  if (afkTeams.size === 0) return rows;
+  return rows.filter((r) => !afkTeams.has(`${r.match_id}:${r.subteam_id}`));
 }
 
 // Rows are per-participant (18 per match, since we save all 6 teams) — the
