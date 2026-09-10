@@ -16,6 +16,12 @@ export type ParticipantRow = {
 // 2v2 format.
 export const TOP3_PLACEMENT_THRESHOLD = 3;
 
+// 6 teams of 3 — used to turn a match count into a participant-slot count for
+// "% Played" on champions/items/augments (each of the 18 slots independently
+// picks a champion / can include a given item or augment in its build, so the
+// pick-rate denominator is matches × 18, not matches).
+const PARTICIPANTS_PER_MATCH = 18;
+
 // Build-order slots we track per champion (see getChampionDetail) — `items`
 // preserves Riot's item0..item6 order with empty slots compacted out, which
 // approximates purchase order well enough without the Match Timeline API.
@@ -101,7 +107,7 @@ export async function getChampionStats() {
   const byChampion = new Map<string, Accumulator>();
   for (const r of rows) accumulate(byChampion, r.champion, r.placement);
   const champions = Array.from(byChampion.entries())
-    .map(([champion, s]) => ({ champion, ...toStat(s, totalMatches) }))
+    .map(([champion, s]) => ({ champion, ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH) }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, champions };
 }
@@ -147,7 +153,7 @@ export async function getItemStats(categoryOf: ItemCategoryLookup) {
     }
   }
   const items = Array.from(byItem.entries())
-    .map(([itemId, s]) => ({ itemId, ...toStat(s, totalMatches) }))
+    .map(([itemId, s]) => ({ itemId, ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH) }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, items };
 }
@@ -160,7 +166,7 @@ export async function getAugmentStats() {
     for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
   }
   const augments = Array.from(byAugment.entries())
-    .map(([augmentId, s]) => ({ augmentId, ...toStat(s, totalMatches) }))
+    .map(([augmentId, s]) => ({ augmentId, ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH) }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, augments };
 }
@@ -295,7 +301,7 @@ export async function getChampionDetail(
   return {
     champion: champRows[0].champion,
     totalMatches,
-    ...toStat(championAcc, totalMatches),
+    ...toStat(championAcc, totalMatches * PARTICIPANTS_PER_MATCH),
     augmentsByRarity,
     itemBuild,
     anvilStat: toStat(anvilAcc, champGames),
