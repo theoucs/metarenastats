@@ -235,7 +235,7 @@ export type ChampionDetail = {
 } & Stat & {
     augmentsByRarity: Record<"silver" | "gold" | "prismatic", ChampionAugmentStat[]>;
     itemBuild: ChampionItemSlot[];
-    /** Top 5 Prismatic items across this champion's games (any playstyle), ranked by tier score. */
+    /** Top 6 Prismatic items across this champion's games (any playstyle), ranked by tier score. */
     topPrismaticItems: ChampionItemSlotStat[];
     /** Stats for the "anvil run" playstyle (stat anvils instead of items) — see isAnvilBuild. */
     anvilStat: Stat;
@@ -347,9 +347,9 @@ export async function getChampionDetail(
     })
     .filter((s) => s.items.length > 0);
 
-  // Top 5 Prismatic items across this champion's games overall (any
+  // Top 6 Prismatic items across this champion's games overall (any
   // playstyle) — sits under the item build slots.
-  const topPrismaticItems = computeTopPrismaticItems(champRows, itemCategoryOf, champGames, 5);
+  const topPrismaticItems = computeTopPrismaticItems(champRows, itemCategoryOf, champGames, 6);
 
   const anvilRows = champRows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
