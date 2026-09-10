@@ -235,6 +235,8 @@ export type ChampionDetail = {
 } & Stat & {
     augmentsByRarity: Record<"silver" | "gold" | "prismatic", ChampionAugmentStat[]>;
     itemBuild: ChampionItemSlot[];
+    /** Top 5 Prismatic items across this champion's games (any playstyle), ranked by tier score. */
+    topPrismaticItems: ChampionItemSlotStat[];
     /** Stats for the "anvil run" playstyle (stat anvils instead of items) — see isAnvilBuild. */
     anvilStat: Stat;
     /** % of this champion's anvil-run games (not all games) where Shardblade was obtained. */
@@ -253,6 +255,29 @@ function isAnvilBuild(items: number[], categoryOf: ItemCategoryLookup): boolean 
     const category = categoryOf(id);
     return category === "prismatic" || category === "excluded";
   });
+}
+
+// Prismatic items seen across `rows`, ranked by the same tier score as the
+// augments/tier lists (games, avg placement, %top1, %top3 averaged) and cut
+// down to the top `topN`. `denominator` is what "playRate" is relative to —
+// e.g. this champion's total games, or just its anvil-run games.
+function computeTopPrismaticItems(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+  denominator: number,
+  topN: number
+): ChampionItemSlotStat[] {
+  const byItem = new Map<number, Accumulator>();
+  for (const r of rows) {
+    for (const itemId of r.items) {
+      if (categoryOf(itemId) !== "prismatic") continue;
+      accumulate(byItem, itemId, r.placement);
+    }
+  }
+  const stats = Array.from(byItem.entries()).map(([itemId, s]) => ({ itemId, ...toStat(s, denominator) }));
+  const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.itemId) })));
+  stats.sort((a, b) => tierMap.get(String(a.itemId))!.score - tierMap.get(String(b.itemId))!.score);
+  return stats.slice(0, topN);
 }
 
 /**
@@ -322,37 +347,24 @@ export async function getChampionDetail(
     })
     .filter((s) => s.items.length > 0);
 
+  // Top 5 Prismatic items across this champion's games overall (any
+  // playstyle) — sits under the item build slots.
+  const topPrismaticItems = computeTopPrismaticItems(champRows, itemCategoryOf, champGames, 5);
+
   const anvilRows = champRows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
   let anvilShardbladeCount = 0;
-  const byAnvilPrismaticItem = new Map<number, Accumulator>();
   for (const r of anvilRows) {
     anvilAcc.games += 1;
     anvilAcc.placementSum += r.placement;
     if (r.placement <= TOP3_PLACEMENT_THRESHOLD) anvilAcc.top3Wins += 1;
     if (r.placement === 1) anvilAcc.top1Wins += 1;
     if (r.items.includes(SHARDBLADE_ITEM_ID)) anvilShardbladeCount += 1;
-    for (const itemId of r.items) {
-      if (itemCategoryOf(itemId) !== "prismatic") continue;
-      accumulate(byAnvilPrismaticItem, itemId, r.placement);
-    }
   }
   const anvilShardbladeRate = anvilAcc.games > 0 ? anvilShardbladeCount / anvilAcc.games : 0;
 
-  // Same tier-score ranking as the augments above, but scoped to Prismatic
-  // items seen specifically during this champion's anvil-run games.
-  const anvilPrismaticStats = Array.from(byAnvilPrismaticItem.entries()).map(([itemId, s]) => ({
-    itemId,
-    ...toStat(s, anvilAcc.games),
-  }));
-  const anvilPrismaticTierMap = computeTiers(
-    anvilPrismaticStats.map((s) => ({ ...s, key: String(s.itemId) }))
-  );
-  anvilPrismaticStats.sort(
-    (a, b) =>
-      anvilPrismaticTierMap.get(String(a.itemId))!.score - anvilPrismaticTierMap.get(String(b.itemId))!.score
-  );
-  const anvilTopPrismaticItems = anvilPrismaticStats.slice(0, 3);
+  // Top 3 Prismatic items among just this champion's anvil-run games.
+  const anvilTopPrismaticItems = computeTopPrismaticItems(anvilRows, itemCategoryOf, anvilAcc.games, 3);
 
   return {
     champion: champRows[0].champion,
@@ -360,6 +372,7 @@ export async function getChampionDetail(
     ...toStat(championAcc, totalMatches * PARTICIPANTS_PER_MATCH),
     augmentsByRarity,
     itemBuild,
+    topPrismaticItems,
     anvilStat: toStat(anvilAcc, champGames),
     anvilShardbladeRate,
     anvilTopPrismaticItems,

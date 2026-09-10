@@ -324,7 +324,7 @@ export default async function ChampionDetailPage({
 
           <section className="mt-10">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                 <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
                 <p className="mt-1 text-sm text-zinc-500">
                   Approximate build order (based on final inventory slot) — hover an item for its
@@ -341,6 +341,23 @@ export default async function ChampionDetailPage({
                     ))}
                   </div>
                 )}
+
+                <div className="mt-6">
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    Top Prismatic Items
+                  </h3>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {detail.topPrismaticItems.length === 0 ? (
+                      <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+                        No data yet.
+                      </p>
+                    ) : (
+                      detail.topPrismaticItems.map((s) => (
+                        <PrismaticItemCard key={s.itemId} stat={s} />
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
               {detail.anvilStat.games > 0 && (
                 <AnvilRunPanel
