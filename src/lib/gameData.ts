@@ -12,6 +12,30 @@ export function resolveChampion(name: string) {
   return championsByIdLower.get(name.toLowerCase());
 }
 
+/** The six Data Dragon champion classes, in the order the Team Comps page lists them. */
+export const CHAMPION_ROLES = [
+  "Assassin",
+  "Fighter",
+  "Mage",
+  "Marksman",
+  "Support",
+  "Tank",
+] as const;
+export type ChampionRole = (typeof CHAMPION_ROLES)[number];
+
+/**
+ * A champion's single defining class, for the Team Comps archetype tier list.
+ *
+ * Data Dragon gives 1-2 tags, most-defining first (Ahri = Mage, Assassin), and
+ * every one of the 173 champions has at least one. Only the first is used:
+ * bucketing by the full tag set would fragment 3.9k teams across far more
+ * archetypes than the sample can support, which is the whole problem this page
+ * exists to avoid.
+ */
+export function championRole(name: string): ChampionRole | undefined {
+  return resolveChampion(name)?.roles?.[0] as ChampionRole | undefined;
+}
+
 export function resolveItem(id: number) {
   return itemsById.get(id);
 }

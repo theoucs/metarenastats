@@ -430,6 +430,124 @@ export async function getChampionDetail(
   };
 }
 
+// --- Team comps -----------------------------------------------------------
+
+/**
+ * A team's 3 champions, grouped one match-team at a time.
+ *
+ * Every match contributes 6 of these (6 teams of 3), and `placement` is a team
+ * property, so unlike every other aggregation in this file the unit here is
+ * the team, not the participant.
+ */
+type TeamRow = { champions: string[]; placement: number };
+
+const TEAM_SIZE = 3;
+
+function groupIntoTeams(rows: ParticipantRow[]): TeamRow[] {
+  const byTeam = new Map<string, TeamRow>();
+  for (const r of rows) {
+    const key = `${r.match_id}:${r.subteam_id}`;
+    const team = byTeam.get(key) ?? { champions: [], placement: r.placement };
+    team.champions.push(r.champion);
+    byTeam.set(key, team);
+  }
+  // A team missing members (a participant row that failed to save) would skew
+  // archetype counts toward 2-champion shapes that can't exist in Three by Six.
+  return Array.from(byTeam.values()).filter((t) => t.champions.length === TEAM_SIZE);
+}
+
+/**
+ * What counts as "enough teams to say anything" about a specific champion
+ * pairing. Only used to *report* how far off we are — see CompStats.coverage.
+ */
+const DUO_USABLE_TEAMS = 8;
+
+/**
+ * Minimum teams before an archetype is listed.
+ *
+ * Class trios are wildly uneven in how often they occur — Fighter·Mage·Marksman
+ * turns up 237 times, Assassin·Tank·Tank a handful — because the classes
+ * themselves are uneven (50 of 173 champions are Fighters). Without a floor the
+ * rare shapes post absurd rates off 5-10 teams and, since tiering on this page
+ * deliberately ignores volume, sail straight to S.
+ */
+const ARCHETYPE_MIN_TEAMS = 20;
+
+export type ArchetypeStat = { roles: string[] } & Stat;
+
+export type CompStats = {
+  totalMatches: number;
+  totalTeams: number;
+  archetypes: ArchetypeStat[];
+  /**
+   * Why the only tier list on this page is by class.
+   *
+   * Neither exact trios nor specific champion duos can be ranked from the
+   * current sample — 3.8k of 3.84k trios have been seen exactly once, and only
+   * a handful of duos clear DUO_USABLE_TEAMS. Rather than ship a tier list
+   * built on 5-game rows, the page states these counts and lets them grow.
+   */
+  coverage: {
+    trios: { distinct: number; repeated: number };
+    duos: { distinct: number; usable: number };
+  };
+};
+
+export async function getCompStats(
+  roleOf: (champion: string) => string | undefined
+): Promise<CompStats> {
+  const rows = await fetchAllParticipants();
+  const totalMatches = countMatches(rows);
+  const teams = groupIntoTeams(rows);
+  const totalTeams = teams.length;
+
+  const byArchetype = new Map<string, Accumulator>();
+  const duoCounts = new Map<string, number>();
+  const trioCounts = new Map<string, number>();
+
+  for (const team of teams) {
+    // Sorted so that Fighter/Mage/Support and Support/Fighter/Mage are one row:
+    // Arena has no lanes or assigned positions, so a comp is a multiset of
+    // three classes, not an ordered lineup.
+    const roles = team.champions.map(roleOf);
+    if (roles.every((r): r is string => r !== undefined)) {
+      accumulate(byArchetype, [...roles].sort().join("|"), team.placement);
+    }
+
+    const champions = [...team.champions].sort();
+    for (let i = 0; i < champions.length; i++) {
+      for (let j = i + 1; j < champions.length; j++) {
+        const duoKey = `${champions[i]}|${champions[j]}`;
+        duoCounts.set(duoKey, (duoCounts.get(duoKey) ?? 0) + 1);
+      }
+    }
+
+    const trioKey = champions.join("|");
+    trioCounts.set(trioKey, (trioCounts.get(trioKey) ?? 0) + 1);
+  }
+
+  const archetypes = Array.from(byArchetype.entries())
+    .filter(([, acc]) => acc.games >= ARCHETYPE_MIN_TEAMS)
+    .map(([key, acc]) => ({ roles: key.split("|"), ...toStat(acc, totalTeams) }))
+    .sort((a, b) => b.top3Rate - a.top3Rate);
+
+  return {
+    totalMatches,
+    totalTeams,
+    archetypes,
+    coverage: {
+      trios: {
+        distinct: trioCounts.size,
+        repeated: Array.from(trioCounts.values()).filter((n) => n > 1).length,
+      },
+      duos: {
+        distinct: duoCounts.size,
+        usable: Array.from(duoCounts.values()).filter((n) => n >= DUO_USABLE_TEAMS).length,
+      },
+    },
+  };
+}
+
 // Below this: 2-element combos of items/augments picked by the same player
 // in the same game — a lightweight "synergy" tier list. Boots and "excluded"
 // items (Shardblade, Arcane Sweeper, ...) never take part in a combo.

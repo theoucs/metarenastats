@@ -2,7 +2,7 @@
 // so pages don't hit Data Dragon / Community Dragon on every request.
 // Re-run manually after a patch to refresh: node scripts/fetch-game-data.mjs
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const OUT_DIR = new URL("../src/lib/data/", import.meta.url);
@@ -11,6 +11,19 @@ async function fetchJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} on ${url}`);
   return res.json();
+}
+
+// Some fields in these files are hand-curated, not fetched — items.json's
+// `category` ("boots" / "prismatic" / "excluded") is maintained by hand and
+// Data Dragon has no equivalent. Re-running this script used to silently wipe
+// all 72 of them. Carry them across by id instead.
+async function loadCurated(file, field) {
+  try {
+    const existing = JSON.parse(await readFile(new URL(file, OUT_DIR), "utf8"));
+    return new Map(existing.filter((e) => e[field] !== undefined).map((e) => [e.id, e[field]]));
+  } catch {
+    return new Map(); // first run, or the file was deleted on purpose
+  }
 }
 
 const versions = await fetchJson("https://ddragon.leagueoflegends.com/api/versions.json");
@@ -25,19 +38,27 @@ const champions = Object.values(championData.data).map((c) => ({
   id: c.id, // matches Riot's `championName` field, e.g. "Aatrox"
   name: c.name,
   iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${c.image.full}`,
+  // Data Dragon lists 1-2 classes, most-defining first (Ahri = Mage, Assassin).
+  // The Team Comps tier list buckets by the first one — see lib/gameData.ts.
+  roles: c.tags,
 }));
 
 // --- Items ---
 const itemData = await fetchJson(
   `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/data/en_US/item.json`
 );
+const curatedItemCategories = await loadCurated("items.json", "category");
 const items = Object.entries(itemData.data)
   .filter(([, it]) => it.maps?.["30"]) // map 30 = Arena/Cherry
-  .map(([id, it]) => ({
-    id: Number(id),
-    name: it.name,
-    iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${it.image.full}`,
-  }));
+  .map(([id, it]) => {
+    const category = curatedItemCategories.get(Number(id));
+    return {
+      id: Number(id),
+      name: it.name,
+      iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${it.image.full}`,
+      ...(category !== undefined ? { category } : {}),
+    };
+  });
 
 // --- Augments (Community Dragon — not in official Data Dragon) ---
 // cdragon/arena/en_us.json only had 225 legacy ("Cherry") augments and was

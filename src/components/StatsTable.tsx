@@ -21,7 +21,32 @@ export type StatsRow = {
   secondaryName?: string;
   secondaryIconUrl?: string;
   secondaryRarity?: EntityRarity;
+  /** When set, the name cell renders these as chips instead of icon + name —
+   * used by Team Comps, whose "entity" is three champion classes with no art
+   * of their own. Takes precedence over name/iconUrl. */
+  roles?: string[];
 };
+
+/**
+ * Deliberately monochrome. Six class colors would be six new hues competing
+ * with the ones globals.css reserves for meaning (cyan = interactive, gold =
+ * best, green/red = stat quality), and "Fighter" being orange wouldn't tell
+ * anyone anything that the word doesn't.
+ */
+export function RoleChips({ roles }: { roles: string[] }) {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {roles.map((role, i) => (
+        <span
+          key={`${role}-${i}`}
+          className="rounded-md border border-subtle bg-inset px-2 py-0.5 text-micro font-medium uppercase tracking-wide text-secondary"
+        >
+          {role}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
 
@@ -176,6 +201,7 @@ export function SortControl({
 }
 
 function NameCellContent({ row }: { row: StatsRow }) {
+  if (row.roles) return <RoleChips roles={row.roles} />;
   if (row.secondaryName) {
     return (
       <>
@@ -325,7 +351,11 @@ function MobileCard({
   // Each icon+name is one flex item, so a combo pair wraps *between* its two
   // halves rather than orphaning "Dragonheart" onto its own line under the
   // icon it doesn't belong to.
-  const heading = (
+  const heading = row.roles ? (
+    <div className="min-w-0 flex-1">
+      <RoleChips roles={row.roles} />
+    </div>
+  ) : (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
       <span className="flex min-w-0 items-center gap-2">
         {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}

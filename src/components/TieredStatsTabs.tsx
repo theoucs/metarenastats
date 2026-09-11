@@ -11,6 +11,8 @@ export function TieredStatsTabs({
   playRateLabel,
   defaultTab,
   display = "table",
+  unitLabel,
+  gamesBonus,
 }: {
   tabs: readonly { key: string; label: string }[];
   rowsByTier: Record<string, StatsRow[]>;
@@ -20,6 +22,10 @@ export function TieredStatsTabs({
   defaultTab?: string;
   /** "grid" for icon-led browsing (augments, items); "table" for rankings. */
   display?: "table" | "grid";
+  /** What one row's `games` counts — see StatsGrid. */
+  unitLabel?: string;
+  /** See TierOptions — grid display only. */
+  gamesBonus?: boolean;
 }) {
   const [active, setActive] = useState(defaultTab ?? tabs[0].key);
   const btnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -56,7 +62,12 @@ export function TieredStatsTabs({
         ))}
       </div>
       {display === "grid" ? (
-        <StatsGrid rows={rowsByTier[active] ?? []} playRateLabel={playRateLabel} />
+        <StatsGrid
+          rows={rowsByTier[active] ?? []}
+          playRateLabel={playRateLabel}
+          unitLabel={unitLabel}
+          gamesBonus={gamesBonus}
+        />
       ) : (
         <StatsTable
           rows={rowsByTier[active] ?? []}

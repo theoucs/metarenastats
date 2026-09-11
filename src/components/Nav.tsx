@@ -10,6 +10,10 @@ import { NavSearch } from "@/components/NavSearch";
 const LINKS: { href: string; label: string; badge?: string }[] = [
   { href: "/", label: "Home" },
   { href: "/champions", label: "Champions" },
+  // Kept apart from "Combos" in the ordering on purpose — Team Comps is three
+  // champions, Combos is two items/augments, and the names are close enough
+  // that sitting them side by side would read as one feature split in two.
+  { href: "/comps", label: "Team Comps", badge: "New" },
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
   { href: "/combos", label: "Combos", badge: "New" },
@@ -43,7 +47,11 @@ function NavLink({
       ref={linkRef}
       href={href}
       onClick={onClick}
-      className={`relative z-10 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors ${
+      // whitespace-nowrap: without it a tight nav breaks *inside* a label
+      // ("Team / Comps", "Anvil / Run"), which also makes the sliding highlight
+      // two lines tall. Better to let the row run out of room than to hyphenate
+      // the navigation.
+      className={`relative z-10 flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 transition-colors ${
         active
           ? staticActiveBg
             ? "bg-overlay text-primary"
@@ -75,7 +83,7 @@ function NavLinkList({ pathname }: { pathname: string }) {
   }, [pathname]);
 
   return (
-    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm xl:flex">
+    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm min-[1360px]:flex">
       {highlight && (
         <div
           className="absolute inset-y-0 z-0 rounded-md bg-overlay shadow-[var(--elev-1)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
@@ -141,7 +149,7 @@ export function Nav() {
         <NavLinkList pathname={pathname} />
 
         {showSearch && (
-          <div className="hidden xl:block">
+          <div className="hidden min-[1360px]:block">
             <NavSearch />
           </div>
         )}
@@ -151,7 +159,7 @@ export function Nav() {
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay xl:hidden"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay min-[1360px]:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
             {open ? (
@@ -164,7 +172,7 @@ export function Nav() {
       </nav>
 
       {open && (
-        <div className="border-t border-subtle px-4 py-3 xl:hidden">
+        <div className="border-t border-subtle px-4 py-3 min-[1360px]:hidden">
           {showSearch && (
             <div className="mb-3">
               <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />

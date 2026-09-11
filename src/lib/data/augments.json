@@ -2343,19 +2343,19 @@
     "id": 366,
     "name": "Abstain From Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
   },
   {
     "id": 367,
     "name": "Abstain From Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
   },
   {
     "id": 365,
     "name": "Abstain From Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png"
   },
   {
     "id": 348,
@@ -2373,37 +2373,37 @@
     "id": 372,
     "name": "Compulsion For Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
   },
   {
     "id": 373,
     "name": "Compulsion For Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
   },
   {
     "id": 371,
     "name": "Compulsion For Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png"
   },
   {
     "id": 369,
     "name": "Craving For Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
   },
   {
     "id": 370,
     "name": "Craving For Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
   },
   {
     "id": 368,
     "name": "Craving For Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_large.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_large.png"
   },
   {
     "id": 349,
@@ -2427,7 +2427,7 @@
     "id": 359,
     "name": "Lamb's Respite",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/lamb_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/lamb_small.png"
   },
   {
     "id": 354,
@@ -2475,7 +2475,7 @@
     "id": 358,
     "name": "Wolf's Frenzy",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wolf_small.arena_2026_s2.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wolf_small.png"
   },
   {
     "id": 41,

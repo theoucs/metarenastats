@@ -193,7 +193,25 @@ function clusterIntoTiers(scores: number[]): number[] {
   return result;
 }
 
-export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, TierInfo> {
+export type TierOptions = {
+  /**
+   * Whether step 3's log(games) bonus applies. On by default, and right for
+   * every entity whose pick count is a choice: an augment taken 800 times is
+   * genuinely flexible, so volume is evidence of merit.
+   *
+   * Turn it off when frequency is structural rather than chosen. Team Comps
+   * archetypes are the case that needed it: Fighter is 50 of 173 champions, so
+   * Fighter-heavy class trios are common *by construction*. Leaving the bonus
+   * on pushed a 49.3%-top-3 comp — below the 50% baseline of 3 teams in 6 —
+   * into S tier purely on how often its shape occurs.
+   */
+  gamesBonus?: boolean;
+};
+
+export function computeTiers<T extends TierableRow>(
+  rows: T[],
+  { gamesBonus = true }: TierOptions = {}
+): Map<string, TierInfo> {
   const tierMap = new Map<string, TierInfo>();
   if (rows.length === 0) return tierMap;
 
@@ -222,8 +240,8 @@ export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, Tier
   const scored = rows.map((r, i) => {
     const base =
       normPlacement[i] * AVG_PLACEMENT_WEIGHT + normTop1[i] * TOP1_WEIGHT + normTop3[i] * TOP3_WEIGHT;
-    const gamesBonus = normGames[i] * GAMES_BONUS_CAP;
-    return { key: r.key, score: base + gamesBonus };
+    const bonus = gamesBonus ? normGames[i] * GAMES_BONUS_CAP : 0;
+    return { key: r.key, score: base + bonus };
   });
 
   const tierIndices = clusterIntoTiers(scored.map((s) => s.score));

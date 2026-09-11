@@ -2,9 +2,11 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier } from "@/lib/tiers";
+
 import { top1Color, top3Color, EntityIcon } from "@/lib/statsDisplay";
 import {
   CARD_PAGE_SIZE,
+  RoleChips,
   ShowMoreButton,
   SortControl,
   TierBadge,
@@ -30,12 +32,14 @@ function GridCard({
   tier,
   maxTop3,
   playRateLabel,
+  unitLabel,
 }: {
   row: StatsRow;
   rank: number;
   tier: Tier;
   maxTop3: number;
   playRateLabel: string;
+  unitLabel: string;
 }) {
   return (
     <article
@@ -51,13 +55,40 @@ function GridCard({
       />
 
       <div className="flex items-start gap-2.5">
-        {row.iconUrl && (
+        {!row.roles && !row.secondaryName && row.iconUrl && (
           <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-11 w-11" />
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="text-body font-medium leading-snug text-primary">{row.name}</h3>
-          <p className="mt-0.5 font-mono text-micro tabular-nums text-muted">
-            #{rank + 1} · {row.games} games
+          {row.roles ? (
+            <RoleChips roles={row.roles} />
+          ) : row.secondaryName ? (
+            // Pair rows (Combos-style) carry two entities. The icon moves inline
+            // with each name here rather than sitting once at the card's left
+            // edge, where it would silently belong to whichever half came first.
+            <h3 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-body font-medium leading-snug text-primary">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {row.iconUrl && (
+                  <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-7 w-7" />
+                )}
+                {row.name}
+              </span>
+              <span className="text-muted">+</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                {row.secondaryIconUrl && (
+                  <EntityIcon
+                    iconUrl={row.secondaryIconUrl}
+                    rarity={row.secondaryRarity}
+                    sizeClass="h-7 w-7"
+                  />
+                )}
+                {row.secondaryName}
+              </span>
+            </h3>
+          ) : (
+            <h3 className="text-body font-medium leading-snug text-primary">{row.name}</h3>
+          )}
+          <p className="mt-1 font-mono text-micro tabular-nums text-muted">
+            #{rank + 1} · {row.games} {unitLabel}
           </p>
         </div>
         <TierBadge tier={tier} />
@@ -97,16 +128,22 @@ function GridCard({
 export function StatsGrid({
   rows,
   playRateLabel = "% Played",
+  unitLabel = "games",
+  gamesBonus = true,
 }: {
   rows: StatsRow[];
   playRateLabel?: string;
+  /** What one row's `games` counts — "games" for items/augments, "teams" for comps. */
+  unitLabel?: string;
+  /** See TierOptions — false where volume is structural, not chosen. */
+  gamesBonus?: boolean;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>("tier");
   // Unlike the table, this grid isn't inside a bounded scrollport — every card
   // adds to page height, so it pages in like the mobile card list does.
   const [limit, setLimit] = useState(CARD_PAGE_SIZE);
 
-  const tierMap = useMemo(() => computeTiers(rows), [rows]);
+  const tierMap = useMemo(() => computeTiers(rows, { gamesBonus }), [rows, gamesBonus]);
   const maxTop3 = useMemo(() => rows.reduce((m, r) => Math.max(m, r.top3Rate), 0), [rows]);
 
   const sorted = useMemo(() => {
@@ -167,6 +204,7 @@ export function StatsGrid({
                 tier={tier}
                 maxTop3={maxTop3}
                 playRateLabel={playRateLabel}
+                unitLabel={unitLabel}
               />
             </Fragment>
           );
