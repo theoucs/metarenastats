@@ -291,7 +291,14 @@ export default async function ChampionDetailPage({
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pb-8 sm:px-6 sm:pb-12">
-        <div className="-mt-8">
+        {/* relative + z-10: the banner above is `position: relative` (for its
+            absolute img/scrim children) — CSS paints positioned elements above
+            non-positioned siblings regardless of DOM order, so without this,
+            the banner silently wins the overlap and swallows whatever pokes
+            up into it (e.g. the stat pill labels, which sit higher in each
+            pill than the value). Making this positioned too puts DOM order
+            back in charge, and it comes after the banner in the DOM. */}
+        <div className="relative z-10 -mt-8">
           {!detail ? (
             <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
               No data yet for {champInfo.name}. Search a player who played this champion to start

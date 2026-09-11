@@ -110,7 +110,10 @@ export default async function PlayerPage({
       </div>
 
       <div className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 sm:pb-12">
-        <div className="-mt-8">
+        {/* relative + z-10: see identical comment in champions/[slug]/page.tsx
+            — the banner is `position: relative`, which paints above
+            non-positioned siblings regardless of DOM order. */}
+        <div className="relative z-10 -mt-8">
           {liveError && (
             <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
               Couldn&apos;t refresh from Riot right now ({liveError}) — showing previously saved data.
