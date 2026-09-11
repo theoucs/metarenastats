@@ -82,12 +82,33 @@ export function EntityIcon({
 }) {
   if (rarity === "prismatic") {
     return (
-      <span
-        className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-md p-[2px]`}
-        style={{ backgroundImage: "var(--prism-frame)" }}
-      >
+      <span className={`relative flex ${sizeClass} shrink-0 p-[2px]`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={iconUrl} alt="" className="h-full w-full rounded-[4px] object-cover" />
+        {/* The gradient has to be a *ring*, not a fill behind the icon.
+            Augment icons are white glyphs on a fully transparent background —
+            unlike item icons, which are opaque art — so a background-image on
+            the wrapper showed straight through the whole tile and turned every
+            prismatic augment into a pale lavender square, while silver/gold
+            (which use a real `border`) kept their dark ground.
+
+            Masking the centre out of a gradient-filled overlay is what keeps
+            this working on any surface: the icon sits on a table row that
+            changes colour on hover, so painting an opaque inner square to fake
+            the ring would show as a visible patch there. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-md p-[2px]"
+          style={{
+            backgroundImage: "var(--prism-frame)",
+            WebkitMaskImage: "linear-gradient(#000 0 0), linear-gradient(#000 0 0)",
+            WebkitMaskClip: "content-box, border-box",
+            WebkitMaskComposite: "xor",
+            maskImage: "linear-gradient(#000 0 0), linear-gradient(#000 0 0)",
+            maskClip: "content-box, border-box",
+            maskComposite: "exclude",
+          }}
+        />
       </span>
     );
   }
