@@ -39,8 +39,8 @@ export default async function PlayerPage({
   if (!puuid) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 text-center sm:px-6 sm:py-12">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{riotId}</h1>
-        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/40 p-10 text-zinc-500">
+        <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">{riotId}</h1>
+        <div className="mt-8 rounded-lg border border-subtle bg-raised/40 p-10 text-secondary">
           {liveError ?? "Player not found."}
         </div>
       </div>
@@ -75,30 +75,30 @@ export default async function PlayerPage({
           <img
             src={topChampionInfo.iconUrl}
             alt=""
-            className="h-16 w-16 rounded-xl border border-zinc-800 object-cover"
+            className="h-16 w-16 rounded-xl border border-subtle object-cover"
           />
         ) : (
-          <div className="h-16 w-16 rounded-xl border border-zinc-800 bg-zinc-900" />
+          <div className="h-16 w-16 rounded-xl border border-subtle bg-raised" />
         )}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
+          <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">
             {gameName}
-            <span className="text-zinc-500">#{tagLine}</span>
+            <span className="text-secondary">#{tagLine}</span>
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-small text-secondary">
             Arena player{topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
           </p>
         </div>
       </div>
 
       {liveError && (
-        <p className="mt-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-2.5 text-sm text-amber-300">
+        <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
           Couldn&apos;t refresh from Riot right now ({liveError}) — showing previously saved data.
         </p>
       )}
 
       {profile.games === 0 ? (
-        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/40 p-10 text-center text-zinc-500">
+        <div className="mt-8 rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
           No Arena games found for this player yet.
         </div>
       ) : (
@@ -120,7 +120,7 @@ export default async function PlayerPage({
 
           <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_minmax(0,380px)]">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-zinc-100">Match History</h2>
+              <h2 className="font-display text-h2 font-semibold text-primary">Match History</h2>
               {result.ok && result.matches.length > 0 ? (
                 <div className="mt-4 flex flex-col gap-3">
                   {result.matches.map((match) => (
@@ -128,7 +128,7 @@ export default async function PlayerPage({
                   ))}
                 </div>
               ) : (
-                <p className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+                <p className="mt-4 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
                   {result.ok
                     ? "No recent Arena games found."
                     : "Live match history is unavailable right now."}
@@ -137,8 +137,8 @@ export default async function PlayerPage({
             </div>
 
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-zinc-100">Top Champions</h2>
-              <p className="mt-1 text-sm text-zinc-500">Across this player&apos;s own games.</p>
+              <h2 className="font-display text-h2 font-semibold text-primary">Top Champions</h2>
+              <p className="mt-1 text-small text-secondary">Across this player&apos;s own games.</p>
               <div className="mt-4">
                 <StatsTable rows={championRows} linkPrefix="/champions/" />
               </div>

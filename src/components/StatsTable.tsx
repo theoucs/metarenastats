@@ -118,7 +118,7 @@ function NameCellContent({ row }: { row: StatsRow }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-10 text-center text-zinc-500">
+    <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
       No data yet. Search a player on the home page to start populating stats.
     </div>
   );

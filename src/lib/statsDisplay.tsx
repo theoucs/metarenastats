@@ -6,25 +6,30 @@
 export type EntityRarity = "silver" | "gold" | "prismatic";
 
 // % Top 3 averages ~50% (3 of 6 teams) — thresholds centered on that.
+// Reserved colors: this is the only place green/red should ever appear.
 export function top3Color(rate: number) {
-  if (rate >= 0.55) return "text-emerald-400";
-  if (rate >= 0.4) return "text-zinc-200";
-  return "text-red-400";
+  if (rate >= 0.55) return "text-stat-good";
+  if (rate >= 0.4) return "text-secondary";
+  return "text-stat-bad";
 }
 
 // % Top 1 averages ~16.7% (1 of 6 teams) — a much lower baseline, needs its
 // own thresholds or almost everything reads as "bad" red.
 export function top1Color(rate: number) {
-  if (rate >= 0.25) return "text-emerald-400";
-  if (rate >= 0.1) return "text-zinc-200";
-  return "text-red-400";
+  if (rate >= 0.25) return "text-stat-good";
+  if (rate >= 0.1) return "text-secondary";
+  return "text-stat-bad";
 }
 
 // Matches the in-game augment rarity frame colors — silver/gold border, a
-// holo gradient ring for prismatic (plain items/champions get a neutral border).
+// holo gradient ring for prismatic (plain items/champions get a neutral
+// border). silver/gold are nudged toward the game's metallic frame hue
+// (--rarity-silver/--rarity-gold); prismatic uses the real in-game gradient
+// sampled from the actual frame asset, not an invented one — see
+// docs/design-refresh-plan.md §3.1.1.
 const RARITY_BORDER: Record<string, string> = {
-  silver: "border-2 border-slate-300/70",
-  gold: "border-2 border-amber-400/90",
+  silver: "border-2 border-[color:var(--rarity-silver)]/70",
+  gold: "border-2 border-[color:var(--rarity-gold)]/90",
 };
 
 export function StatPill({
@@ -37,9 +42,9 @@ export function StatPill({
   colorClass?: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-center">
-      <div className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={`mt-0.5 font-mono text-lg font-semibold ${colorClass ?? "text-zinc-100"}`}>
+    <div className="rounded-[10px] border border-subtle bg-raised px-4 py-2.5 text-center shadow-[var(--elev-1)]">
+      <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-1 font-display text-display font-semibold ${colorClass ?? "text-primary"}`}>
         {value}
       </div>
     </div>
@@ -57,8 +62,10 @@ export function MiniStat({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-zinc-600">{label}</div>
-      <div className={`font-mono text-xs ${colorClass ?? "text-zinc-300"}`}>{value}</div>
+      <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
+      <div className={`font-mono text-xs [font-variant-numeric:tabular-nums] ${colorClass ?? "text-secondary"}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -66,7 +73,10 @@ export function MiniStat({
 export function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: EntityRarity }) {
   if (rarity === "prismatic") {
     return (
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-fuchsia-400 via-purple-400 to-cyan-300 p-[2px]">
+      <span
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md p-[2px]"
+        style={{ backgroundImage: "var(--prism-frame)" }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={iconUrl} alt="" className="h-full w-full rounded-[4px] object-cover" />
       </span>
@@ -78,7 +88,7 @@ export function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: Enti
       src={iconUrl}
       alt=""
       className={`h-7 w-7 shrink-0 rounded-md object-cover ${
-        rarity ? RARITY_BORDER[rarity] : "border border-zinc-800"
+        rarity ? RARITY_BORDER[rarity] : "border border-subtle"
       }`}
     />
   );

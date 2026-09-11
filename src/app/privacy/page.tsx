@@ -7,14 +7,14 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
+      <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">
         Privacy Policy &amp; Terms of Service
       </h1>
-      <p className="mt-2 text-sm text-zinc-500">Last updated September 2026.</p>
+      <p className="mt-2 text-small text-muted">Last updated September 2026.</p>
 
       <section id="privacy" className="mt-8">
-        <h2 className="text-lg font-semibold text-zinc-100">Privacy Policy</h2>
-        <div className="mt-3 space-y-4 text-zinc-400">
+        <h2 className="font-display text-h2 font-semibold text-primary">Privacy Policy</h2>
+        <div className="mt-3 space-y-4 text-secondary">
           <p>
             MetArenaStats isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or
             opinions of Riot Games or anyone officially involved in producing or managing Riot
@@ -22,7 +22,7 @@ export default function PrivacyPage() {
           </p>
 
           <div>
-            <h3 className="font-medium text-zinc-200">What we collect</h3>
+            <h3 className="font-medium text-primary">What we collect</h3>
             <p className="mt-1">
               When you search a Riot ID (Name#TAG), we fetch your recent League of Legends Arena
               match history from Riot&apos;s official API and store it in our database: Riot ID,
@@ -35,7 +35,7 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Why we collect it</h3>
+            <h3 className="font-medium text-primary">Why we collect it</h3>
             <p className="mt-1">
               To build the champion/item/augment tier lists, the Anvil Run stats, and the player
               leaderboard shown on this site. There are no user accounts, no cookies, and no
@@ -44,7 +44,7 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">How long we keep it</h3>
+            <h3 className="font-medium text-primary">How long we keep it</h3>
             <p className="mt-1">
               Match data is kept indefinitely to power cumulative statistics, unless you ask us to
               remove it (see below) or Riot forwards us a deletion request tied to your account.
@@ -52,10 +52,10 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Your data, your call</h3>
+            <h3 className="font-medium text-primary">Your data, your call</h3>
             <p className="mt-1">
               Want your Riot ID and match data removed from MetArenaStats? Email{" "}
-              <a href="mailto:contact@tblabs.dev" className="text-blue-400 hover:underline">
+              <a href="mailto:contact@tblabs.dev" className="text-accent hover:underline">
                 contact@tblabs.dev
               </a>{" "}
               and we&apos;ll delete it. We also honor deletion requests Riot forwards to us under
@@ -64,12 +64,12 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Third parties</h3>
+            <h3 className="font-medium text-primary">Third parties</h3>
             <p className="mt-1">
               Match data comes from{" "}
               <a
                 href="https://developer.riotgames.com/"
-                className="text-blue-400 hover:underline"
+                className="text-accent hover:underline"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -83,8 +83,8 @@ export default function PrivacyPage() {
       </section>
 
       <section id="terms" className="mt-10">
-        <h2 className="text-lg font-semibold text-zinc-100">Terms of Service</h2>
-        <div className="mt-3 space-y-4 text-zinc-400">
+        <h2 className="font-display text-h2 font-semibold text-primary">Terms of Service</h2>
+        <div className="mt-3 space-y-4 text-secondary">
           <p>
             MetArenaStats is a free, community stats and tier-list site for League of Legends
             Arena. There&apos;s no login, no paid tier, and no ads — all core stats stay free, in
@@ -92,7 +92,7 @@ export default function PrivacyPage() {
           </p>
 
           <div>
-            <h3 className="font-medium text-zinc-200">No warranty</h3>
+            <h3 className="font-medium text-primary">No warranty</h3>
             <p className="mt-1">
               Stats are computed from whatever matches have been searched so far — they&apos;re
               partial, may contain mistakes, and can change as more data comes in. Don&apos;t
@@ -101,7 +101,7 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Fair use</h3>
+            <h3 className="font-medium text-primary">Fair use</h3>
             <p className="mt-1">
               Don&apos;t scrape, abuse, or resell data from this site, or attempt to bypass its
               normal usage. We may block traffic that does.
@@ -109,7 +109,7 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Changes</h3>
+            <h3 className="font-medium text-primary">Changes</h3>
             <p className="mt-1">
               This site, its features, and these terms can change at any time as the project
               evolves.
@@ -117,10 +117,10 @@ export default function PrivacyPage() {
           </div>
 
           <div>
-            <h3 className="font-medium text-zinc-200">Contact</h3>
+            <h3 className="font-medium text-primary">Contact</h3>
             <p className="mt-1">
               Questions about these terms or the privacy policy? Email{" "}
-              <a href="mailto:contact@tblabs.dev" className="text-blue-400 hover:underline">
+              <a href="mailto:contact@tblabs.dev" className="text-accent hover:underline">
                 contact@tblabs.dev
               </a>
               .

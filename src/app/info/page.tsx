@@ -1,13 +1,15 @@
 export default function InfoPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Info &amp; Tips</h1>
+      <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">Info &amp; Tips</h1>
 
       <section className="mt-8">
-        <h2 className="text-lg font-semibold text-zinc-100">How is the leaderboard calculated?</h2>
-        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 text-zinc-400">
+        <h2 className="font-display text-h2 font-semibold text-primary">
+          How is the leaderboard calculated?
+        </h2>
+        <div className="mt-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
           <p>
-            <span className="rounded-full border border-blue-900/50 bg-blue-950/40 px-2.5 py-0.5 text-xs text-blue-300">
+            <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2.5 py-0.5 text-micro text-accent">
               Coming soon
             </span>
           </p>
@@ -21,8 +23,8 @@ export default function InfoPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-lg font-semibold text-zinc-100">Tips</h2>
-        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 text-zinc-400">
+        <h2 className="font-display text-h2 font-semibold text-primary">Tips</h2>
+        <div className="mt-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
           <p>Tips content coming soon.</p>
         </div>
       </section>

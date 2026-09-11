@@ -69,38 +69,46 @@ export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, Tier
   return tierMap;
 }
 
+// A deliberate descent — gold -> cyan -> indigo -> slate -> grey — that still
+// reads in greyscale, and (unlike the previous ramp) never uses green: green
+// means "good stat" in the % Top 1 / % Top 3 columns right next to this badge,
+// so a green tier used to read as "good" regardless of which letter it was.
+// The tier-A cyan intentionally matches --accent (the interactive color) —
+// this is a closed 5-step scale always shown as a fixed-width badge in its own
+// column, never next to a link, so there's no real ambiguity. Don't invent a
+// 6th hue to "fix" this; it would break the descent instead.
 export const TIER_STYLES: Record<
   Tier,
   { text: string; bg: string; border: string; glow: string }
 > = {
   S: {
-    text: "text-amber-300",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/30",
-    glow: "shadow-[0_0_20px_-4px_rgba(251,191,36,0.35)]",
+    text: "text-[#F2B640]",
+    bg: "bg-[#F2B640]/[0.14]",
+    border: "border-[#F2B640]/40",
+    glow: "shadow-[0_0_16px_-4px_rgba(242,182,64,0.45)]",
   },
   A: {
-    text: "text-violet-300",
-    bg: "bg-violet-500/10",
-    border: "border-violet-500/30",
-    glow: "shadow-[0_0_20px_-4px_rgba(167,139,250,0.3)]",
+    text: "text-[#35D0E8]",
+    bg: "bg-[#35D0E8]/[0.12]",
+    border: "border-[#35D0E8]/30",
+    glow: "",
   },
   B: {
-    text: "text-blue-300",
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/30",
+    text: "text-[#7C8CF8]",
+    bg: "bg-[#7C8CF8]/10",
+    border: "border-[#7C8CF8]/25",
     glow: "",
   },
   C: {
-    text: "text-emerald-300",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
+    text: "text-[#8792A8]",
+    bg: "bg-[#8792A8]/[0.08]",
+    border: "border-[#8792A8]/20",
     glow: "",
   },
   D: {
-    text: "text-zinc-400",
-    bg: "bg-zinc-500/10",
-    border: "border-zinc-700/50",
+    text: "text-[#5A6172]",
+    bg: "bg-[#5A6172]/[0.06]",
+    border: "border-[#5A6172]/[0.16]",
     glow: "",
   },
 };
