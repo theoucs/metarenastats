@@ -59,9 +59,8 @@ export default async function CombosPage() {
         </span>
       </div>
       <p className="mt-2 text-zinc-400">
-        Pairs of items/augments picked by the same player in the same game, ranked by tier — a
-        good combo shows up often (at least 5 games tracked) and performs well when it does. Top
-        200 per category.
+        Pairs of items/augments picked by the same player in the same game — a good combo shows up
+        often (at least 5 games tracked) and performs well when it does. Top 200 per category.
       </p>
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />

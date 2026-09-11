@@ -138,9 +138,7 @@ export default async function PlayerPage({
 
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-zinc-100">Top Champions</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Ranked by tier, across this player&apos;s own games.
-              </p>
+              <p className="mt-1 text-sm text-zinc-500">Across this player&apos;s own games.</p>
               <div className="mt-4">
                 <StatsTable rows={championRows} linkPrefix="/champions/" />
               </div>

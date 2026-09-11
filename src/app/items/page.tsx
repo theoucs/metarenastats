@@ -36,10 +36,7 @@ export default async function ItemsPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Item Tier List</h1>
-      <p className="mt-2 text-zinc-400">
-        Ranked by tier by default — a combined score across games played, avg placement, % Top 1
-        and % Top 3 — split by rarity. Use the sort control below to rank by a single stat instead.
-      </p>
+      <p className="mt-2 text-zinc-400">Split by rarity.</p>
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
       </div>

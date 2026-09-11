@@ -284,8 +284,7 @@ export default async function ChampionDetailPage({
           <section className="mt-10">
             <h2 className="text-lg font-semibold text-zinc-100">Best Augments</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Ranked by tier — the same combined score (games played, avg placement, % Top 1, %
-              Top 3) as the tier lists — among this champion&apos;s own games.
+              Among this champion&apos;s own games.
             </p>
             <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
               <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />

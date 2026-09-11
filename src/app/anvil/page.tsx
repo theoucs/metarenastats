@@ -25,10 +25,8 @@ export default async function AnvilPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Anvil Run Tier List</h1>
       <p className="mt-2 text-zinc-400">
-        Best champions to play a full anvil run on — stat anvils only, no items bought. Ranked by
-        tier by default — a combined score across games played, avg placement, % Top 1 and % Top
-        3. Use the sort control below to rank by a single stat instead. Click a champion for its
-        full build page.
+        Best champions to play a full anvil run on — stat anvils only, no items bought. Click a
+        champion for its full build page.
       </p>
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
