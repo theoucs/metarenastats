@@ -225,6 +225,49 @@ export async function getLeaderboardStats() {
   return { totalMatches, players };
 }
 
+export type PlayerChampionStat = { champion: string } & Stat;
+
+export type PlayerProfile = {
+  games: number;
+  top1Rate: number;
+  top3Rate: number;
+  avgPlacement: number;
+  /** Every champion this player has been tracked on, across all their known
+   * games (any playstyle) — playRate is this champion's share of their games. */
+  champions: PlayerChampionStat[];
+};
+
+/** Everything about one player scoped to their own games (all matches we've
+ * ever stored involving this puuid, not just the ones from the most recent
+ * search) — powers the player profile page. */
+export async function getPlayerProfile(puuid: string): Promise<PlayerProfile> {
+  const rows = await fetchAllParticipants();
+  const playerRows = rows.filter((r) => r.puuid === puuid);
+  const totalGames = playerRows.length;
+
+  const overallAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+  const byChampion = new Map<string, Accumulator>();
+  for (const r of playerRows) {
+    overallAcc.games += 1;
+    overallAcc.placementSum += r.placement;
+    if (r.placement <= TOP3_PLACEMENT_THRESHOLD) overallAcc.top3Wins += 1;
+    if (r.placement === 1) overallAcc.top1Wins += 1;
+    accumulate(byChampion, r.champion, r.placement);
+  }
+
+  const champions = Array.from(byChampion.entries())
+    .map(([champion, s]) => ({ champion, ...toStat(s, totalGames) }))
+    .sort((a, b) => b.games - a.games);
+
+  return {
+    games: totalGames,
+    top1Rate: totalGames > 0 ? overallAcc.top1Wins / totalGames : 0,
+    top3Rate: totalGames > 0 ? overallAcc.top3Wins / totalGames : 0,
+    avgPlacement: totalGames > 0 ? overallAcc.placementSum / totalGames : 0,
+    champions,
+  };
+}
+
 export type ChampionAugmentStat = { augmentId: number } & Stat;
 export type ChampionItemSlotStat = { itemId: number } & Stat;
 export type ChampionItemSlot = { slot: number; items: ChampionItemSlotStat[] };

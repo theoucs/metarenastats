@@ -27,6 +27,42 @@ const RARITY_BORDER: Record<string, string> = {
   gold: "border-2 border-amber-400/90",
 };
 
+export function StatPill({
+  label,
+  value,
+  colorClass,
+}: {
+  label: string;
+  value: string;
+  colorClass?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-center">
+      <div className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${colorClass ?? "text-zinc-100"}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+export function MiniStat({
+  label,
+  value,
+  colorClass,
+}: {
+  label: string;
+  value: string;
+  colorClass?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-zinc-600">{label}</div>
+      <div className={`font-mono text-xs ${colorClass ?? "text-zinc-300"}`}>{value}</div>
+    </div>
+  );
+}
+
 export function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: EntityRarity }) {
   if (rarity === "prismatic") {
     return (

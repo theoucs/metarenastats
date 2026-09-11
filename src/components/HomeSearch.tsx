@@ -1,21 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { searchEntities } from "@/lib/searchIndex";
-import { MatchCard, type MatchCardData } from "@/components/MatchCard";
-
-type ApiResponse = {
-  account?: { gameName: string; tagLine: string };
-  matches?: MatchCardData[];
-  error?: string;
-};
 
 export function HomeSearch() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<ApiResponse | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const isPlayerQuery = query.includes("#");
   const suggestions = useMemo(
@@ -23,16 +15,11 @@ export function HomeSearch() {
     [query, isPlayerQuery]
   );
 
-  async function searchPlayer(riotId: string) {
+  function searchPlayer(riotId: string) {
     if (!riotId.includes("#")) return;
-    setLoading(true);
-    setData(null);
-    try {
-      const res = await fetch(`/api/matches?riotId=${encodeURIComponent(riotId)}`);
-      setData(await res.json());
-    } finally {
-      setLoading(false);
-    }
+    startTransition(() => {
+      router.push(`/players/${encodeURIComponent(riotId)}`);
+    });
   }
 
   return (
@@ -75,30 +62,13 @@ export function HomeSearch() {
         {isPlayerQuery && (
           <button
             type="submit"
-            disabled={loading}
+            disabled={isPending}
             className="mt-3 w-full rounded-lg bg-blue-600 px-5 py-2.5 font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
           >
-            {loading ? "Searching..." : "Search player"}
+            {isPending ? "Searching..." : "Search player"}
           </button>
         )}
       </form>
-
-      {data?.error && (
-        <p className="mt-6 w-full max-w-xl rounded-lg bg-red-950/50 px-4 py-3 text-red-300">
-          {data.error}
-        </p>
-      )}
-
-      {data?.matches && (
-        <div className="mt-8 flex w-full max-w-xl flex-col gap-3 text-left">
-          {data.matches.length === 0 && (
-            <p className="text-zinc-400">No recent Arena games found.</p>
-          )}
-          {data.matches.map((match) => (
-            <MatchCard key={match.matchId} match={match} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

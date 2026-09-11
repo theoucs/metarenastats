@@ -8,38 +8,10 @@ import {
   type Stat,
 } from "@/lib/aggregate";
 import { resolveChampion, resolveItem, resolveAugment, itemCategory } from "@/lib/gameData";
-import { EntityIcon, top1Color, top3Color } from "@/lib/statsDisplay";
+import { EntityIcon, top1Color, top3Color, StatPill, MiniStat } from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
 
 export const dynamic = "force-dynamic";
-
-function StatPill({
-  label,
-  value,
-  colorClass,
-}: {
-  label: string;
-  value: string;
-  colorClass?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-center">
-      <div className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={`mt-0.5 font-mono text-lg font-semibold ${colorClass ?? "text-zinc-100"}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-zinc-600">{label}</div>
-      <div className={`font-mono text-xs ${colorClass ?? "text-zinc-300"}`}>{value}</div>
-    </div>
-  );
-}
 
 function StatTooltipContent({ name, stat }: { name: string; stat: Stat }) {
   return (
