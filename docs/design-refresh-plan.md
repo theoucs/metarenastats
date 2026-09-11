@@ -55,8 +55,21 @@ Trois rôles couleur, strictement séparés :
 |---|---|---|
 | **Primaire** (interactif) | Cyan hextech | Liens, onglet actif, focus, sélection |
 | **Signal** (excellence) | Or | Tier S, 1ʳᵉ place, best-in-class |
-| **Prismatique** (signature) | Dégradé fuchsia→cyan | Rareté prismatique, accents rares |
+| **Prismatique** (signature) | Dégradé fuchsia→cyan | **Logo, wordmark**, rareté prismatique |
 | *Réservé* | Vert / rouge | **Uniquement** qualité d'une stat. Jamais de branding. |
+
+> **✅ Direction validée par Théo le 2026-09-11.** Ne pas re-débattre ces choix
+> sans qu'il le demande explicitement. Points actés :
+> - Logo et wordmark en **prismatique** (forme inchangée, cf. §4.0) — il aime.
+> - Cyan **en petites touches d'interface uniquement** (onglet actif, liens, focus),
+>   jamais en aplat.
+> - Or **réservé** au tier S et à la 1ʳᵉ place.
+> - Vert/rouge **réservés** à la qualité d'une stat.
+> - Fond : `#09090B` → `#0A0B0F` (changement volontairement quasi imperceptible).
+>
+> Replis discutés si un ajustement est demandé plus tard : cyan tiré vers le
+> turquoise ou vers un indigo profond ; logo monochrome blanc (sobre, mais perd
+> le lien avec le jeu).
 
 ---
 
@@ -93,11 +106,21 @@ Trois rôles couleur, strictement séparés :
   --gold-muted:  rgba(242, 182, 64, 0.12);
   --gold-border: rgba(242, 182, 64, 0.35);
 
+  /* Signature — prismatique (logo, wordmark, rareté prismatique) */
+  --prism-from: #E879F9;
+  --prism-to:   #35D0E8;
+  --prism-gradient: linear-gradient(120deg, var(--prism-from), var(--prism-to));
+
   /* Qualité de stat — réservé, ne jamais réutiliser ailleurs */
   --stat-good: #3FCF8E;
   --stat-bad:  #F2555A;
 }
 ```
+
+Le prismatique existe déjà dans le code (`EntityIcon` dans `statsDisplay.tsx` :
+`from-fuchsia-400 via-purple-400 to-cyan-300`). `fuchsia-400` vaut déjà `#E879F9` —
+**aligner cet existant sur les tokens ci-dessus** pour que le cadre d'un augment
+prismatique et le logo partagent exactement le même dégradé.
 
 **Contraintes à vérifier** : `--gold` et `--accent` sur `--bg-raised` doivent
 passer AA (4.5:1) pour du texte. Si le badge S en or sur fond ambré échoue,
@@ -174,6 +197,21 @@ Le détail qui fait « soigné » : le **liseré interne clair en haut** des sur
 ---
 
 ## 4. Composants
+
+### 4.0 Identité — logo, wordmark, favicon ✅ validé
+
+**La forme du logo ne change pas** (carré arrondi `rx=9`, 3 points blancs).
+Seules les deux couleurs du dégradé changent.
+
+| Fichier | Changement |
+|---|---|
+| `src/components/Logo.tsx` | `#3b82f6 → #8b5cf6` devient `var(--prism-from) → var(--prism-to)` (`#E879F9 → #35D0E8`) |
+| `src/components/Wordmark.tsx` | Le `A` et `rena` passent de `from-blue-400 to-violet-400` au dégradé prismatique. `Met` et `Stats` restent en `--text-primary`. Structure inchangée. |
+| `src/app/icon.svg` | Même changement de dégradé que `Logo.tsx` — les deux doivent rester identiques. |
+| `src/app/favicon.ico` | **À régénérer depuis le nouvel `icon.svg`.** Sinon Safari continuera d'afficher l'ancien logo bleu-violet. Commande utilisée précédemment : `magick -background none -density 384 icon.svg -resize {16,32,48,64} …` puis assemblage en `.ico`. |
+
+Le badge « New » de la nav (§4.6) **ne doit pas** reprendre le dégradé prismatique :
+le prismatique reste réservé à l'identité et à la rareté prismatique du jeu.
 
 ### 4.1 `StatsTable` — pièce maîtresse (plus gros gain)
 
@@ -300,7 +338,7 @@ Ordonné par **impact / effort décroissant**. Chaque phase est shippable seule.
 
 | Phase | Contenu | Fichiers principaux | Impact |
 |---|---|---|---|
-| **1 — Fondations** | Tokens couleur, polices, échelle typo, élévations, nouvelle rampe de tiers | `globals.css`, `layout.tsx`, `tiers.ts`, `statsDisplay.tsx` | ⭐⭐⭐⭐⭐ |
+| **1 — Fondations** | Tokens couleur, polices, échelle typo, élévations, nouvelle rampe de tiers, **logo + wordmark + favicon prismatiques** | `globals.css`, `layout.tsx`, `tiers.ts`, `statsDisplay.tsx`, `Logo.tsx`, `Wordmark.tsx`, `icon.svg`, `favicon.ico` | ⭐⭐⭐⭐⭐ |
 | **2 — Tableaux** | Bandes de tier, barres inline, en-tête collant, survol, icônes | `StatsTable.tsx` | ⭐⭐⭐⭐⭐ |
 | **3 — En-têtes riches** | Splash art champion + joueur | `champions/[slug]/page.tsx`, `players/[riotId]/page.tsx` | ⭐⭐⭐⭐ |
 | **4 — Accueil** | Suppression du blob, motif de fond, Meta Snapshot | `app/page.tsx`, `HomeSearch.tsx` | ⭐⭐⭐⭐ |
@@ -324,3 +362,8 @@ l'essentiel du signal « template »). Ne pas sauter directement à la 3 ou la 4
 5. Contraste : texte des badges de tier et `--text-secondary` sur `--bg-raised`
    ≥ 4.5:1.
 6. Vérifier le rendu avec `prefers-reduced-motion: reduce` activé.
+7. **Phase 1 uniquement** — après régénération du favicon : décoder le `.ico`
+   servi (`sips -s format png`) et confirmer visuellement que c'est bien le
+   nouveau logo prismatique. Prévenir que Safari met le favicon en cache très
+   agressivement : il faut fermer l'onglet (voire quitter Safari) pour le voir
+   changer, un simple rechargement ne suffit pas.
