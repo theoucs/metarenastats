@@ -70,11 +70,20 @@ export function MiniStat({
   );
 }
 
-export function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: EntityRarity }) {
+export function EntityIcon({
+  iconUrl,
+  rarity,
+  sizeClass = "h-7 w-7",
+}: {
+  iconUrl: string;
+  rarity?: EntityRarity;
+  /** Tailwind height/width classes — kept static (not interpolated) so the JIT scanner picks them up. */
+  sizeClass?: string;
+}) {
   if (rarity === "prismatic") {
     return (
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md p-[2px]"
+        className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-md p-[2px]`}
         style={{ backgroundImage: "var(--prism-frame)" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -87,7 +96,7 @@ export function EntityIcon({ iconUrl, rarity }: { iconUrl: string; rarity?: Enti
     <img
       src={iconUrl}
       alt=""
-      className={`h-7 w-7 shrink-0 rounded-md object-cover ${
+      className={`${sizeClass} shrink-0 rounded-md object-cover ${
         rarity ? RARITY_BORDER[rarity] : "border border-subtle"
       }`}
     />

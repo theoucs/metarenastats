@@ -79,36 +79,41 @@ export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, Tier
 // 6th hue to "fix" this; it would break the descent instead.
 export const TIER_STYLES: Record<
   Tier,
-  { text: string; bg: string; border: string; glow: string }
+  { text: string; bg: string; border: string; glow: string; hex: string }
 > = {
   S: {
     text: "text-[#F2B640]",
     bg: "bg-[#F2B640]/[0.14]",
     border: "border-[#F2B640]/40",
     glow: "shadow-[0_0_16px_-4px_rgba(242,182,64,0.45)]",
+    hex: "#F2B640",
   },
   A: {
     text: "text-[#35D0E8]",
     bg: "bg-[#35D0E8]/[0.12]",
     border: "border-[#35D0E8]/30",
     glow: "",
+    hex: "#35D0E8",
   },
   B: {
     text: "text-[#7C8CF8]",
     bg: "bg-[#7C8CF8]/10",
     border: "border-[#7C8CF8]/25",
     glow: "",
+    hex: "#7C8CF8",
   },
   C: {
     text: "text-[#8792A8]",
     bg: "bg-[#8792A8]/[0.08]",
     border: "border-[#8792A8]/20",
     glow: "",
+    hex: "#8792A8",
   },
   D: {
     text: "text-[#5A6172]",
     bg: "bg-[#5A6172]/[0.06]",
     border: "border-[#5A6172]/[0.16]",
     glow: "",
+    hex: "#5A6172",
   },
 };
