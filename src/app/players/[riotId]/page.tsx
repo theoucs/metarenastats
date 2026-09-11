@@ -81,7 +81,9 @@ export default async function PlayerPage({
             className="absolute inset-0 h-full w-full object-cover object-top opacity-[0.15]"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/70 to-[var(--bg-base)]/40" />
+        {/* from-35% guarantees the bottom ~77px is fully opaque — same fix as
+            the champion page banner, see comment there. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/85 via-65% to-[var(--bg-base)]/45" />
         <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-6 sm:px-6">
           <div className="flex items-center gap-4">
             {topChampionInfo ? (

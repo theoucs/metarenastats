@@ -267,7 +267,11 @@ export default async function ChampionDetailPage({
           height={560}
           className="absolute inset-0 h-full w-full object-cover object-top"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/35 to-transparent" />
+        {/* from-35% guarantees the bottom ~77px is fully opaque bg-base — the
+            stat pills below overlap the last 32px of this banner (-mt-8), and
+            their grid gaps are transparent, so anything less than fully solid
+            there lets the splash art bleed through behind them. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/60 via-65% to-transparent" />
         <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-6 sm:px-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
