@@ -283,7 +283,10 @@ export default async function ChampionDetailPage({
 
   return (
     <div>
-      <div className="relative h-[240px] w-full overflow-hidden bg-raised sm:h-[300px]">
+      {/* Taller by the same 24px the name block gained in bottom padding, so
+          the extra breathing room comes out of the banner rather than pushing
+          the name up off the scrim's solid zone and onto the splash art. */}
+      <div className="relative h-[264px] w-full overflow-hidden bg-raised sm:h-[324px]">
         {/* `centered` (1280x720), not `loading` (308x560): the loading art is a
             portrait crop that had to be upscaled ~4.7x to span a wide banner,
             which is what turned this header into a grey smear. The centered
@@ -307,7 +310,11 @@ export default async function ChampionDetailPage({
             the right side of the splash actually visible. */}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/60 via-65% to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base)]/90 via-[var(--bg-base)]/30 via-45% to-transparent" />
-        <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-10 sm:px-6">
+        {/* pb-16, not pb-10: the stat pills below pull up 32px into this banner
+            (-mt-8), so the visible gap under the name is the padding minus that
+            overlap. At pb-10 it measured 13px against 40px below the pills —
+            the name looked stuck to them. */}
+        <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-16 sm:px-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
