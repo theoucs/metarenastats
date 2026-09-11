@@ -28,16 +28,20 @@
   --gold-muted: rgba(242, 182, 64, 0.12);
   --gold-border: rgba(242, 182, 64, 0.35);
 
-  /* Prismatic — sampled from the game's real prismatic frame asset
-     (game/assets/ux/cherry/augments/augmentselection/augmentcard_frame_prismatic.png),
-     not invented. Two variants: --prism-frame reproduces the game literally
-     (rarity frames), --prism-brand is the same hues resaturated ~25% for the
-     logo/wordmark, where the literal pastel loses the white dots and is
-     illegible in bg-clip-text. Never swap the two. */
-  --prism-shimmer: #e1e4c6;
-  --prism-pale: #d0d4e4;
-  --prism-blue: #849ad3;
-  --prism-violet: #8362dc;
+  /* Prismatic — two independent sources, not one resaturated into the other
+     (see docs/design-refresh-plan.md §3.1.1 for the full reasoning):
+     --prism-frame is the game's card-BORDER asset (calm chrome, repeated on
+     every prismatic card), saturated up a notch from the literal pastel so
+     it doesn't wash out at 36px repeated down a table — still no gold/magenta,
+     that's deliberately reserved for --prism-brand.
+     --prism-brand is sampled from the augment ICON GLYPHS themselves (Eureka,
+     Cruelty, King Me), which use a holographic shader, not a fixed texture —
+     the game itself keeps chrome calm and glyph content vivid, and never
+     shows both treatments on the same element. Never swap the two. */
+  --prism-shimmer: #d9de86;
+  --prism-pale: #b9c0e8;
+  --prism-blue: #6f86e0;
+  --prism-violet: #8452e8;
   --prism-frame: linear-gradient(
     160deg,
     var(--prism-shimmer),
@@ -45,7 +49,22 @@
     var(--prism-blue) 70%,
     var(--prism-violet)
   );
-  --prism-brand: linear-gradient(120deg, #b8c77e, #9aa7dd 32%, #6e7fd4 68%, #7a4fd8);
+  /* 8 uneven stops (not an evenly-spaced rainbow) plus a slow drift, see
+     motion-safe:animate-prism-shimmer below — the animation is what actually
+     reads as "holographic material" rather than "gradient sticker", far more
+     than stop count. Static fallback for icon.svg/favicon.ico (can't animate
+     a .ico) uses these same stops at their authored position. */
+  --prism-brand: linear-gradient(
+    115deg,
+    #f5d98b 0%,
+    #eee7b8 14%,
+    #8ff0e2 30%,
+    #8b8ff5 46%,
+    #b57ff2 60%,
+    #ef8fe6 74%,
+    #f7cfe8 88%,
+    #f5d98b 100%
+  );
 
   /* Rarity frames for silver/gold — nudged from the site's flat defaults
      toward the game's metallic hue (verified against the real frame assets),
@@ -124,6 +143,20 @@
   --text-small--line-height: 1.45;
   --text-micro: 0.6875rem;
   --text-micro--line-height: 1.4;
+
+  --animate-prism-shimmer: prism-shimmer 7s ease-in-out infinite alternate;
+}
+
+/* Slides the oversized --prism-brand gradient back and forth behind the
+   logo/wordmark. Only ever applied via motion-safe: (see Logo.tsx/Wordmark.tsx),
+   so prefers-reduced-motion:reduce users just get the gradient at its 30% frame. */
+@keyframes prism-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
 }
 
 html {

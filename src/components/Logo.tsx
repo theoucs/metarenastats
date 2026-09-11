@@ -1,21 +1,21 @@
-// Fill matches --prism-brand in globals.css (same hues as the real in-game
-// prismatic frame, resaturated ~25% — the literal pastel makes the white
-// dots below disappear). Keep this gradient identical to icon.svg.
+// Fill matches --prism-brand in globals.css — sampled from real prismatic
+// augment icon glyphs (Eureka, Cruelty, King Me), not the card frame (see
+// globals.css comment). A plain CSS background (not an SVG fill) so it can
+// share the exact same motion-safe:animate-prism-shimmer as Wordmark.tsx —
+// icon.svg/favicon.ico keep a static (unanimated) copy of the same gradient,
+// since a .ico can't animate; keep all three in sync by eye if this changes.
+// Dot size/position match the original rx=9 / r=3.2 SVG on a 32-unit box,
+// expressed as % so they scale with whatever size `className` sets.
 export function LogoMark({ className = "h-7 w-7" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <defs>
-        <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#B8C77E" />
-          <stop offset="0.32" stopColor="#9AA7DD" />
-          <stop offset="0.68" stopColor="#6E7FD4" />
-          <stop offset="1" stopColor="#7A4FD8" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill="url(#logo-gradient)" />
-      <circle cx="16" cy="10.5" r="3.2" fill="white" />
-      <circle cx="9.5" cy="21" r="3.2" fill="white" />
-      <circle cx="22.5" cy="21" r="3.2" fill="white" />
-    </svg>
+    <span
+      className={`relative inline-block shrink-0 overflow-hidden rounded-[28.125%] bg-[length:260%_260%] motion-safe:animate-prism-shimmer ${className}`}
+      style={{ backgroundImage: "var(--prism-brand)" }}
+      aria-hidden
+    >
+      <span className="absolute left-1/2 top-[32.8%] h-[20%] w-[20%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
+      <span className="absolute left-[29.7%] top-[65.6%] h-[20%] w-[20%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
+      <span className="absolute left-[70.3%] top-[65.6%] h-[20%] w-[20%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
+    </span>
   );
 }

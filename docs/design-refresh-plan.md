@@ -64,8 +64,19 @@ Trois rôles couleur, strictement séparés :
 >   ⚠️ **Corrigé le 2026-09-11** : la teinte validée initialement était le
 >   fuchsia→cyan existant. Théo a signalé qu'il ne reflétait pas le jeu ;
 >   vérification faite sur l'asset officiel, il avait raison. Les valeurs
->   retenues sont désormais celles du §3.1.1 (opale violet/périwinkle avec
->   reflet jaune-vert), pas le fuchsia→cyan.
+>   retenues à ce moment-là étaient celles du §3.1.1 v1 (opale violet/périwinkle
+>   avec reflet jaune-vert) — **elles-mêmes remplacées plus tard le même jour**,
+>   voir correction suivante.
+>   ⚠️ **Re-corrigé le 2026-09-11 (même jour)** : Théo a signalé que ce dégradé
+>   "opale" restait trop pâle/terne, en comparant avec les vrais pictogrammes
+>   d'augments (pas le cadre de carte). Vérification faite : le jeu réserve
+>   volontairement un rendu vif (or/cyan/violet/magenta) au pictogramme et garde
+>   le cadre de carte pâle — deux traitements distincts, jamais mélangés. Depuis,
+>   **`--prism-brand`** (logo/wordmark) est sampé sur les pictogrammes (vif,
+>   voir §3.1.1 v2) et **`--prism-frame`** (cadres d'icônes en tableau) reste
+>   dérivé du cadre de carte, juste saturé un cran au-dessus du littéral pour
+>   ne pas être trop terne à 36px — sans jamais adopter l'or/magenta du
+>   pictogramme, qui resterait chargé répété sur une tier list dense.
 > - Cyan **en petites touches d'interface uniquement** (onglet actif, liens, focus),
 >   jamais en aplat.
 > - Or **réservé** au tier S et à la 1ʳᵉ place.
@@ -124,20 +135,28 @@ y sont déjà câblés sur les variables de `next/font`.
   --gold-muted:  rgba(242, 182, 64, 0.12);
   --gold-border: rgba(242, 182, 64, 0.35);
 
-  /* Signature — prismatique. Valeurs échantillonnées sur l'asset officiel
-     game/assets/ux/cherry/augments/augmentselection/augmentcard_frame_prismatic.png */
-  --prism-shimmer: #E1E4C6;  /* reflet jaune-vert — la signature "réfraction" */
-  --prism-pale:    #D0D4E4;  /* lavande pâle */
-  --prism-blue:    #849AD3;  /* périwinkle */
-  --prism-violet:  #8362DC;  /* violet */
+  /* Signature — prismatique. Deux sources distinctes, cf. §3.1.1 : le cadre
+     vient de l'asset de carte du jeu (chrome, saturé un cran), le logo/wordmark
+     est sampé sur les pictogrammes d'augments eux-mêmes (contenu, vif). */
+  --prism-shimmer: #D9DE86;
+  --prism-pale:    #B9C0E8;
+  --prism-blue:    #6F86E0;
+  --prism-violet:  #8452E8;
 
-  /* Cadre de rareté prismatique — reproduit le jeu à l'identique */
+  /* Cadre de rareté prismatique — dérivé du cadre de carte, saturé */
   --prism-frame: linear-gradient(160deg,
     var(--prism-shimmer), var(--prism-pale) 35%,
     var(--prism-blue) 70%, var(--prism-violet));
 
-  /* Logo / wordmark — mêmes teintes, resaturées (cf. §3.1.1) */
-  --prism-brand: linear-gradient(120deg, #B8C77E, #9AA7DD 32%, #6E7FD4 68%, #7A4FD8);
+  /* Logo / wordmark — sampé sur les pictogrammes (Eureka, Cruelty, King Me),
+     8 stops inégaux + dérive lente (voir --animate-prism-shimmer, motion-safe
+     uniquement). icon.svg/favicon.ico gardent ces mêmes stops en statique. */
+  --prism-brand: linear-gradient(115deg,
+    #F5D98B 0%, #EEE7B8 14%, #8FF0E2 30%, #8B8FF5 46%,
+    #B57FF2 60%, #EF8FE6 74%, #F7CFE8 88%, #F5D98B 100%);
+
+  --animate-prism-shimmer: prism-shimmer 7s ease-in-out infinite alternate;
+  /* @keyframes prism-shimmer { 0% { background-position: 0% 50% } 100% { background-position: 100% 50% } } */
 
   /* Qualité de stat — réservé, ne jamais réutiliser ailleurs */
   --stat-good: #3FCF8E;
@@ -145,36 +164,47 @@ y sont déjà câblés sur les variables de `next/font`.
 }
 ```
 
-#### 3.1.1 Pourquoi deux variantes de prismatique
+#### 3.1.1 Pourquoi deux sources distinctes (cadre ≠ logo)
 
-**Le dégradé actuel du site est faux.** `EntityIcon` utilise
-`from-fuchsia-400 via-purple-400 to-cyan-300` (`#E879F9 → #C084FC → #67E8F9`) :
-un rose magenta saturé vers un cyan vif. L'asset officiel du jeu, échantillonné
-pixel par pixel, donne tout autre chose :
+**v1 (dépassée) :** le dégradé initial du site (`from-fuchsia-400 via-purple-400
+to-cyan-300`) ne reflétait pas le jeu. Corrigé une première fois en sampant
+l'asset de **cadre de carte** prismatique (`augmentcard_frame_prismatic.png`) :
+jaune-vert pâle → lavande → périwinkle → violet. `--prism-frame` et
+`--prism-brand` (resaturé ~25%) partageaient alors la même source.
 
-| Position sur le cadre | Couleur réelle |
-|---|---|
-| Haut | `#D0D4E4` lavande pâle |
-| Haut-gauche / haut-droite | `#E1E4C6` **jaune-vert pâle** |
-| Milieu des montants | `#849AD3` périwinkle |
-| Bas des montants | `#8362DC` violet |
-| Bas | `#9F73C2` violet grisé |
+**v2 (actuelle) :** Théo a noté que ce dégradé restait pâle/terne comparé aux
+vrais **pictogrammes** d'augments (le sablier, le chaudron, la flèche des
+cartes en jeu). Vérification : les fichiers d'icônes (Community Dragon) sont
+en fait des pictogrammes **blancs unis** — la couleur vient d'un shader
+holographique appliqué à l'affichage, pas d'une texture figée. Sans asset de
+référence unique à sampler, les couleurs ont été extraites directement des
+pixels rendus sur une capture d'écran réelle (Eureka, Cruelty, King Me) :
+récurrence claire d'un balayage or → cyan → bleu-violet → magenta, bien plus
+vif que le pastel du cadre.
 
-Trois écarts : notre version est **beaucoup trop saturée**, elle est
-**dominée par le rose magenta** (absent du jeu, qui est dominé par le violet), et
-elle **rate complètement le reflet jaune-vert** — or c'est précisément lui qui
-donne l'effet « opale / réfraction » caractéristique du prismatique.
+**Conclusion : le jeu lui-même sépare les deux traitements.** Le cadre de
+carte (chrome, répété sur toute la grille de sélection) reste calme ; le
+pictogramme (contenu, regardé une fois) est vif. Le site adopte maintenant la
+même séparation — **deux sources indépendantes, pas une resaturation de
+l'autre :**
 
-**Deux usages, deux variantes :**
+- **`--prism-frame`** (cadres d'augments/items prismatiques dans les tableaux) :
+  toujours dérivé du cadre de carte, **saturé un cran** au-dessus du littéral
+  (v1) pour ne pas être trop terne répété à 36px sur 50+ lignes. Toujours sans
+  or/magenta — ça resterait chargé à cette taille et cette répétition.
+- **`--prism-brand`** (logo, wordmark) : sampé sur les pictogrammes, 8 stops
+  inégaux (or → vert pâle → cyan → bleu-violet → violet → magenta → rose pâle),
+  **plus une dérive lente** (`--animate-prism-shimmer`, 7s aller-retour,
+  `background-position` sur un dégradé en `260% 260%`). Le mouvement est ce qui
+  fait vraiment la différence perceptuelle entre "dégradé collé" et "matériau
+  qui vit" — plus que le nombre de stops. Appliqué uniquement via
+  `motion-safe:` (désactivé sous `prefers-reduced-motion: reduce`, alors figé
+  sur le premier frame). `icon.svg`/`favicon.ico` gardent une copie **statique**
+  des mêmes 8 stops — un `.ico` ne peut pas animer.
 
-- **`--prism-frame`** (cadres d'augments et d'items prismatiques) : reproduit le
-  jeu littéralement. Vérifié visuellement contre l'asset de référence, ça colle.
-- **`--prism-brand`** (logo, wordmark) : mêmes teintes, resaturées d'environ 25 %.
-  **Nécessaire** : testé, les points blancs du logo deviennent invisibles sur le
-  pastel littéral, et un wordmark en `bg-clip-text` pastel est illisible sur fond
-  sombre. La version resaturée conserve le reflet jaune-vert et reste lisible
-  jusqu'à 16 px (favicon). Variante écartée : points sombres (`#241645`) sur
-  l'opale littérale — très joli aussi, mais change le caractère du logo.
+⚠️ Cette dérive historique (v1 → v2) veut dire que si le cadre ou le logo
+semblent encore décevants après une future itération, **revérifier l'asset
+réel avant de deviner** — c'est ce qui a marché les deux fois précédentes.
 
 #### 3.1.2 Argent et or — même écart, moindre priorité
 
@@ -280,15 +310,16 @@ Le détail qui fait « soigné » : le **liseré interne clair en haut** des sur
 ### 4.0 Identité — logo, wordmark, favicon ✅ validé
 
 **La forme du logo ne change pas** (carré arrondi `rx=9`, 3 points blancs).
-Seul le dégradé de remplissage change — il passe de 2 stops à 4.
+Le remplissage passe de 2 stops statiques à 8 stops **animés** (cf. §3.1.1 v2).
 
 | Fichier | Changement |
 |---|---|
-| `src/components/Logo.tsx` | Les 2 stops `#3b82f6 → #8b5cf6` deviennent les 4 stops de `--prism-brand` (`#B8C77E → #9AA7DD → #6E7FD4 → #7A4FD8`). Points blancs conservés. |
-| `src/components/Wordmark.tsx` | Le `A` et `rena` passent de `from-blue-400 to-violet-400` à `--prism-brand`. `Met` et `Stats` restent en `--text-primary`. Structure inchangée. |
-| `src/app/icon.svg` | Même dégradé que `Logo.tsx` — les deux doivent rester strictement identiques. |
-| `src/app/favicon.ico` | **À régénérer depuis le nouvel `icon.svg`.** Sinon Safari continuera d'afficher l'ancien logo bleu-violet. Commande utilisée précédemment : `magick -background none -density 384 icon.svg -resize {16,32,48,64} …` puis assemblage en `.ico`. |
-| `src/lib/statsDisplay.tsx` | `EntityIcon` : remplacer `from-fuchsia-400 via-purple-400 to-cyan-300` par `--prism-frame` (cf. §3.1.1 — le dégradé actuel ne correspond pas au jeu). |
+| `src/components/Logo.tsx` | Plus une SVG à fill statique : un `<span>` CSS avec `backgroundImage: var(--prism-brand)`, `bg-[length:260%_260%]`, `motion-safe:animate-prism-shimmer`. Les 3 points blancs deviennent des `<span>` positionnés en `%` (mêmes proportions que l'ancien `cx/cy/r` sur le viewBox 32). Nécessaire pour partager l'animation CSS avec `Wordmark.tsx` sans dupliquer la logique en SMIL. |
+| `src/components/Wordmark.tsx` | `A` et `rena` : mêmes classes `bg-[length:260%_260%] motion-safe:animate-prism-shimmer` + `backgroundImage: var(--prism-brand)`. `Met` et `Stats` restent en `--text-primary`. |
+| `src/app/icon.svg` | **Statique** — mêmes 8 stops que `--prism-brand` mais sans animation (un `.ico` ne peut pas animer). Ne plus chercher à garder Logo.tsx et icon.svg "strictement identiques" en structure (l'un est CSS+div, l'autre SVG+rect) : juste les **mêmes stops de couleur**. |
+| `src/app/favicon.ico` | Régénéré depuis `icon.svg` à chaque changement de `--prism-brand`. **ImageMagick seul ne rend pas les dégradés SVG correctement** (bug découvert en Phase 1 : produisait un favicon noir uni) — régénérer via un rendu Chromium (Playwright `page.screenshot()` sur le SVG à 16/32/48/64px) puis assembler en `.ico` avec `magick icon_16.png icon_32.png icon_48.png icon_64.png favicon.ico`. |
+| `src/lib/statsDisplay.tsx` | `EntityIcon` : `--prism-frame` (cadre, saturé mais statique — pas d'animation ici, réservée au logo/wordmark). |
+| `src/app/globals.css` | `@keyframes prism-shimmer` (top-level) + `--animate-prism-shimmer` dans `@theme inline`. Toujours appliqué via `motion-safe:`, jamais nu — sinon `prefers-reduced-motion: reduce` ne le désactive pas. |
 
 ⚠️ **Ne pas utiliser `--prism-brand` pour les cadres d'augments, ni `--prism-frame`
 pour le logo.** Les deux se ressemblent mais ont des contraintes opposées :
