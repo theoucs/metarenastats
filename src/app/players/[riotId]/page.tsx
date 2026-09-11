@@ -68,84 +68,104 @@ export default async function PlayerPage({
   const [gameName, tagLine] = displayRiotId.split("#");
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex items-center gap-4">
-        {topChampionInfo ? (
+    <div>
+      <div className="relative h-[220px] w-full overflow-hidden bg-raised">
+        {topChampionInfo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={topChampionInfo.iconUrl}
+            src={`https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${topChampionInfo.id}_0.jpg`}
             alt=""
-            className="h-16 w-16 rounded-xl border border-subtle object-cover"
+            loading="lazy"
+            width={308}
+            height={560}
+            className="absolute inset-0 h-full w-full object-cover object-top opacity-[0.15]"
           />
-        ) : (
-          <div className="h-16 w-16 rounded-xl border border-subtle bg-raised" />
         )}
-        <div>
-          <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">
-            {gameName}
-            <span className="text-secondary">#{tagLine}</span>
-          </h1>
-          <p className="text-small text-secondary">
-            Arena player{topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
-          </p>
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/70 to-[var(--bg-base)]/40" />
+        <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-6 sm:px-6">
+          <div className="flex items-center gap-4">
+            {topChampionInfo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={topChampionInfo.iconUrl}
+                alt=""
+                className="h-16 w-16 rounded-xl border border-subtle object-cover shadow-[var(--elev-2)]"
+              />
+            ) : (
+              <div className="h-16 w-16 rounded-xl border border-subtle bg-raised" />
+            )}
+            <div>
+              <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">
+                {gameName}
+                <span className="text-secondary">#{tagLine}</span>
+              </h1>
+              <p className="text-small text-secondary">
+                Arena player{topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {liveError && (
-        <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
-          Couldn&apos;t refresh from Riot right now ({liveError}) — showing previously saved data.
-        </p>
-      )}
+      <div className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 sm:pb-12">
+        <div className="-mt-8">
+          {liveError && (
+            <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
+              Couldn&apos;t refresh from Riot right now ({liveError}) — showing previously saved data.
+            </p>
+          )}
 
-      {profile.games === 0 ? (
-        <div className="mt-8 rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
-          No Arena games found for this player yet.
-        </div>
-      ) : (
-        <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatPill label="Avg Placement" value={profile.avgPlacement.toFixed(2)} />
-            <StatPill
-              label="% Top 1"
-              value={`${(profile.top1Rate * 100).toFixed(1)}%`}
-              colorClass={top1Color(profile.top1Rate)}
-            />
-            <StatPill
-              label="% Top 3"
-              value={`${(profile.top3Rate * 100).toFixed(1)}%`}
-              colorClass={top3Color(profile.top3Rate)}
-            />
-            <StatPill label="Games" value={String(profile.games)} />
-          </div>
-
-          <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_minmax(0,380px)]">
-            <div className="min-w-0">
-              <h2 className="font-display text-h2 font-semibold text-primary">Match History</h2>
-              {result.ok && result.matches.length > 0 ? (
-                <div className="mt-4 flex flex-col gap-3">
-                  {result.matches.map((match) => (
-                    <MatchCard key={match.matchId} match={match} />
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-4 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
-                  {result.ok
-                    ? "No recent Arena games found."
-                    : "Live match history is unavailable right now."}
-                </p>
-              )}
+          {profile.games === 0 ? (
+            <div className="mt-8 rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
+              No Arena games found for this player yet.
             </div>
-
-            <div className="min-w-0">
-              <h2 className="font-display text-h2 font-semibold text-primary">Top Champions</h2>
-              <p className="mt-1 text-small text-secondary">Across this player&apos;s own games.</p>
-              <div className="mt-4">
-                <StatsTable rows={championRows} linkPrefix="/champions/" />
+          ) : (
+            <>
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatPill label="Avg Placement" value={profile.avgPlacement.toFixed(2)} />
+                <StatPill
+                  label="% Top 1"
+                  value={`${(profile.top1Rate * 100).toFixed(1)}%`}
+                  colorClass={top1Color(profile.top1Rate)}
+                />
+                <StatPill
+                  label="% Top 3"
+                  value={`${(profile.top3Rate * 100).toFixed(1)}%`}
+                  colorClass={top3Color(profile.top3Rate)}
+                />
+                <StatPill label="Games" value={String(profile.games)} />
               </div>
-            </div>
-          </div>
-        </>
-      )}
+
+              <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_minmax(0,380px)]">
+                <div className="min-w-0">
+                  <h2 className="font-display text-h2 font-semibold text-primary">Match History</h2>
+                  {result.ok && result.matches.length > 0 ? (
+                    <div className="mt-4 flex flex-col gap-3">
+                      {result.matches.map((match) => (
+                        <MatchCard key={match.matchId} match={match} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-4 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
+                      {result.ok
+                        ? "No recent Arena games found."
+                        : "Live match history is unavailable right now."}
+                    </p>
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="font-display text-h2 font-semibold text-primary">Top Champions</h2>
+                  <p className="mt-1 text-small text-secondary">Across this player&apos;s own games.</p>
+                  <div className="mt-4">
+                    <StatsTable rows={championRows} linkPrefix="/champions/" />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

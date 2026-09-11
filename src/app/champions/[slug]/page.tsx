@@ -25,8 +25,8 @@ export const dynamic = "force-dynamic";
 function StatTooltipContent({ name, stat }: { name: string; stat: Stat }) {
   return (
     <div className="text-left">
-      <div className="font-semibold text-zinc-50">{name}</div>
-      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-zinc-300">
+      <div className="font-semibold text-primary">{name}</div>
+      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-micro text-secondary">
         <span>Avg: {stat.avgPlacement.toFixed(2)}</span>
         <span>Games: {stat.games}</span>
         <span>Top 1: {(stat.top1Rate * 100).toFixed(0)}%</span>
@@ -41,12 +41,10 @@ function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
   const info = resolveAugment(stat.augmentId);
   if (!info) return null;
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
       <div className="flex items-center gap-2.5">
         <EntityIcon iconUrl={info.iconUrl} rarity={info.tier as "silver" | "gold" | "prismatic"} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
-          {info.name}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
         <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
@@ -70,10 +68,10 @@ function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
 function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugmentStat[] }) {
   return (
     <div>
-      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+      <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">{title}</h3>
       <div className="flex flex-col gap-2">
         {stats.length === 0 ? (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+          <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
             No data yet.
           </p>
         ) : (
@@ -87,18 +85,18 @@ function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugment
 function ShardbladeRateBlock({ rate }: { rate: number }) {
   const info = resolveItem(SHARDBLADE_ITEM_ID);
   return (
-    <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2">
+    <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-subtle bg-inset/40 p-2">
       {info && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={info.iconUrl}
           alt=""
-          className="h-9 w-9 shrink-0 rounded-md border border-zinc-800 object-cover"
+          className="h-9 w-9 shrink-0 rounded-md border border-subtle object-cover"
         />
       )}
       <div className="min-w-0">
-        <div className="text-[11px] text-zinc-500">Shardblade obtained</div>
-        <div className="truncate font-mono text-sm font-medium text-zinc-100">
+        <div className="text-micro text-muted">Shardblade obtained</div>
+        <div className="truncate font-mono text-small font-medium text-primary">
           {(rate * 100).toFixed(0)}% of anvil games
         </div>
       </div>
@@ -110,12 +108,10 @@ function PrismaticItemCard({ stat }: { stat: ChampionItemSlotStat }) {
   const info = resolveItem(stat.itemId);
   if (!info) return null;
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
       <div className="flex items-center gap-2.5">
         <EntityIcon iconUrl={info.iconUrl} rarity="prismatic" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
-          {info.name}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
         <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
@@ -149,9 +145,9 @@ function AnvilRunPanel({
   topPrismaticItems: ChampionItemSlotStat[];
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-      <h2 className="text-lg font-semibold text-zinc-100">Anvil Run</h2>
-      <p className="mt-0.5 text-sm text-zinc-500">Stat anvils only, no items bought.</p>
+    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
+      <h2 className="font-display text-h2 font-semibold text-primary">Anvil Run</h2>
+      <p className="mt-0.5 text-small text-secondary">Stat anvils only, no items bought.</p>
 
       <div className="mt-2 grid grid-cols-5 gap-1 text-center">
         <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
@@ -172,12 +168,12 @@ function AnvilRunPanel({
       <ShardbladeRateBlock rate={shardbladeRate} />
 
       <div className="mt-3">
-        <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+        <h3 className="mb-1.5 text-small font-semibold uppercase tracking-wide text-muted">
           Top Prismatic Items
         </h3>
         <div className="flex flex-col gap-1.5">
           {topPrismaticItems.length === 0 ? (
-            <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
+            <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
               No data yet.
             </p>
           ) : (
@@ -195,9 +191,7 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        Slot {slot.slot}
-      </div>
+      <div className="text-micro font-semibold uppercase tracking-wide text-muted">Slot {slot.slot}</div>
 
       {primaryInfo && primary && (
         <>
@@ -206,12 +200,10 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
             <img
               src={primaryInfo.iconUrl}
               alt=""
-              className="h-16 w-16 rounded-lg border border-zinc-800 object-cover"
+              className="h-16 w-16 rounded-lg border border-subtle object-cover"
             />
           </Tooltip>
-          <div className="font-mono text-[11px] text-zinc-400">
-            {(primary.playRate * 100).toFixed(0)}%
-          </div>
+          <div className="font-mono text-micro text-secondary">{(primary.playRate * 100).toFixed(0)}%</div>
         </>
       )}
 
@@ -226,7 +218,7 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
                 <img
                   src={info.iconUrl}
                   alt=""
-                  className="h-[30px] w-[30px] rounded border border-zinc-800 object-cover"
+                  className="h-[30px] w-[30px] rounded border border-subtle object-cover"
                 />
               </Tooltip>
             );
@@ -264,113 +256,131 @@ export default async function ChampionDetailPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex items-center gap-4">
+    <div>
+      <div className="relative h-[220px] w-full overflow-hidden bg-raised">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={champInfo.iconUrl}
+          src={`https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${champInfo.id}_0.jpg`}
           alt=""
-          className="h-16 w-16 rounded-xl border border-zinc-800 object-cover"
+          loading="lazy"
+          width={308}
+          height={560}
+          className="absolute inset-0 h-full w-full object-cover object-top"
         />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{champInfo.name}</h1>
-          <p className="text-sm text-zinc-500">Arena build summary</p>
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)]/35 to-transparent" />
+        <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-6 sm:px-6">
+          <div className="flex items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={champInfo.iconUrl}
+              alt=""
+              className="h-16 w-16 rounded-xl border border-subtle object-cover shadow-[var(--elev-2)]"
+            />
+            <div>
+              <h1 className="font-display text-display font-semibold tracking-tight text-primary">
+                {champInfo.name}
+              </h1>
+              <p className="text-small text-secondary">Arena build summary</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {!detail ? (
-        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/40 p-10 text-center text-zinc-500">
-          No data yet for {champInfo.name}. Search a player who played this champion to start
-          populating stats.
-        </div>
-      ) : (
-        <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatPill label="Avg Placement" value={detail.avgPlacement.toFixed(2)} />
-            <StatPill
-              label="% Top 1"
-              value={`${(detail.top1Rate * 100).toFixed(1)}%`}
-              colorClass={top1Color(detail.top1Rate)}
-            />
-            <StatPill
-              label="% Top 3"
-              value={`${(detail.top3Rate * 100).toFixed(1)}%`}
-              colorClass={top3Color(detail.top3Rate)}
-            />
-            <StatPill label="Games" value={String(detail.games)} />
-            <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
-          </div>
-
-          <section className="mt-10">
-            <h2 className="text-lg font-semibold text-zinc-100">Best Augments</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Among this champion&apos;s own games.
-            </p>
-            <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
-              <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />
-              <AugmentColumn title="Gold" stats={detail.augmentsByRarity.gold} />
-              <AugmentColumn title="Prismatic" stats={detail.augmentsByRarity.prismatic} />
+      <div className="mx-auto max-w-5xl px-4 pb-8 sm:px-6 sm:pb-12">
+        <div className="-mt-8">
+          {!detail ? (
+            <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
+              No data yet for {champInfo.name}. Search a player who played this champion to start
+              populating stats.
             </div>
-          </section>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <StatPill label="Avg Placement" value={detail.avgPlacement.toFixed(2)} />
+                <StatPill
+                  label="% Top 1"
+                  value={`${(detail.top1Rate * 100).toFixed(1)}%`}
+                  colorClass={top1Color(detail.top1Rate)}
+                />
+                <StatPill
+                  label="% Top 3"
+                  value={`${(detail.top3Rate * 100).toFixed(1)}%`}
+                  colorClass={top3Color(detail.top3Rate)}
+                />
+                <StatPill label="Games" value={String(detail.games)} />
+                <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
+              </div>
 
-          <section className="mt-10">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-                <h2 className="text-lg font-semibold text-zinc-100">Item Build</h2>
-                {detail.itemBuild.length === 0 ? (
-                  <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
-                    No item data yet.
-                  </p>
-                ) : (
-                  <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
-                    {detail.itemBuild.map((slot) => (
-                      <ItemSlotBlock key={slot.slot} slot={slot} />
-                    ))}
-                  </div>
-                )}
+              <section className="mt-10">
+                <h2 className="font-display text-h2 font-semibold text-primary">Best Augments</h2>
+                <p className="mt-1 text-small text-secondary">Among this champion&apos;s own games.</p>
+                <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
+                  <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />
+                  <AugmentColumn title="Gold" stats={detail.augmentsByRarity.gold} />
+                  <AugmentColumn title="Prismatic" stats={detail.augmentsByRarity.prismatic} />
+                </div>
+              </section>
 
-                <div className="mt-6">
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                    Top Prismatic Items
-                  </h3>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {detail.topPrismaticItems.length === 0 ? (
-                      <p className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3 text-sm text-zinc-600">
-                        No data yet.
+              <section className="mt-10">
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="rounded-lg border border-subtle bg-raised/40 p-4">
+                    <h2 className="font-display text-h2 font-semibold text-primary">Item Build</h2>
+                    {detail.itemBuild.length === 0 ? (
+                      <p className="mt-3 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
+                        No item data yet.
                       </p>
                     ) : (
-                      detail.topPrismaticItems.map((s) => (
-                        <PrismaticItemCard key={s.itemId} stat={s} />
-                      ))
+                      <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
+                        {detail.itemBuild.map((slot) => (
+                          <ItemSlotBlock key={slot.slot} slot={slot} />
+                        ))}
+                      </div>
                     )}
-                  </div>
-                </div>
-              </div>
-              {detail.anvilStat.games > 0 && (
-                <AnvilRunPanel
-                  stat={detail.anvilStat}
-                  shardbladeRate={detail.anvilShardbladeRate}
-                  topPrismaticItems={detail.anvilTopPrismaticItems}
-                />
-              )}
-            </div>
-          </section>
 
-          <section className="mt-10">
-            <h2 className="text-lg font-semibold text-zinc-100">Top Combos</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Best-performing pairs on this champion specifically.
-            </p>
-            <div className="mt-4">
-              <TieredStatsTabs
-                tabs={COMBO_TABS}
-                rowsByTier={comboRowsByTier}
-                defaultTab="item-augment"
-              />
-            </div>
-          </section>
-        </>
-      )}
+                    <div className="mt-6">
+                      <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">
+                        Top Prismatic Items
+                      </h3>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {detail.topPrismaticItems.length === 0 ? (
+                          <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
+                            No data yet.
+                          </p>
+                        ) : (
+                          detail.topPrismaticItems.map((s) => (
+                            <PrismaticItemCard key={s.itemId} stat={s} />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {detail.anvilStat.games > 0 && (
+                    <AnvilRunPanel
+                      stat={detail.anvilStat}
+                      shardbladeRate={detail.anvilShardbladeRate}
+                      topPrismaticItems={detail.anvilTopPrismaticItems}
+                    />
+                  )}
+                </div>
+              </section>
+
+              <section className="mt-10">
+                <h2 className="font-display text-h2 font-semibold text-primary">Top Combos</h2>
+                <p className="mt-1 text-small text-secondary">
+                  Best-performing pairs on this champion specifically.
+                </p>
+                <div className="mt-4">
+                  <TieredStatsTabs
+                    tabs={COMBO_TABS}
+                    rowsByTier={comboRowsByTier}
+                    defaultTab="item-augment"
+                  />
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
