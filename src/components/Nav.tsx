@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/Logo";
 import { Wordmark } from "@/components/Wordmark";
+import { NavSearch } from "@/components/NavSearch";
 
 const LINKS = [
   { href: "/", label: "Home" },
@@ -43,6 +44,9 @@ function NavLink({
 export function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // The home page already has its own big, prominent search — skip the
+  // duplicate compact one there.
+  const showSearch = pathname !== "/";
 
   // Close the mobile menu whenever the route actually changes (not on every
   // render — otherwise it'd never be able to stay open).
@@ -61,7 +65,7 @@ export function Nav() {
           <Wordmark />
         </Link>
 
-        <ul className="hidden flex-1 items-center gap-1 text-sm md:flex">
+        <ul className="hidden flex-1 items-center gap-1 text-sm lg:flex">
           {LINKS.slice(1).map((link) => (
             <li key={link.href}>
               <NavLink href={link.href} label={link.label} active={pathname === link.href} />
@@ -69,12 +73,18 @@ export function Nav() {
           ))}
         </ul>
 
+        {showSearch && (
+          <div className="hidden lg:block">
+            <NavSearch />
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-900 md:hidden"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-900 lg:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
             {open ? (
@@ -87,18 +97,25 @@ export function Nav() {
       </nav>
 
       {open && (
-        <ul className="flex flex-col gap-1 border-t border-zinc-800/80 px-4 py-3 text-sm md:hidden">
-          {LINKS.slice(1).map((link) => (
-            <li key={link.href}>
-              <NavLink
-                href={link.href}
-                label={link.label}
-                active={pathname === link.href}
-                onClick={() => setOpen(false)}
-              />
-            </li>
-          ))}
-        </ul>
+        <div className="border-t border-zinc-800/80 px-4 py-3 lg:hidden">
+          {showSearch && (
+            <div className="mb-3">
+              <NavSearch onNavigate={() => setOpen(false)} />
+            </div>
+          )}
+          <ul className="flex flex-col gap-1 text-sm">
+            {LINKS.slice(1).map((link) => (
+              <li key={link.href}>
+                <NavLink
+                  href={link.href}
+                  label={link.label}
+                  active={pathname === link.href}
+                  onClick={() => setOpen(false)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </header>
   );
