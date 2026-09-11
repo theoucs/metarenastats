@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
 import { top1Color, top3Color, EntityIcon, type EntityRarity } from "@/lib/statsDisplay";
 
@@ -98,18 +98,34 @@ function SortControl({
   onChange: (s: SortKey) => void;
   options: { key: SortKey; label: string }[];
 }) {
+  const btnRefs = useRef<Map<SortKey, HTMLButtonElement>>(new Map());
+  const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = btnRefs.current.get(sortBy);
+    setHighlight(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+  }, [sortBy, options]);
+
   return (
     <div className="mb-3 flex items-center gap-2 text-small">
       <span className="text-muted">Sort by:</span>
-      <div className="inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1">
+      <div className="relative inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1">
+        {highlight && (
+          <div
+            className="absolute inset-y-1 z-0 rounded-md bg-overlay shadow-[var(--elev-2)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
+            style={{ left: highlight.left, width: highlight.width }}
+          />
+        )}
         {options.map((opt) => (
           <button
             key={opt.key}
+            ref={(el) => {
+              if (el) btnRefs.current.set(opt.key, el);
+              else btnRefs.current.delete(opt.key);
+            }}
             onClick={() => onChange(opt.key)}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              sortBy === opt.key
-                ? "bg-overlay text-primary shadow-[var(--elev-2)]"
-                : "text-muted hover:text-secondary"
+            className={`relative z-10 rounded-md px-3 py-1 font-medium transition-colors ${
+              sortBy === opt.key ? "text-primary" : "text-muted hover:text-secondary"
             }`}
           >
             {opt.label}

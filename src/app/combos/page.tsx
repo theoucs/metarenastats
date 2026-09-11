@@ -29,7 +29,7 @@ export default async function CombosPage() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center gap-2.5">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Combos Tier List</h1>
-        <span className="rounded-full bg-gradient-to-r from-blue-500 to-violet-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+        <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-accent">
           New
         </span>
       </div>

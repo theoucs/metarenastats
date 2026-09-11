@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/Logo";
 import { Wordmark } from "@/components/Wordmark";
 import { NavSearch } from "@/components/NavSearch";
@@ -24,24 +24,36 @@ function NavLink({
   badge,
   active,
   onClick,
+  linkRef,
+  staticActiveBg,
 }: {
   href: string;
   label: string;
   badge?: string;
   active: boolean;
   onClick?: () => void;
+  linkRef?: (el: HTMLAnchorElement | null) => void;
+  /** Give the active link its own background instead of relying on a sliding
+   * highlight from a parent — used by the mobile dropdown, which stacks
+   * vertically and has no animated indicator of its own. */
+  staticActiveBg?: boolean;
 }) {
   return (
     <Link
+      ref={linkRef}
       href={href}
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors ${
-        active ? "bg-zinc-800/80 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+      className={`relative z-10 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors ${
+        active
+          ? staticActiveBg
+            ? "bg-overlay text-primary"
+            : "text-primary"
+          : "text-muted hover:bg-overlay/60 hover:text-secondary"
       }`}
     >
       {label}
       {badge && (
-        <span className="rounded-full bg-gradient-to-r from-blue-500 to-violet-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white">
+        <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-accent">
           {badge}
         </span>
       )}
@@ -49,9 +61,49 @@ function NavLink({
   );
 }
 
+// Sliding highlight behind the active top-level link, synced to the current
+// route — a translate/resize animation reads as far less "templated" than an
+// instant background swap (design-refresh-plan.md §4.5/§4.6).
+function NavLinkList({ pathname }: { pathname: string }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
+  const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = linkRefs.current.get(pathname);
+    setHighlight(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+  }, [pathname]);
+
+  return (
+    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm xl:flex">
+      {highlight && (
+        <div
+          className="absolute inset-y-0 z-0 rounded-md bg-overlay shadow-[var(--elev-1)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
+          style={{ left: highlight.left, width: highlight.width }}
+        />
+      )}
+      {LINKS.slice(1).map((link) => (
+        <li key={link.href}>
+          <NavLink
+            href={link.href}
+            label={link.label}
+            badge={link.badge}
+            active={pathname === link.href}
+            linkRef={(el) => {
+              if (el) linkRefs.current.set(link.href, el);
+              else linkRefs.current.delete(link.href);
+            }}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   // The home page already has its own big, prominent search — skip the
   // duplicate compact one there.
   const showSearch = pathname !== "/";
@@ -62,29 +114,31 @@ export function Nav() {
     setOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 4);
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
+    <header
+      className={`sticky top-0 z-50 border-b bg-[color:var(--bg-base)]/80 backdrop-blur-md transition-colors duration-150 ${
+        scrolled ? "border-default" : "border-subtle"
+      }`}
+    >
       <nav className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-50"
+          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-primary"
         >
           <LogoMark />
           <Wordmark />
         </Link>
 
-        <ul className="hidden flex-1 items-center gap-0.5 text-sm xl:flex">
-          {LINKS.slice(1).map((link) => (
-            <li key={link.href}>
-              <NavLink
-                href={link.href}
-                label={link.label}
-                badge={link.badge}
-                active={pathname === link.href}
-              />
-            </li>
-          ))}
-        </ul>
+        <NavLinkList pathname={pathname} />
 
         {showSearch && (
           <div className="hidden xl:block">
@@ -97,7 +151,7 @@ export function Nav() {
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-900 xl:hidden"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay xl:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
             {open ? (
@@ -110,10 +164,10 @@ export function Nav() {
       </nav>
 
       {open && (
-        <div className="border-t border-zinc-800/80 px-4 py-3 xl:hidden">
+        <div className="border-t border-subtle px-4 py-3 xl:hidden">
           {showSearch && (
             <div className="mb-3">
-              <NavSearch onNavigate={() => setOpen(false)} />
+              <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />
             </div>
           )}
           <ul className="flex flex-col gap-1 text-sm">
@@ -125,6 +179,7 @@ export function Nav() {
                   badge={link.badge}
                   active={pathname === link.href}
                   onClick={() => setOpen(false)}
+                  staticActiveBg
                 />
               </li>
             ))}

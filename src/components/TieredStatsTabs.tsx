@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 
 export function TieredStatsTabs({
@@ -18,16 +18,33 @@ export function TieredStatsTabs({
   defaultTab?: string;
 }) {
   const [active, setActive] = useState(defaultTab ?? tabs[0].key);
+  const btnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = btnRefs.current.get(active);
+    setHighlight(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+  }, [active, tabs]);
 
   return (
     <div>
-      <div className="mb-4 inline-flex rounded-lg border border-zinc-800 bg-zinc-900/40 p-1">
+      <div className="relative mb-4 inline-flex rounded-lg border border-subtle bg-inset p-1">
+        {highlight && (
+          <div
+            className="absolute inset-y-1 z-0 rounded-md bg-overlay shadow-[var(--elev-2)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
+            style={{ left: highlight.left, width: highlight.width }}
+          />
+        )}
         {tabs.map((tab) => (
           <button
             key={tab.key}
+            ref={(el) => {
+              if (el) btnRefs.current.set(tab.key, el);
+              else btnRefs.current.delete(tab.key);
+            }}
             onClick={() => setActive(tab.key)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-              active === tab.key ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+            className={`relative z-10 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              active === tab.key ? "text-primary" : "text-muted hover:text-secondary"
             }`}
           >
             {tab.label}
