@@ -26,6 +26,14 @@ export type StatsRow = {
    * used by Team Comps, whose "entity" is three champion classes with no art
    * of their own. Takes precedence over name/iconUrl. */
   roles?: string[];
+  /** Present only on augments with enough picks in each of the first three
+   * slots. Unlocks the "Better early"/"Better late" sorts on the grid. */
+  timing?: {
+    /** Baseline-adjusted (3rd pick − 1st pick) % Top 3. Positive = hold it. */
+    swing: number;
+    /** % Top 3 as a 1st / 2nd / 3rd pick — shown on hover, not on the card. */
+    rates: number[];
+  };
 };
 
 /**
@@ -49,7 +57,15 @@ export function RoleChips({ roles }: { roles: string[] }) {
   );
 }
 
-export type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
+export type SortKey =
+  | "tier"
+  | "top3Rate"
+  | "top1Rate"
+  | "avgPlacement"
+  | "playRate"
+  /** Grid-only, and only where rows carry `timing` — see StatsGrid. */
+  | "later"
+  | "earlier";
 
 /**
  * How many rows a card layout renders before the "Show more" button.

@@ -33,6 +33,7 @@ function GridCard({
   maxTop3,
   playRateLabel,
   unitLabel,
+  showTiming,
 }: {
   row: StatsRow;
   rank: number;
@@ -40,6 +41,7 @@ function GridCard({
   maxTop3: number;
   playRateLabel: string;
   unitLabel: string;
+  showTiming: boolean;
 }) {
   return (
     <article
@@ -120,6 +122,21 @@ function GridCard({
           <dt>{playRateLabel.replace(/^%\s*/, "")}</dt>
           <dd className="text-secondary">{(row.playRate * 100).toFixed(1)}%</dd>
         </div>
+        {/* Only while a timing sort is active — otherwise it's a fourth number
+            on every card that most readers never asked for. */}
+        {showTiming && row.timing && (
+          <div
+            className="flex items-baseline gap-1"
+            title={`% Top 3 by pick: ${row.timing.rates
+              .map((r) => `${(r * 100).toFixed(0)}%`)
+              .join(" → ")}`}
+          >
+            <dt>{row.timing.swing >= 0 ? "Later" : "Earlier"}</dt>
+            <dd className="text-secondary">
+              +{Math.abs(row.timing.swing * 100).toFixed(0)}pp
+            </dd>
+          </div>
+        )}
       </dl>
     </article>
   );
@@ -146,13 +163,26 @@ export function StatsGrid({
   const tierMap = useMemo(() => computeTiers(rows, { gamesBonus }), [rows, gamesBonus]);
   const maxTop3 = useMemo(() => rows.reduce((m, r) => Math.max(m, r.top3Rate), 0), [rows]);
 
+  const hasTiming = useMemo(() => rows.some((r) => r.timing), [rows]);
+  const showTiming = sortBy === "later" || sortBy === "earlier";
+
   const sorted = useMemo(() => {
     const copy = [...rows];
     if (sortBy === "top3Rate") copy.sort((a, b) => b.top3Rate - a.top3Rate);
     else if (sortBy === "top1Rate") copy.sort((a, b) => b.top1Rate - a.top1Rate);
     else if (sortBy === "avgPlacement") copy.sort((a, b) => a.avgPlacement - b.avgPlacement);
     else if (sortBy === "playRate") copy.sort((a, b) => b.playRate - a.playRate);
-    else copy.sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
+    else if (sortBy === "later" || sortBy === "earlier") {
+      // Augments without enough picks in all three slots have no swing at all;
+      // they sink to the bottom rather than being silently dropped, so the tab
+      // still shows every augment whichever sort is active.
+      const sign = sortBy === "later" ? 1 : -1;
+      copy.sort((a, b) => {
+        if (!a.timing) return b.timing ? 1 : 0;
+        if (!b.timing) return -1;
+        return sign * (b.timing.swing - a.timing.swing);
+      });
+    } else copy.sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
     return copy;
   }, [rows, sortBy, tierMap]);
 
@@ -181,6 +211,12 @@ export function StatsGrid({
           { key: "top1Rate", label: "% Top 1" },
           { key: "avgPlacement", label: "Avg Placement" },
           { key: "playRate", label: playRateLabel },
+          ...(hasTiming
+            ? ([
+                { key: "earlier", label: "Better early" },
+                { key: "later", label: "Better late" },
+              ] as const)
+            : []),
         ]}
       />
       {/* Bands are full-width rules between grid rows, so the grid has to be
@@ -205,6 +241,7 @@ export function StatsGrid({
                 maxTop3={maxTop3}
                 playRateLabel={playRateLabel}
                 unitLabel={unitLabel}
+                showTiming={showTiming}
               />
             </Fragment>
           );
