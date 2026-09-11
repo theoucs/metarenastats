@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { getCompStats } from "@/lib/aggregate";
 import { type StatsRow } from "@/components/StatsTable";
-import { StatsGrid } from "@/components/StatsGrid";
+import { TieredStatsTabs, type StatsTab } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { championRole } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
+
+// Duos and trios are the same tier list at finer grain, both blocked on sample
+// size rather than on anything technical — listed here so the page says what
+// it will become instead of silently omitting it.
+const TABS: StatsTab[] = [
+  { key: "archetypes", label: "Archetypes" },
+  { key: "duos", label: "Champion Duos", comingSoon: true },
+  { key: "trios", label: "Champion Trios", comingSoon: true },
+];
 
 const n = (value: number) => value.toLocaleString("en-US");
 
@@ -40,8 +49,8 @@ export default async function CompsPage() {
           more than once. Specific duos aren&apos;t much better —{" "}
           <span className="text-secondary">{n(coverage.duos.usable)}</span> of{" "}
           <span className="text-secondary">{n(coverage.duos.distinct)}</span> pairings clear 8 games.
-          Both get their own tier list once the sample supports one; ranking them today would be
-          noise with a tier badge on it.
+          Both tabs unlock once the sample supports them — ranking either one today would be noise
+          with a tier badge on it.
         </p>
         <p className="mt-1.5 max-w-2xl text-small text-muted">
           A comp needs 20 teams to be listed. Tiers here ignore how often a shape turns up — with 50
@@ -54,7 +63,14 @@ export default async function CompsPage() {
       </PageHeader>
 
       {/* gamesBonus off — see the note above and TierOptions. */}
-      <StatsGrid rows={rows} playRateLabel="% of Teams" unitLabel="teams" gamesBonus={false} />
+      <TieredStatsTabs
+        tabs={TABS}
+        rowsByTier={{ archetypes: rows }}
+        display="grid"
+        playRateLabel="% of Teams"
+        unitLabel="teams"
+        gamesBonus={false}
+      />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
 import { top1Color, top3Color, EntityIcon, type EntityRarity } from "@/lib/statsDisplay";
+import { SlidingHighlight, useSlidingHighlight } from "@/components/SlidingHighlight";
 
 export type StatsRow = {
   key: string;
@@ -160,33 +161,22 @@ export function SortControl({
   onChange: (s: SortKey) => void;
   options: { key: SortKey; label: string }[];
 }) {
-  const btnRefs = useRef<Map<SortKey, HTMLButtonElement>>(new Map());
-  const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = btnRefs.current.get(sortBy);
-    setHighlight(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
-  }, [sortBy, options]);
+  const { containerRef, register, rect } = useSlidingHighlight(sortBy, options);
 
   return (
     // Label above the pills on narrow screens: side-by-side, the pill group
     // takes the width it needs and squeezes "Sort by:" into two lines.
     <div className="mb-3 flex flex-col items-start gap-1.5 text-small sm:flex-row sm:items-center sm:gap-2">
       <span className="shrink-0 text-muted">Sort by:</span>
-      <div className="relative inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1">
-        {highlight && (
-          <div
-            className="absolute inset-y-1 z-0 rounded-md bg-overlay shadow-[var(--elev-2)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
-            style={{ left: highlight.left, width: highlight.width }}
-          />
-        )}
+      <div
+        ref={containerRef}
+        className="relative inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1"
+      >
+        <SlidingHighlight rect={rect} />
         {options.map((opt) => (
           <button
             key={opt.key}
-            ref={(el) => {
-              if (el) btnRefs.current.set(opt.key, el);
-              else btnRefs.current.delete(opt.key);
-            }}
+            ref={register(opt.key)}
             onClick={() => onChange(opt.key)}
             className={`relative z-10 rounded-md px-3 py-1 font-medium transition-colors ${
               sortBy === opt.key ? "text-primary" : "text-muted hover:text-secondary"

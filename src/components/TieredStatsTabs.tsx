@@ -1,8 +1,20 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { StatsGrid } from "@/components/StatsGrid";
+import { SlidingHighlight, useSlidingHighlight } from "@/components/SlidingHighlight";
+
+export type StatsTab = {
+  key: string;
+  label: string;
+  /**
+   * Renders the tab as a non-interactive "Soon" placeholder. Used where the
+   * split is real and planned but the sample can't support it yet — see the
+   * Team Comps page, where champion duos and trios are both waiting on data.
+   */
+  comingSoon?: boolean;
+};
 
 export function TieredStatsTabs({
   tabs,
@@ -14,11 +26,11 @@ export function TieredStatsTabs({
   unitLabel,
   gamesBonus,
 }: {
-  tabs: readonly { key: string; label: string }[];
+  tabs: readonly StatsTab[];
   rowsByTier: Record<string, StatsRow[]>;
   linkPrefix?: string;
   playRateLabel?: string;
-  /** Which tab key is active initially — defaults to the first tab. */
+  /** Which tab key is active initially — defaults to the first enabled tab. */
   defaultTab?: string;
   /** "grid" for icon-led browsing (augments, items); "table" for rankings. */
   display?: "table" | "grid";
@@ -27,39 +39,48 @@ export function TieredStatsTabs({
   /** See TierOptions — grid display only. */
   gamesBonus?: boolean;
 }) {
-  const [active, setActive] = useState(defaultTab ?? tabs[0].key);
-  const btnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = btnRefs.current.get(active);
-    setHighlight(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
-  }, [active, tabs]);
+  const [active, setActive] = useState(
+    defaultTab ?? tabs.find((t) => !t.comingSoon)?.key ?? tabs[0].key
+  );
+  const { containerRef, register, rect } = useSlidingHighlight(active, tabs);
 
   return (
     <div>
-      <div className="relative mb-4 inline-flex rounded-lg border border-subtle bg-inset p-1">
-        {highlight && (
-          <div
-            className="absolute inset-y-1 z-0 rounded-md bg-overlay shadow-[var(--elev-2)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
-            style={{ left: highlight.left, width: highlight.width }}
-          />
+      <div
+        ref={containerRef}
+        role="tablist"
+        className="relative mb-4 inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1"
+      >
+        <SlidingHighlight rect={rect} />
+        {tabs.map((tab) =>
+          tab.comingSoon ? (
+            <span
+              key={tab.key}
+              // A disabled <button> would still be a tab stop in some browsers
+              // and reads as "broken control"; this is a label, so it's markup.
+              className="relative z-10 flex cursor-not-allowed items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-muted/60"
+              title="Not enough matches tracked yet"
+            >
+              {tab.label}
+              <span className="rounded-full border border-subtle px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-muted">
+                Soon
+              </span>
+            </span>
+          ) : (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={active === tab.key}
+              ref={register(tab.key)}
+              onClick={() => setActive(tab.key)}
+              className={`relative z-10 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                active === tab.key ? "text-primary" : "text-muted hover:text-secondary"
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
         )}
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            ref={(el) => {
-              if (el) btnRefs.current.set(tab.key, el);
-              else btnRefs.current.delete(tab.key);
-            }}
-            onClick={() => setActive(tab.key)}
-            className={`relative z-10 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-              active === tab.key ? "text-primary" : "text-muted hover:text-secondary"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
       {display === "grid" ? (
         <StatsGrid
