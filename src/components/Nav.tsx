@@ -13,7 +13,7 @@ const LINKS: { href: string; label: string; badge?: string }[] = [
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
   { href: "/combos", label: "Combos", badge: "New" },
-  { href: "/anvil", label: "Anvil Run" },
+  { href: "/anvil", label: "Anvil Run", badge: "New" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/info", label: "Info & Tips" },
 ];
