@@ -13,7 +13,7 @@ const LINKS: { href: string; label: string; badge?: string }[] = [
   // Kept apart from "Combos" in the ordering on purpose — Team Comps is three
   // champions, Combos is two items/augments, and the names are close enough
   // that sitting them side by side would read as one feature split in two.
-  { href: "/comps", label: "Team Comps", badge: "New" },
+  { href: "/comps", label: "Team Comps" },
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
   { href: "/combos", label: "Combos", badge: "New" },
@@ -83,7 +83,7 @@ function NavLinkList({ pathname }: { pathname: string }) {
   }, [pathname]);
 
   return (
-    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm min-[1360px]:flex">
+    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm xl:flex">
       {highlight && (
         <div
           className="absolute inset-y-0 z-0 rounded-md bg-overlay shadow-[var(--elev-1)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
@@ -149,7 +149,7 @@ export function Nav() {
         <NavLinkList pathname={pathname} />
 
         {showSearch && (
-          <div className="hidden min-[1360px]:block">
+          <div className="hidden xl:block">
             <NavSearch />
           </div>
         )}
@@ -159,7 +159,7 @@ export function Nav() {
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay min-[1360px]:hidden"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay xl:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
             {open ? (
@@ -172,7 +172,7 @@ export function Nav() {
       </nav>
 
       {open && (
-        <div className="border-t border-subtle px-4 py-3 min-[1360px]:hidden">
+        <div className="border-t border-subtle px-4 py-3 xl:hidden">
           {showSearch && (
             <div className="mb-3">
               <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />

@@ -149,19 +149,9 @@ export default async function Home() {
           </>
         )}
 
-        {/* Concentric rings, not a repeated pattern — evokes an arena viewed
-            from above. 4% opacity ceiling per design-refresh-plan.md §5.1. */}
-        <div
-          className="pointer-events-none absolute -left-24 top-1/2 -translate-y-1/2 text-primary opacity-[0.04]"
-          aria-hidden
-        >
-          <svg width="760" height="760" viewBox="0 0 760 760" fill="none">
-            <circle cx="380" cy="380" r="120" stroke="currentColor" />
-            <circle cx="380" cy="380" r="200" stroke="currentColor" />
-            <circle cx="380" cy="380" r="280" stroke="currentColor" />
-            <circle cx="380" cy="380" r="360" stroke="currentColor" />
-          </svg>
-        </div>
+        {/* No decorative rings here. They existed to give a text-only hero
+            something to look at; now that the splash art carries it, thin arcs
+            crossing the tagline just read as a rendering artefact. */}
 
         <div className="relative mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-20">
           <p className="text-micro font-semibold uppercase tracking-[0.18em] text-muted">
