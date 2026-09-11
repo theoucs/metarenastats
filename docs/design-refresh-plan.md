@@ -55,12 +55,17 @@ Trois rôles couleur, strictement séparés :
 |---|---|---|
 | **Primaire** (interactif) | Cyan hextech | Liens, onglet actif, focus, sélection |
 | **Signal** (excellence) | Or | Tier S, 1ʳᵉ place, best-in-class |
-| **Prismatique** (signature) | Dégradé fuchsia→cyan | **Logo, wordmark**, rareté prismatique |
+| **Prismatique** (signature) | Opale du jeu (cf. §3.1.1) | **Logo, wordmark**, rareté prismatique |
 | *Réservé* | Vert / rouge | **Uniquement** qualité d'une stat. Jamais de branding. |
 
 > **✅ Direction validée par Théo le 2026-09-11.** Ne pas re-débattre ces choix
 > sans qu'il le demande explicitement. Points actés :
 > - Logo et wordmark en **prismatique** (forme inchangée, cf. §4.0) — il aime.
+>   ⚠️ **Corrigé le 2026-09-11** : la teinte validée initialement était le
+>   fuchsia→cyan existant. Théo a signalé qu'il ne reflétait pas le jeu ;
+>   vérification faite sur l'asset officiel, il avait raison. Les valeurs
+>   retenues sont désormais celles du §3.1.1 (opale violet/périwinkle avec
+>   reflet jaune-vert), pas le fuchsia→cyan.
 > - Cyan **en petites touches d'interface uniquement** (onglet actif, liens, focus),
 >   jamais en aplat.
 > - Or **réservé** au tier S et à la 1ʳᵉ place.
@@ -75,7 +80,20 @@ Trois rôles couleur, strictement séparés :
 
 ## 3. Design tokens
 
-À définir dans `src/app/globals.css` via `@theme` (Tailwind v4) + variables CSS.
+À définir dans `src/app/globals.css`. **Le projet est en Tailwind v4** — pas de
+`tailwind.config.js`, la configuration se fait dans le CSS.
+
+Deux mécanismes à ne pas confondre :
+- Les valeurs déclarées dans `@theme { --color-*: … }` génèrent des classes
+  utilitaires (`--color-bg-raised` → `bg-bg-raised`). C'est ce qu'il faut pour
+  tout ce qui est utilisé comme classe Tailwind.
+- Les variables déclarées dans `:root` restent de simples variables CSS,
+  utilisables en `var(…)` ou en valeur arbitraire (`bg-[var(--prism-frame)]`).
+  Les dégradés et les ombres composées (`--prism-frame`, `--elev-*`) vont là.
+
+Le `@theme inline` déjà présent dans `globals.css` (qui mappe `--color-background`
+et les polices) doit être **étendu, pas remplacé** : `--font-sans` / `--font-mono`
+y sont déjà câblés sur les variables de `next/font`.
 
 ### 3.1 Couleurs
 
@@ -106,10 +124,20 @@ Trois rôles couleur, strictement séparés :
   --gold-muted:  rgba(242, 182, 64, 0.12);
   --gold-border: rgba(242, 182, 64, 0.35);
 
-  /* Signature — prismatique (logo, wordmark, rareté prismatique) */
-  --prism-from: #E879F9;
-  --prism-to:   #35D0E8;
-  --prism-gradient: linear-gradient(120deg, var(--prism-from), var(--prism-to));
+  /* Signature — prismatique. Valeurs échantillonnées sur l'asset officiel
+     game/assets/ux/cherry/augments/augmentselection/augmentcard_frame_prismatic.png */
+  --prism-shimmer: #E1E4C6;  /* reflet jaune-vert — la signature "réfraction" */
+  --prism-pale:    #D0D4E4;  /* lavande pâle */
+  --prism-blue:    #849AD3;  /* périwinkle */
+  --prism-violet:  #8362DC;  /* violet */
+
+  /* Cadre de rareté prismatique — reproduit le jeu à l'identique */
+  --prism-frame: linear-gradient(160deg,
+    var(--prism-shimmer), var(--prism-pale) 35%,
+    var(--prism-blue) 70%, var(--prism-violet));
+
+  /* Logo / wordmark — mêmes teintes, resaturées (cf. §3.1.1) */
+  --prism-brand: linear-gradient(120deg, #B8C77E, #9AA7DD 32%, #6E7FD4 68%, #7A4FD8);
 
   /* Qualité de stat — réservé, ne jamais réutiliser ailleurs */
   --stat-good: #3FCF8E;
@@ -117,10 +145,54 @@ Trois rôles couleur, strictement séparés :
 }
 ```
 
-Le prismatique existe déjà dans le code (`EntityIcon` dans `statsDisplay.tsx` :
-`from-fuchsia-400 via-purple-400 to-cyan-300`). `fuchsia-400` vaut déjà `#E879F9` —
-**aligner cet existant sur les tokens ci-dessus** pour que le cadre d'un augment
-prismatique et le logo partagent exactement le même dégradé.
+#### 3.1.1 Pourquoi deux variantes de prismatique
+
+**Le dégradé actuel du site est faux.** `EntityIcon` utilise
+`from-fuchsia-400 via-purple-400 to-cyan-300` (`#E879F9 → #C084FC → #67E8F9`) :
+un rose magenta saturé vers un cyan vif. L'asset officiel du jeu, échantillonné
+pixel par pixel, donne tout autre chose :
+
+| Position sur le cadre | Couleur réelle |
+|---|---|
+| Haut | `#D0D4E4` lavande pâle |
+| Haut-gauche / haut-droite | `#E1E4C6` **jaune-vert pâle** |
+| Milieu des montants | `#849AD3` périwinkle |
+| Bas des montants | `#8362DC` violet |
+| Bas | `#9F73C2` violet grisé |
+
+Trois écarts : notre version est **beaucoup trop saturée**, elle est
+**dominée par le rose magenta** (absent du jeu, qui est dominé par le violet), et
+elle **rate complètement le reflet jaune-vert** — or c'est précisément lui qui
+donne l'effet « opale / réfraction » caractéristique du prismatique.
+
+**Deux usages, deux variantes :**
+
+- **`--prism-frame`** (cadres d'augments et d'items prismatiques) : reproduit le
+  jeu littéralement. Vérifié visuellement contre l'asset de référence, ça colle.
+- **`--prism-brand`** (logo, wordmark) : mêmes teintes, resaturées d'environ 25 %.
+  **Nécessaire** : testé, les points blancs du logo deviennent invisibles sur le
+  pastel littéral, et un wordmark en `bg-clip-text` pastel est illisible sur fond
+  sombre. La version resaturée conserve le reflet jaune-vert et reste lisible
+  jusqu'à 16 px (favicon). Variante écartée : points sombres (`#241645`) sur
+  l'opale littérale — très joli aussi, mais change le caractère du logo.
+
+#### 3.1.2 Argent et or — même écart, moindre priorité
+
+Les cadres `silver` et `gold` du jeu sont **métalliques** (reflet clair en haut,
+sombre en bas), là où le site utilise des bordures plates et vives :
+
+| | Reflet haut | Corps | Bas |
+|---|---|---|---|
+| Silver (jeu) | `#ECEDEC` | `#898989` | `#474747` |
+| Gold (jeu) | `#F7EDCE` | `#947152` | `#624536` |
+| *Site actuel* | *silver = `slate-300`, gold = `amber-400` — plats et plus vifs* |
+
+À 28 px sur fond sombre, **reproduire le métal littéralement rendrait les bordures
+quasi invisibles** : ne pas copier tel quel. La bonne correction est un simple
+ajustement de teinte — or moins citron (vers `#E8B563`), argent moins bleuté
+(vers `#C9CCD4`) — en gardant assez de luminosité pour rester lisible.
+**Valeurs à valider à l'œil pendant la phase 1**, contrairement au prismatique
+qui est déjà vérifié.
 
 **Contraintes à vérifier** : `--gold` et `--accent` sur `--bg-raised` doivent
 passer AA (4.5:1) pour du texte. Si le badge S en or sur fond ambré échoue,
@@ -140,6 +212,13 @@ Doit se lire comme une **descente** claire, et **ne jamais contenir de vert**.
 
 Or → cyan → indigo → slate → gris : descente en « préciosité » lisible même en
 niveaux de gris.
+
+> **Note sur le cyan du tier A.** Il est identique à `--accent` (la couleur
+> interactive), ce qui contredit en apparence la règle « trois rôles strictement
+> séparés » du §2. C'est **assumé** : la rampe de tiers est une échelle fermée,
+> toujours affichée dans un badge de 28 px en colonne fixe — un contexte où
+> aucune confusion avec un lien n'est possible. Ne pas « corriger » en inventant
+> une 4ᵉ teinte, ça casserait la lisibilité de la descente.
 
 ### 3.3 Typographie
 
@@ -201,14 +280,19 @@ Le détail qui fait « soigné » : le **liseré interne clair en haut** des sur
 ### 4.0 Identité — logo, wordmark, favicon ✅ validé
 
 **La forme du logo ne change pas** (carré arrondi `rx=9`, 3 points blancs).
-Seules les deux couleurs du dégradé changent.
+Seul le dégradé de remplissage change — il passe de 2 stops à 4.
 
 | Fichier | Changement |
 |---|---|
-| `src/components/Logo.tsx` | `#3b82f6 → #8b5cf6` devient `var(--prism-from) → var(--prism-to)` (`#E879F9 → #35D0E8`) |
-| `src/components/Wordmark.tsx` | Le `A` et `rena` passent de `from-blue-400 to-violet-400` au dégradé prismatique. `Met` et `Stats` restent en `--text-primary`. Structure inchangée. |
-| `src/app/icon.svg` | Même changement de dégradé que `Logo.tsx` — les deux doivent rester identiques. |
+| `src/components/Logo.tsx` | Les 2 stops `#3b82f6 → #8b5cf6` deviennent les 4 stops de `--prism-brand` (`#B8C77E → #9AA7DD → #6E7FD4 → #7A4FD8`). Points blancs conservés. |
+| `src/components/Wordmark.tsx` | Le `A` et `rena` passent de `from-blue-400 to-violet-400` à `--prism-brand`. `Met` et `Stats` restent en `--text-primary`. Structure inchangée. |
+| `src/app/icon.svg` | Même dégradé que `Logo.tsx` — les deux doivent rester strictement identiques. |
 | `src/app/favicon.ico` | **À régénérer depuis le nouvel `icon.svg`.** Sinon Safari continuera d'afficher l'ancien logo bleu-violet. Commande utilisée précédemment : `magick -background none -density 384 icon.svg -resize {16,32,48,64} …` puis assemblage en `.ico`. |
+| `src/lib/statsDisplay.tsx` | `EntityIcon` : remplacer `from-fuchsia-400 via-purple-400 to-cyan-300` par `--prism-frame` (cf. §3.1.1 — le dégradé actuel ne correspond pas au jeu). |
+
+⚠️ **Ne pas utiliser `--prism-brand` pour les cadres d'augments, ni `--prism-frame`
+pour le logo.** Les deux se ressemblent mais ont des contraintes opposées :
+le cadre doit coller au jeu, le logo doit rester lisible à 16 px.
 
 Le badge « New » de la nav (§4.6) **ne doit pas** reprendre le dégradé prismatique :
 le prismatique reste réservé à l'identité et à la rareté prismatique du jeu.
@@ -253,7 +337,12 @@ changement de fond. Fond du conteneur `--bg-inset`, pill active `--bg-overlay` +
   `--accent-muted` + texte `--accent` + bordure `--accent-border`. Plus sobre,
   plus premium, et cohérent avec le système.
 - Champ de recherche : fond `--bg-inset`, icône loupe à gauche, raccourci `⌘K`
-  affiché à droite en `micro` (et effectivement branché).
+  affiché à droite en `micro`.
+  **Le raccourci doit réellement fonctionner** : `⌘K` (macOS) / `Ctrl+K` met le
+  focus sur l'input de `NavSearch` (`preventDefault` pour ne pas déclencher la
+  recherche du navigateur), `Échap` retire le focus et vide les suggestions.
+  Afficher `⌘K` uniquement si la plateforme est Apple, sinon `Ctrl K`.
+  Ne pas afficher le raccourci sur mobile (l'input est dans le menu déroulant).
 - Bordure basse du header qui s'intensifie au scroll (`--border-subtle` →
   `--border-default`).
 
@@ -276,9 +365,16 @@ Le disclaimer Riot est un mur de texte au même poids que le reste. Le passer en
   en SVG inline, non répété agressivement.
 - Hero resserré : wordmark + une ligne + **la recherche comme élément principal**.
 - **Remplir la zone morte** avec un « Meta Snapshot » construit sur les données
-  déjà disponibles : top 5 champions du moment, top 3 combos, et les chiffres
-  clés. Le site paraît immédiatement vivant et riche en données.
-  → Réutiliser `getChampionStats()` / `getComboStats()`, **aucun nouveau calcul.**
+  déjà disponibles : top 5 champions du moment + les chiffres clés.
+  → Réutiliser `getChampionStats()`, **aucun nouveau calcul.**
+
+  ⚠️ **Ne pas appeler `getComboStats()` sur l'accueil.** Mesuré : ~2,4 s de calcul
+  côté serveur (il génère toutes les paires de tous les participants). L'accueil
+  n'appelle aujourd'hui que `getSiteStats()` et répond instantanément — y ajouter
+  les combos rendrait la page d'entrée du site lente, ce qui annulerait le
+  bénéfice. Si un top combos sur l'accueil est vraiment souhaité plus tard, il
+  faudra d'abord mettre en cache le résultat (`unstable_cache` / ISR), ce qui
+  sort du périmètre de cette refonte.
 
 ### 5.2 Page champion — le plus gros « woaw »
 - **Bandeau splash art.** Vérifié disponible :
@@ -297,6 +393,17 @@ assombri (opacité ~15 %) + scrim. Garde la cohérence avec la page champion.
 
 ### 5.4 Tier lists (champions / items / augments / combos / anvil)
 Bénéficient automatiquement de §4.1. Aucune refonte de structure nécessaire.
+
+### 5.5 Pages et états secondaires — à ne pas oublier
+Faciles à zapper, et ils trahiraient l'ancienne palette s'ils restent en l'état :
+
+- `src/app/players/[riotId]/loading.tsx` — le squelette de chargement utilise
+  `bg-zinc-900` en dur. À passer sur `--bg-raised`, sinon il clignote dans
+  l'ancienne teinte à chaque recherche de joueur.
+- `src/app/info/page.tsx` et `src/app/privacy/page.tsx` — pages de texte, à
+  repasser sur les tokens de typo et de surface (pas de refonte de structure).
+- L'état vide de `StatsTable` (`EmptyState`) et le bandeau d'avertissement
+  « données en cache » de la page joueur (actuellement en `amber-*` en dur).
 
 ---
 
@@ -338,7 +445,7 @@ Ordonné par **impact / effort décroissant**. Chaque phase est shippable seule.
 
 | Phase | Contenu | Fichiers principaux | Impact |
 |---|---|---|---|
-| **1 — Fondations** | Tokens couleur, polices, échelle typo, élévations, nouvelle rampe de tiers, **logo + wordmark + favicon prismatiques** | `globals.css`, `layout.tsx`, `tiers.ts`, `statsDisplay.tsx`, `Logo.tsx`, `Wordmark.tsx`, `icon.svg`, `favicon.ico` | ⭐⭐⭐⭐⭐ |
+| **1 — Fondations** | Tokens couleur, polices, échelle typo, élévations, nouvelle rampe de tiers, **logo + wordmark + favicon prismatiques**, + les états secondaires du §5.5 | `globals.css`, `layout.tsx`, `tiers.ts`, `statsDisplay.tsx`, `Logo.tsx`, `Wordmark.tsx`, `icon.svg`, `favicon.ico`, `loading.tsx`, `info/`, `privacy/` | ⭐⭐⭐⭐⭐ |
 | **2 — Tableaux** | Bandes de tier, barres inline, en-tête collant, survol, icônes | `StatsTable.tsx` | ⭐⭐⭐⭐⭐ |
 | **3 — En-têtes riches** | Splash art champion + joueur | `champions/[slug]/page.tsx`, `players/[riotId]/page.tsx` | ⭐⭐⭐⭐ |
 | **4 — Accueil** | Suppression du blob, motif de fond, Meta Snapshot | `app/page.tsx`, `HomeSearch.tsx` | ⭐⭐⭐⭐ |
