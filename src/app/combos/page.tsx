@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getComboStats } from "@/lib/aggregate";
 import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
@@ -35,6 +36,13 @@ export default async function CombosPage() {
       <p className="mt-2 text-zinc-400">
         Pairs of items/augments picked by the same player in the same game — a good combo shows up
         often (at least 5 games tracked) and performs well when it does. Top 200 per category.
+      </p>
+      <p className="mt-1 text-sm text-zinc-500">
+        Looking for combos on a specific champion?{" "}
+        <Link href="/champions" className="text-blue-400 hover:underline">
+          Head to its champion page
+        </Link>
+        .
       </p>
       <div className="mt-4 mb-6">
         <SampleSizeBadge totalMatches={totalMatches} />
