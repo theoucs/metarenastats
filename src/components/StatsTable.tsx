@@ -61,7 +61,7 @@ function RankCell({ rank }: { rank: number }) {
   return <span className="font-mono tabular-nums text-muted">{rank}</span>;
 }
 
-function TierBadge({ tier }: { tier: Tier }) {
+export function TierBadge({ tier }: { tier: Tier }) {
   const style = TIER_STYLES[tier];
   return (
     <span
