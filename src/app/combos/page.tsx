@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getComboStats } from "@/lib/aggregate";
-import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
+import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import { PageHeader } from "@/components/PageHeader";
 import { itemCategory } from "@/lib/gameData";
 import { comboToRow } from "@/lib/comboDisplay";
 
@@ -27,26 +28,21 @@ export default async function CombosPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex items-center gap-2.5">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Combos Tier List</h1>
-        <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-accent">
-          New
-        </span>
-      </div>
-      <p className="mt-2 text-zinc-400">
-        Pairs of items/augments picked by the same player in the same game — a good combo shows up
-        often (at least 5 games tracked) and performs well when it does. Top 200 per category.
-      </p>
-      <p className="mt-1 text-sm text-zinc-500">
-        Looking for combos on a specific champion?{" "}
-        <Link href="/champions" className="text-blue-400 hover:underline">
-          Head to its champion page
-        </Link>
-        .
-      </p>
-      <div className="mt-4 mb-6">
-        <SampleSizeBadge totalMatches={totalMatches} />
-      </div>
+      <PageHeader
+        eyebrow="Tier list"
+        title="Combos"
+        isNew
+        description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
+        totalMatches={totalMatches}
+      >
+        <p className="mt-1 text-small text-muted">
+          Looking for combos on a specific champion?{" "}
+          <Link href="/champions" className="text-accent hover:underline">
+            Head to its champion page
+          </Link>
+          .
+        </p>
+      </PageHeader>
       <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} />
     </div>
   );

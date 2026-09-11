@@ -1,0 +1,51 @@
+import { SampleSizeBadge } from "@/components/StatsTable";
+
+/**
+ * The header block every list page opens with. Before this existed each page
+ * hand-rolled its own out of leftover `text-zinc-*` / `text-2xl` classes that
+ * predate the design tokens — so the six pages were subtly inconsistent while
+ * looking copy-pasted. One component, the real type scale (--text-display /
+ * --text-h1), and an eyebrow that says which *kind* of page you're on.
+ */
+export function PageHeader({
+  eyebrow,
+  title,
+  isNew,
+  description,
+  totalMatches,
+  children,
+}: {
+  /** Short category label above the title — "Tier list", "Rankings", etc. */
+  eyebrow: string;
+  title: string;
+  /** Renders a "New" pill beside the title. */
+  isNew?: boolean;
+  description?: React.ReactNode;
+  /** Renders the shared sample-size line when provided. */
+  totalMatches?: number;
+  /** Extra notes under the description (caveats, cross-links). */
+  children?: React.ReactNode;
+}) {
+  return (
+    <header className="mb-7">
+      <p className="text-micro font-semibold uppercase tracking-[0.14em] text-muted">{eyebrow}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+        <h1 className="font-display text-display font-semibold tracking-tight text-primary">
+          {title}
+        </h1>
+        {isNew && (
+          <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2 py-0.5 text-micro font-bold uppercase tracking-wide text-accent">
+            New
+          </span>
+        )}
+      </div>
+      {description && <p className="mt-2 max-w-2xl text-secondary">{description}</p>}
+      {children}
+      {totalMatches !== undefined && (
+        <div className="mt-4">
+          <SampleSizeBadge totalMatches={totalMatches} />
+        </div>
+      )}
+    </header>
+  );
+}

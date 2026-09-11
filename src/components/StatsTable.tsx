@@ -23,7 +23,37 @@ export type StatsRow = {
   secondaryRarity?: EntityRarity;
 };
 
-type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
+export type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
+
+/**
+ * How many rows a card layout renders before the "Show more" button.
+ *
+ * The desktop table can afford to emit every row because it lives in a
+ * `max-h-[75vh]` scrollport — the page height stays constant no matter how
+ * many rows there are. A card list in normal page flow has no such ceiling:
+ * the leaderboard's ~7.8k tracked players came to a 1,019,060px-tall page.
+ */
+export const CARD_PAGE_SIZE = 40;
+
+export function ShowMoreButton({
+  shown,
+  total,
+  onClick,
+}: {
+  shown: number;
+  total: number;
+  onClick: () => void;
+}) {
+  if (shown >= total) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="mt-3 w-full rounded-lg border border-subtle bg-raised/40 py-2.5 text-small font-medium text-secondary transition-colors hover:border-default hover:bg-overlay hover:text-primary"
+    >
+      Show more · {shown} of {total}
+    </button>
+  );
+}
 
 export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
@@ -72,24 +102,31 @@ export function TierBadge({ tier }: { tier: Tier }) {
   );
 }
 
-function TierBandRow({ tier, colSpan, isFirst }: { tier: Tier; colSpan: number; isFirst: boolean }) {
+/** The "S TIER ─────" rule. Shared by the table, the mobile card list and StatsGrid. */
+export function TierBandHeading({ tier }: { tier: Tier }) {
   const style = TIER_STYLES[tier];
+  return (
+    <div
+      className="flex items-center gap-2 text-micro font-semibold uppercase tracking-wide"
+      style={{ color: style.hex }}
+    >
+      {tier} Tier
+      <span className="h-px flex-1" style={{ backgroundColor: style.hex, opacity: 0.25 }} />
+    </div>
+  );
+}
+
+function TierBandRow({ tier, colSpan, isFirst }: { tier: Tier; colSpan: number; isFirst: boolean }) {
   return (
     <tr aria-hidden="true">
       <td colSpan={colSpan} className={`px-4 pb-1.5 ${isFirst ? "pt-3" : "pt-5"}`}>
-        <div
-          className="flex items-center gap-2 text-micro font-semibold uppercase tracking-wide"
-          style={{ color: style.hex }}
-        >
-          {tier} Tier
-          <span className="h-px flex-1" style={{ backgroundColor: style.hex, opacity: 0.25 }} />
-        </div>
+        <TierBandHeading tier={tier} />
       </td>
     </tr>
   );
 }
 
-function SortControl({
+export function SortControl({
   sortBy,
   onChange,
   options,
@@ -107,8 +144,10 @@ function SortControl({
   }, [sortBy, options]);
 
   return (
-    <div className="mb-3 flex items-center gap-2 text-small">
-      <span className="text-muted">Sort by:</span>
+    // Label above the pills on narrow screens: side-by-side, the pill group
+    // takes the width it needs and squeezes "Sort by:" into two lines.
+    <div className="mb-3 flex flex-col items-start gap-1.5 text-small sm:flex-row sm:items-center sm:gap-2">
+      <span className="shrink-0 text-muted">Sort by:</span>
       <div className="relative inline-flex flex-wrap rounded-lg border border-subtle bg-inset p-1">
         {highlight && (
           <div
@@ -169,7 +208,7 @@ function EmptyState() {
 // Normalized-to-column-max bar width behind %Top3/%Top1, in percent of cell
 // width — capped so it never touches the far edge, floored so a near-zero
 // value still shows a visible sliver.
-function meterWidth(value: number, max: number) {
+export function meterWidth(value: number, max: number) {
   if (max <= 0) return 0;
   return Math.max(3, Math.min(92, (value / max) * 92));
 }
@@ -256,6 +295,121 @@ function DataRow({
   );
 }
 
+/**
+ * Below `md` the table is replaced by these, not scrolled sideways.
+ *
+ * The table needs ~640px to fit its 8 columns, so on a phone everything past
+ * "Games" used to sit off-screen inside an `overflow-auto` with no scroll
+ * affordance — i.e. a stats site showing no stats. Same numbers, stacked:
+ * headline % Top 3 with its meter, then the rest on one line.
+ */
+function MobileCard({
+  row,
+  rank,
+  variant,
+  tierInfo,
+  linkPrefix,
+  maxTop3,
+  playRateLabel,
+}: {
+  row: StatsRow;
+  rank: number;
+  variant: "tiers" | "ranked";
+  tierInfo?: TierInfo;
+  linkPrefix?: string;
+  maxTop3: number;
+  playRateLabel: string;
+}) {
+  const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "var(--border-default)";
+
+  // Each icon+name is one flex item, so a combo pair wraps *between* its two
+  // halves rather than orphaning "Dragonheart" onto its own line under the
+  // icon it doesn't belong to.
+  const heading = (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
+      <span className="flex min-w-0 items-center gap-2">
+        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
+        <span className="min-w-0 break-words font-medium text-primary">{row.name}</span>
+      </span>
+      {row.secondaryName && (
+        <>
+          <span className="text-muted">+</span>
+          <span className="flex min-w-0 items-center gap-2">
+            {row.secondaryIconUrl && (
+              <EntityIcon
+                iconUrl={row.secondaryIconUrl}
+                rarity={row.secondaryRarity}
+                sizeClass="h-8 w-8"
+              />
+            )}
+            <span className="min-w-0 break-words font-medium text-primary">
+              {row.secondaryName}
+            </span>
+          </span>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      id={`entity-${row.key}`}
+      className="rounded-lg border border-subtle border-l-2 bg-raised/40 p-3"
+      style={{ borderLeftColor: railHex }}
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="mt-1.5 shrink-0 font-mono text-small tabular-nums text-muted">
+          {variant === "ranked" ? <RankCell rank={rank + 1} /> : rank + 1}
+        </span>
+        {linkPrefix ? (
+          <Link href={`${linkPrefix}${row.key}`} className="flex min-w-0 flex-1">
+            {heading}
+          </Link>
+        ) : (
+          heading
+        )}
+        {tierInfo && <TierBadge tier={tierInfo.tier} />}
+      </div>
+
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className={`font-display text-h1 font-semibold ${top3Color(row.top3Rate)}`}>
+          {(row.top3Rate * 100).toFixed(1)}%
+        </span>
+        <span className="text-micro uppercase tracking-wide text-muted">% Top 3</span>
+      </div>
+      <div aria-hidden="true" className="mt-1.5 h-1 overflow-hidden rounded-full bg-inset">
+        <div
+          className="h-full rounded-full bg-[color:var(--accent)]/45"
+          style={{ width: `${meterWidth(row.top3Rate, maxTop3)}%` }}
+        />
+      </div>
+
+      <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-micro tabular-nums text-muted">
+        {variant === "tiers" && (
+          <div className="flex items-baseline gap-1">
+            <dt>Top 1</dt>
+            <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
+          </div>
+        )}
+        <div className="flex items-baseline gap-1">
+          <dt>Avg</dt>
+          <dd className="text-secondary">{row.avgPlacement.toFixed(2)}</dd>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <dt>Games</dt>
+          <dd className="text-secondary">{row.games}</dd>
+        </div>
+        {variant === "tiers" && (
+          <div className="flex items-baseline gap-1">
+            <dt>{playRateLabel.replace(/^%\s*/, "")}</dt>
+            <dd className="text-secondary">{(row.playRate * 100).toFixed(1)}%</dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
+
 export function StatsTable({
   rows,
   variant = "tiers",
@@ -270,6 +424,10 @@ export function StatsTable({
   playRateLabel?: string;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
+  // Mobile-only: see CARD_PAGE_SIZE. Reset from the sort handler rather than an
+  // effect — re-sorting reshuffles which rows are "the first 40", so keeping an
+  // expanded count would silently change what the button means.
+  const [cardLimit, setCardLimit] = useState(CARD_PAGE_SIZE);
 
   // Every row gets a fixed tier from the combined games/placement/top1/top3
   // score, independent of whatever sort is currently selected.
@@ -320,16 +478,62 @@ export function StatsTable({
 
   let lastTier: Tier | null = null;
 
+  let lastMobileTier: Tier | null = null;
+
   return (
     <div>
-      <SortControl sortBy={sortBy} onChange={setSortBy} options={sortOptions} />
+      <SortControl
+        sortBy={sortBy}
+        onChange={(s) => {
+          setSortBy(s);
+          setCardLimit(CARD_PAGE_SIZE);
+        }}
+        options={sortOptions}
+      />
+
+      {/* Under md the table can't fit (8 columns need ~640px) — same rows as
+          stacked cards instead, in normal page flow so there's no scroll
+          container nested inside the page scroll on a phone. */}
+      <div className="md:hidden">
+        <div className="flex flex-col gap-2">
+          {sorted.slice(0, cardLimit).map((row, i) => {
+            const tier = showBands ? tierMap.get(row.key)!.tier : null;
+            const isNewBand = showBands && tier !== lastMobileTier;
+            if (isNewBand) lastMobileTier = tier;
+            return (
+              <Fragment key={row.key}>
+                {isNewBand && tier && (
+                  <div className={i === 0 ? "" : "mt-3"}>
+                    <TierBandHeading tier={tier} />
+                  </div>
+                )}
+                <MobileCard
+                  row={row}
+                  rank={i}
+                  variant={variant}
+                  tierInfo={variant === "tiers" ? tierMap.get(row.key) : undefined}
+                  linkPrefix={linkPrefix}
+                  maxTop3={maxTop3}
+                  playRateLabel={playRateLabel}
+                />
+              </Fragment>
+            );
+          })}
+        </div>
+        <ShowMoreButton
+          shown={Math.min(cardLimit, sorted.length)}
+          total={sorted.length}
+          onClick={() => setCardLimit((n) => n + CARD_PAGE_SIZE)}
+        />
+      </div>
+
       {/* Bounded height + its own vertical scroll: sticky headers can only stick
           relative to a genuinely-scrolling ancestor (position:sticky computes
           against the nearest scroll container's own scrollport). An
           overflow-x-auto div with unconstrained height never actually scrolls
           internally, so a sticky child inside it just sits at a fixed
           `top` offset forever instead of reacting to scroll. */}
-      <div className="max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle">
+      <div className="hidden max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle md:block">
         <table className="w-full min-w-[640px] text-body">
           <thead>
             <tr className="text-left text-micro uppercase tracking-wide text-muted">

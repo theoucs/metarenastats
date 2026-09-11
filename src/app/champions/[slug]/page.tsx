@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import {
   getChampionDetail,
+  getChampionStats,
   SHARDBLADE_ITEM_ID,
   type ChampionAugmentStat,
   type ChampionItemSlot,
@@ -11,7 +12,8 @@ import { resolveChampion, resolveItem, resolveAugment, itemCategory } from "@/li
 import { EntityIcon, top1Color, top3Color, StatPill, MiniStat } from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
-import type { StatsRow } from "@/components/StatsTable";
+import { TierBadge, type StatsRow } from "@/components/StatsTable";
+import { computeTiers } from "@/lib/tiers";
 import { comboToRow } from "@/lib/comboDisplay";
 
 const COMBO_TABS = [
@@ -238,11 +240,35 @@ export default async function ChampionDetailPage({
   const champInfo = resolveChampion(slug);
   if (!champInfo) notFound();
 
-  const detail = await getChampionDetail(
-    slug.toLowerCase(),
-    (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined,
-    itemCategory
-  );
+  // Site-wide champion stats come along for the ride so the header can say
+  // where this champion actually sits — a tier badge and "#7 of 173" is the
+  // one thing a build page header can tell you that the numbers below can't.
+  const [detail, { champions }] = await Promise.all([
+    getChampionDetail(
+      slug.toLowerCase(),
+      (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined,
+      itemCategory
+    ),
+    getChampionStats(),
+  ]);
+
+  const rank = (() => {
+    const rows = champions.map((c) => ({
+      key: resolveChampion(c.champion)?.id ?? c.champion,
+      games: c.games,
+      top3Rate: c.top3Rate,
+      top1Rate: c.top1Rate,
+      avgPlacement: c.avgPlacement,
+    }));
+    const tierMap = computeTiers(rows);
+    if (!tierMap.has(champInfo.id)) return null;
+    const ordered = [...rows].sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
+    return {
+      position: ordered.findIndex((r) => r.key === champInfo.id) + 1,
+      total: ordered.length,
+      tier: tierMap.get(champInfo.id)!.tier,
+    };
+  })();
 
   const comboRowsByTier: Record<string, StatsRow[]> = {
     "item-item": [],
@@ -257,34 +283,55 @@ export default async function ChampionDetailPage({
 
   return (
     <div>
-      <div className="relative h-[220px] w-full overflow-hidden bg-raised">
+      <div className="relative h-[240px] w-full overflow-hidden bg-raised sm:h-[300px]">
+        {/* `centered` (1280x720), not `loading` (308x560): the loading art is a
+            portrait crop that had to be upscaled ~4.7x to span a wide banner,
+            which is what turned this header into a grey smear. The centered
+            splash is already landscape and near 1:1 at this size. object-top
+            would cut foreheads on a 720px-tall source, so bias just below
+            center where splash art puts the face. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${champInfo.id}_0.jpg`}
+          src={`https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${champInfo.id}_0.jpg`}
           alt=""
-          loading="lazy"
-          width={308}
-          height={560}
-          className="absolute inset-0 h-full w-full object-cover object-top"
+          width={1280}
+          height={720}
+          className="absolute inset-0 h-full w-full object-cover object-[center_28%]"
         />
-        {/* from-35% guarantees the bottom ~77px is fully opaque bg-base — the
-            stat pills below overlap the last 32px of this banner (-mt-8), and
-            their grid gaps are transparent, so anything less than fully solid
-            there lets the splash art bleed through behind them. */}
+        {/* Two scrims, each doing one job. Vertical: from-35% guarantees the
+            bottom ~84px is fully opaque bg-base — the stat pills below overlap
+            the last 32px of this banner (-mt-8), and their grid gaps are
+            transparent, so anything less than fully solid there lets the
+            splash bleed through behind them. Horizontal: keeps the name legible
+            over whatever the art happens to be doing on the left, while leaving
+            the right side of the splash actually visible. */}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/60 via-65% to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base)]/90 via-[var(--bg-base)]/30 via-45% to-transparent" />
         <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-10 sm:px-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={champInfo.iconUrl}
               alt=""
-              className="h-16 w-16 rounded-xl border border-subtle object-cover shadow-[var(--elev-2)]"
+              className="h-16 w-16 rounded-xl border border-strong object-cover shadow-[var(--elev-3)]"
             />
-            <div>
-              <h1 className="font-display text-display font-semibold tracking-tight text-primary">
-                {champInfo.name}
-              </h1>
-              <p className="text-small text-secondary">Arena build summary</p>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h1 className="font-display text-display font-semibold tracking-tight text-primary drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
+                  {champInfo.name}
+                </h1>
+                {rank && <TierBadge tier={rank.tier} />}
+              </div>
+              <p className="text-small text-secondary">
+                {rank ? (
+                  <>
+                    Rank <span className="font-mono tabular-nums text-primary">#{rank.position}</span>{" "}
+                    of {rank.total} champions
+                  </>
+                ) : (
+                  "Arena build summary"
+                )}
+              </p>
             </div>
           </div>
         </div>

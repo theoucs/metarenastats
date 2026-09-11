@@ -1,6 +1,7 @@
 import { getItemStats } from "@/lib/aggregate";
-import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
+import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import { PageHeader } from "@/components/PageHeader";
 import { resolveItem, itemCategory } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
@@ -34,13 +35,14 @@ export default async function ItemsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Item Tier List</h1>
-      <p className="mt-2 text-zinc-400">Split by rarity.</p>
-      <div className="mt-4 mb-6">
-        <SampleSizeBadge totalMatches={totalMatches} />
-      </div>
-      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} />
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+      <PageHeader
+        eyebrow="Tier list"
+        title="Items"
+        description="Split by rarity."
+        totalMatches={totalMatches}
+      />
+      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} display="grid" />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
+import { StatsGrid } from "@/components/StatsGrid";
 
 export function TieredStatsTabs({
   tabs,
@@ -9,6 +10,7 @@ export function TieredStatsTabs({
   linkPrefix,
   playRateLabel,
   defaultTab,
+  display = "table",
 }: {
   tabs: readonly { key: string; label: string }[];
   rowsByTier: Record<string, StatsRow[]>;
@@ -16,6 +18,8 @@ export function TieredStatsTabs({
   playRateLabel?: string;
   /** Which tab key is active initially — defaults to the first tab. */
   defaultTab?: string;
+  /** "grid" for icon-led browsing (augments, items); "table" for rankings. */
+  display?: "table" | "grid";
 }) {
   const [active, setActive] = useState(defaultTab ?? tabs[0].key);
   const btnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -51,11 +55,15 @@ export function TieredStatsTabs({
           </button>
         ))}
       </div>
-      <StatsTable
-        rows={rowsByTier[active] ?? []}
-        linkPrefix={linkPrefix}
-        playRateLabel={playRateLabel}
-      />
+      {display === "grid" ? (
+        <StatsGrid rows={rowsByTier[active] ?? []} playRateLabel={playRateLabel} />
+      ) : (
+        <StatsTable
+          rows={rowsByTier[active] ?? []}
+          linkPrefix={linkPrefix}
+          playRateLabel={playRateLabel}
+        />
+      )}
     </div>
   );
 }
