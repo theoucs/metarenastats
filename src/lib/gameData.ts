@@ -31,3 +31,15 @@ export type ItemCategory = "boots" | "prismatic" | "excluded";
 export function itemCategory(id: number): ItemCategory | undefined {
   return itemsById.get(id)?.category as ItemCategory | undefined;
 }
+
+/** Resolves one half of a Combos pair (see lib/aggregate.ts's ComboPick) to
+ * display info, regardless of whether it's an item or an augment. */
+export function resolveComboPick(pick: { type: "item" | "augment"; id: number }) {
+  if (pick.type === "item") {
+    const info = resolveItem(pick.id);
+    const rarity = itemCategory(pick.id) === "prismatic" ? "prismatic" : undefined;
+    return { name: info?.name ?? `Item ${pick.id}`, iconUrl: info?.iconUrl, rarity };
+  }
+  const info = resolveAugment(pick.id);
+  return { name: info?.name ?? `Augment ${pick.id}`, iconUrl: info?.iconUrl, rarity: info?.tier };
+}

@@ -8,13 +8,16 @@ export function TieredStatsTabs({
   rowsByTier,
   linkPrefix,
   playRateLabel,
+  defaultTab,
 }: {
   tabs: readonly { key: string; label: string }[];
   rowsByTier: Record<string, StatsRow[]>;
   linkPrefix?: string;
   playRateLabel?: string;
+  /** Which tab key is active initially — defaults to the first tab. */
+  defaultTab?: string;
 }) {
-  const [active, setActive] = useState(tabs[0].key);
+  const [active, setActive] = useState(defaultTab ?? tabs[0].key);
 
   return (
     <div>

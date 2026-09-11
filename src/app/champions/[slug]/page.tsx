@@ -10,6 +10,15 @@ import {
 import { resolveChampion, resolveItem, resolveAugment, itemCategory } from "@/lib/gameData";
 import { EntityIcon, top1Color, top3Color, StatPill, MiniStat } from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
+import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import type { StatsRow } from "@/components/StatsTable";
+import { comboToRow } from "@/lib/comboDisplay";
+
+const COMBO_TABS = [
+  { key: "item-item", label: "Item + Item" },
+  { key: "item-augment", label: "Item + Augment" },
+  { key: "augment-augment", label: "Augment + Augment" },
+] as const;
 
 export const dynamic = "force-dynamic";
 
@@ -243,6 +252,17 @@ export default async function ChampionDetailPage({
     itemCategory
   );
 
+  const comboRowsByTier: Record<string, StatsRow[]> = {
+    "item-item": [],
+    "item-augment": [],
+    "augment-augment": [],
+  };
+  if (detail) {
+    for (const [category, combos] of Object.entries(detail.championCombos)) {
+      comboRowsByTier[category] = combos.map(comboToRow);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center gap-4">
@@ -333,6 +353,20 @@ export default async function ChampionDetailPage({
                   topPrismaticItems={detail.anvilTopPrismaticItems}
                 />
               )}
+            </div>
+          </section>
+
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold text-zinc-100">Top Combos</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Best-performing pairs on this champion specifically.
+            </p>
+            <div className="mt-4">
+              <TieredStatsTabs
+                tabs={COMBO_TABS}
+                rowsByTier={comboRowsByTier}
+                defaultTab="item-augment"
+              />
             </div>
           </section>
         </>

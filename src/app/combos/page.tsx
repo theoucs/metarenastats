@@ -1,7 +1,8 @@
-import { getComboStats, type ComboStat } from "@/lib/aggregate";
+import { getComboStats } from "@/lib/aggregate";
 import { SampleSizeBadge, type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
-import { resolveItem, resolveAugment, itemCategory } from "@/lib/gameData";
+import { itemCategory } from "@/lib/gameData";
+import { comboToRow } from "@/lib/comboDisplay";
 
 export const dynamic = "force-dynamic";
 
@@ -10,16 +11,6 @@ const TABS = [
   { key: "augment-augment", label: "Augment + Augment" },
   { key: "item-augment", label: "Item + Augment" },
 ] as const;
-
-function resolvePick(pick: ComboStat["a"]) {
-  if (pick.type === "item") {
-    const info = resolveItem(pick.id);
-    const rarity = itemCategory(pick.id) === "prismatic" ? "prismatic" : undefined;
-    return { name: info?.name ?? `Item ${pick.id}`, iconUrl: info?.iconUrl, rarity };
-  }
-  const info = resolveAugment(pick.id);
-  return { name: info?.name ?? `Augment ${pick.id}`, iconUrl: info?.iconUrl, rarity: info?.tier };
-}
 
 export default async function CombosPage() {
   const { totalMatches, byCategory } = await getComboStats(itemCategory);
@@ -30,24 +21,7 @@ export default async function CombosPage() {
     "item-augment": [],
   };
   for (const [category, combos] of Object.entries(byCategory)) {
-    rowsByTier[category] = combos.map((combo) => {
-      const a = resolvePick(combo.a);
-      const b = resolvePick(combo.b);
-      return {
-        key: `${combo.a.type}-${combo.a.id}_${combo.b.type}-${combo.b.id}`,
-        name: a.name,
-        iconUrl: a.iconUrl,
-        rarity: a.rarity as StatsRow["rarity"],
-        secondaryName: b.name,
-        secondaryIconUrl: b.iconUrl,
-        secondaryRarity: b.rarity as StatsRow["rarity"],
-        games: combo.games,
-        top3Rate: combo.top3Rate,
-        top1Rate: combo.top1Rate,
-        avgPlacement: combo.avgPlacement,
-        playRate: combo.playRate,
-      };
-    });
+    rowsByTier[category] = combos.map(comboToRow);
   }
 
   return (

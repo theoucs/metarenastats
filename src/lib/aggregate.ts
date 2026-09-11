@@ -286,6 +286,8 @@ export type ChampionDetail = {
     anvilShardbladeRate: number;
     /** Top 3 Prismatic items among this champion's anvil-run games, ranked by tier score. */
     anvilTopPrismaticItems: ChampionItemSlotStat[];
+    /** Top 10 combos per category, scoped to this champion's own games. */
+    championCombos: Record<ComboCategory, ComboStat[]>;
   };
 
 // A participant is playing an "anvil run" if every item in their final
@@ -409,6 +411,11 @@ export async function getChampionDetail(
   // Top 3 Prismatic items among just this champion's anvil-run games.
   const anvilTopPrismaticItems = computeTopPrismaticItems(anvilRows, itemCategoryOf, anvilAcc.games, 3);
 
+  // Top 10 combos per category, scoped to this champion's own games — no
+  // minimum games threshold (unlike the site-wide Combos page) since a
+  // single champion's sample is already much smaller.
+  const championCombos = computeCombos(champRows, itemCategoryOf, champGames, 1, 10);
+
   return {
     champion: champRows[0].champion,
     totalMatches,
@@ -419,6 +426,7 @@ export async function getChampionDetail(
     anvilStat: toStat(anvilAcc, champGames),
     anvilShardbladeRate,
     anvilTopPrismaticItems,
+    championCombos,
   };
 }
 
@@ -446,13 +454,16 @@ function comboCategory(a: ComboPick, b: ComboPick): ComboCategory {
   return "item-augment";
 }
 
-export async function getComboStats(
-  itemCategoryOf: ItemCategoryLookup
-): Promise<{ totalMatches: number; byCategory: Record<ComboCategory, ComboStat[]> }> {
-  const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
-  const denominator = totalMatches * PARTICIPANTS_PER_MATCH;
-
+// Shared by the site-wide Combos tier list and the per-champion mini combo
+// tables — only `rows`, the eligibility threshold, and the per-category cap
+// differ between the two call sites.
+function computeCombos(
+  rows: ParticipantRow[],
+  itemCategoryOf: ItemCategoryLookup,
+  denominator: number,
+  minGames: number,
+  maxPerCategory: number
+): Record<ComboCategory, ComboStat[]> {
   type ComboAcc = Accumulator & { a: ComboPick; b: ComboPick; category: ComboCategory };
   const combos = new Map<string, ComboAcc>();
 
@@ -495,20 +506,30 @@ export async function getComboStats(
     "item-augment": [],
   };
   for (const entry of combos.values()) {
-    if (entry.games < COMBO_MIN_GAMES) continue;
+    if (entry.games < minGames) continue;
     byCategory[entry.category].push({ a: entry.a, b: entry.b, ...toStat(entry, denominator) });
   }
 
   // Same tier-score ranking as everywhere else, used here purely to pick the
-  // 200 best combos per category — computeTiers is called again on just
-  // those 200 wherever they're displayed, so the S–D bands shown are five
-  // even quintiles of what's actually on screen.
+  // best combos per category — computeTiers is called again on just the ones
+  // kept wherever they're displayed, so the S–D bands shown are five even
+  // quintiles of what's actually on screen.
   for (const category of Object.keys(byCategory) as ComboCategory[]) {
     const keyed = byCategory[category].map((combo, i) => ({ ...combo, key: String(i) }));
     const tierMap = computeTiers(keyed);
     keyed.sort((x, y) => tierMap.get(x.key)!.score - tierMap.get(y.key)!.score);
-    byCategory[category] = keyed.slice(0, COMBO_MAX_ROWS).map(({ key: _key, ...combo }) => combo);
+    byCategory[category] = keyed.slice(0, maxPerCategory).map(({ key: _key, ...combo }) => combo);
   }
 
+  return byCategory;
+}
+
+export async function getComboStats(
+  itemCategoryOf: ItemCategoryLookup
+): Promise<{ totalMatches: number; byCategory: Record<ComboCategory, ComboStat[]> }> {
+  const rows = await fetchAllParticipants();
+  const totalMatches = countMatches(rows);
+  const denominator = totalMatches * PARTICIPANTS_PER_MATCH;
+  const byCategory = computeCombos(rows, itemCategoryOf, denominator, COMBO_MIN_GAMES, COMBO_MAX_ROWS);
   return { totalMatches, byCategory };
 }
