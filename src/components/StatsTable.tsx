@@ -272,7 +272,7 @@ export function StatsTable({
   const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
 
   // Every row gets a fixed tier from the combined games/placement/top1/top3
-  // rank, independent of whatever sort is currently selected.
+  // score, independent of whatever sort is currently selected.
   const tierMap = useMemo(() => computeTiers(rows), [rows]);
 
   const { maxTop3, maxTop1 } = useMemo(
@@ -294,7 +294,7 @@ export function StatsTable({
     } else if (sortBy === "playRate") {
       copy.sort((a, b) => b.playRate - a.playRate);
     } else {
-      copy.sort((a, b) => tierMap.get(a.key)!.score - tierMap.get(b.key)!.score);
+      copy.sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
     }
     return copy;
   }, [rows, sortBy, tierMap]);

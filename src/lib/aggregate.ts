@@ -303,9 +303,9 @@ function isAnvilBuild(items: number[], categoryOf: ItemCategoryLookup): boolean 
 }
 
 // Prismatic items seen across `rows`, ranked by the same tier score as the
-// augments/tier lists (games, avg placement, %top1, %top3 averaged) and cut
-// down to the top `topN`. `denominator` is what "playRate" is relative to —
-// e.g. this champion's total games, or just its anvil-run games.
+// augments/tier lists (games, avg placement, %top1, %top3) and cut down to
+// the top `topN`. `denominator` is what "playRate" is relative to — e.g.
+// this champion's total games, or just its anvil-run games.
 function computeTopPrismaticItems(
   rows: ParticipantRow[],
   categoryOf: ItemCategoryLookup,
@@ -321,7 +321,7 @@ function computeTopPrismaticItems(
   }
   const stats = Array.from(byItem.entries()).map(([itemId, s]) => ({ itemId, ...toStat(s, denominator) }));
   const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.itemId) })));
-  stats.sort((a, b) => tierMap.get(String(a.itemId))!.score - tierMap.get(String(b.itemId))!.score);
+  stats.sort((a, b) => tierMap.get(String(b.itemId))!.score - tierMap.get(String(a.itemId))!.score);
   return stats.slice(0, topN);
 }
 
@@ -351,9 +351,9 @@ export async function getChampionDetail(
   const champGames = champRows.length;
 
   // Augments used on this champion, split by rarity, top 5 each. "Best" uses
-  // the same combined rank score as the tier lists (games, avg placement,
-  // %top1, %top3 averaged) rather than raw %top3, so a 2-game 100%-top3
-  // augment doesn't outrank a proven 40-game pick.
+  // the same tier score as the tier lists (games, avg placement, %top1,
+  // %top3) rather than raw %top3, so a 2-game 100%-top3 augment doesn't
+  // outrank a proven 40-game pick.
   const byAugment = new Map<number, Accumulator>();
   for (const r of champRows) {
     for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
@@ -367,7 +367,7 @@ export async function getChampionDetail(
   for (const rarity of Object.keys(augmentsByRarity) as (keyof typeof augmentsByRarity)[]) {
     const stats = augmentsByRarity[rarity];
     const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.augmentId) })));
-    stats.sort((a, b) => tierMap.get(String(a.augmentId))!.score - tierMap.get(String(b.augmentId))!.score);
+    stats.sort((a, b) => tierMap.get(String(b.augmentId))!.score - tierMap.get(String(a.augmentId))!.score);
     augmentsByRarity[rarity] = stats.slice(0, 5);
   }
 
@@ -510,14 +510,14 @@ function computeCombos(
     byCategory[entry.category].push({ a: entry.a, b: entry.b, ...toStat(entry, denominator) });
   }
 
-  // Same tier-score ranking as everywhere else, used here purely to pick the
-  // best combos per category — computeTiers is called again on just the ones
-  // kept wherever they're displayed, so the S–D bands shown are five even
-  // quintiles of what's actually on screen.
+  // Same tier score as everywhere else, used here purely to pick the best
+  // combos per category — computeTiers is called again on just the ones kept
+  // wherever they're displayed, so the S–D bands shown reflect the real gaps
+  // in what's actually on screen, not the full unfiltered pool.
   for (const category of Object.keys(byCategory) as ComboCategory[]) {
     const keyed = byCategory[category].map((combo, i) => ({ ...combo, key: String(i) }));
     const tierMap = computeTiers(keyed);
-    keyed.sort((x, y) => tierMap.get(x.key)!.score - tierMap.get(y.key)!.score);
+    keyed.sort((x, y) => tierMap.get(y.key)!.score - tierMap.get(x.key)!.score);
     byCategory[category] = keyed.slice(0, maxPerCategory).map(({ key: _key, ...combo }) => combo);
   }
 

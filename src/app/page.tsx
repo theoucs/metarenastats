@@ -33,7 +33,7 @@ export default async function Home() {
   });
   const tierMap = computeTiers(rows);
   const topChampions = [...rows]
-    .sort((a, b) => tierMap.get(a.key)!.score - tierMap.get(b.key)!.score)
+    .sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score)
     .slice(0, 5);
 
   return (
