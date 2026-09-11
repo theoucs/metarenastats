@@ -5,14 +5,19 @@ export const TIER_ORDER: Tier[] = ["S", "A", "B", "C", "D"];
 /**
  * Assigns a fixed S/A/B/C/D tier to every row, independent of whichever sort
  * the user currently has selected. Each row gets a combined score: the
- * average of its rank position across four metrics — games played (more is
- * better, so low-sample flukes don't outrank proven performers), avg
+ * weighted average of its rank position across four metrics — games played
+ * (more is better, so low-sample flukes don't outrank proven performers, and
+ * weighted 1.5x so sample size matters more than the other three), avg
  * placement, % top 1, and % top 3. Rows are then sorted by that combined
  * score and split into 5 equal-size bands (quintiles) — S is the
  * best-ranked 20%, D the worst-ranked 20%, regardless of which single
  * metric you're currently viewing.
  */
 export type TierInfo = { tier: Tier; score: number };
+
+const GAMES_WEIGHT = 1.5;
+const OTHER_WEIGHT = 1;
+const TOTAL_WEIGHT = GAMES_WEIGHT + OTHER_WEIGHT * 3;
 
 type TierableRow = {
   key: string;
@@ -42,11 +47,11 @@ export function computeTiers<T extends TierableRow>(rows: T[]): Map<string, Tier
     .map((r) => ({
       key: r.key,
       score:
-        (gamesRank.get(r.key)! +
-          placementRank.get(r.key)! +
-          top1Rank.get(r.key)! +
-          top3Rank.get(r.key)!) /
-        4,
+        (gamesRank.get(r.key)! * GAMES_WEIGHT +
+          placementRank.get(r.key)! * OTHER_WEIGHT +
+          top1Rank.get(r.key)! * OTHER_WEIGHT +
+          top3Rank.get(r.key)! * OTHER_WEIGHT) /
+        TOTAL_WEIGHT,
     }))
     .sort((a, b) => a.score - b.score);
 
