@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { computeTiers } from "@/lib/tiers";
 
@@ -47,7 +48,19 @@ const ALTS_PER_SLOT = 3; // 1 primary + 2 alternates
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 30;
 
-export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
+/**
+ * Wrapped in React's `cache` so a page that runs two aggregators pays for one
+ * trip to Supabase, not two — these are Supabase calls, not `fetch`, so they
+ * get no automatic request memoization (see Next's glossary entry). The
+ * Augments page needs the tier list and the pick-timing stats from the same
+ * rows; the champion detail page was already paying twice before this.
+ *
+ * Per-request only: the cache lives for one render pass, so pages still see
+ * fresh data on every request.
+ */
+export const fetchAllParticipants = cache(async function fetchAllParticipants(): Promise<
+  ParticipantRow[]
+> {
   if (!supabaseAdmin) return [];
 
   const allRows: ParticipantRow[] = [];
@@ -63,7 +76,7 @@ export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
     if (data.length < PAGE_SIZE) break;
   }
   return dropAfkTeams(allRows);
-}
+});
 
 // Drops every row belonging to a (match, subteam) where at least one
 // teammate still had an Anvil/Bravery Voucher at game end — see
@@ -428,6 +441,100 @@ export async function getChampionDetail(
     anvilTopPrismaticItems,
     championCombos,
   };
+}
+
+// --- Augment timing -------------------------------------------------------
+
+/**
+ * How many of the augment slots are comparable across picks.
+ *
+ * `playerAugment1..6` arrive in pick order, so the array index *is* the pick
+ * number — the one piece of round information Riot's match data gives us
+ * (augment levels, which would answer "is this worth upgrading", are not
+ * exposed at all: MATCH-V5 CHERRY returns bare ids, see developer-relations
+ * issue #1157).
+ *
+ * Only the first three are usable for comparison. The baseline % Top 3 of
+ * *every* pick made in each slot runs 50.0 / 50.0 / 52.5 / 61.9 / 72.4 / 78.8:
+ * flat through slot 3, then steeply rising, because having a 4th/5th/6th
+ * augment at all means you survived deep into the game or spent a crafting
+ * round on a slot. Past slot 3 you'd be measuring survivorship, not timing.
+ */
+const TIMING_SLOTS = 3;
+
+/** Picks required in *each* of the three slots before an augment is listed. */
+const TIMING_MIN_PICKS = 30;
+
+export type AugmentSlotStat = { slot: number; picks: number; top3Rate: number };
+
+export type AugmentTimingStat = {
+  augmentId: number;
+  totalPicks: number;
+  /** Exactly TIMING_SLOTS entries, slot 1 first. */
+  slots: AugmentSlotStat[];
+  /**
+   * How much better this augment does as a 3rd pick than as a 1st, after
+   * subtracting each slot's own baseline. Positive = hold it for later.
+   */
+  swing: number;
+};
+
+export type AugmentTimingStats = {
+  totalMatches: number;
+  /** % Top 3 across every pick made in each slot — what `swing` corrects for. */
+  baselines: number[];
+  augments: AugmentTimingStat[];
+};
+
+export async function getAugmentTimingStats(): Promise<AugmentTimingStats> {
+  const rows = await fetchAllParticipants();
+  const totalMatches = countMatches(rows);
+
+  const perSlot: Map<number, Accumulator>[] = Array.from(
+    { length: TIMING_SLOTS },
+    () => new Map()
+  );
+  const slotTotals: Accumulator[] = Array.from({ length: TIMING_SLOTS }, () => ({
+    games: 0,
+    top3Wins: 0,
+    top1Wins: 0,
+    placementSum: 0,
+  }));
+
+  for (const row of rows) {
+    row.augments.slice(0, TIMING_SLOTS).forEach((augmentId, index) => {
+      accumulate(perSlot[index], augmentId, row.placement);
+      const total = slotTotals[index];
+      total.games += 1;
+      total.placementSum += row.placement;
+      if (row.placement <= TOP3_PLACEMENT_THRESHOLD) total.top3Wins += 1;
+    });
+  }
+
+  const baselines = slotTotals.map((t) => (t.games > 0 ? t.top3Wins / t.games : 0));
+
+  const eligible = Array.from(perSlot[0].keys()).filter((id) =>
+    perSlot.every((slot) => (slot.get(id)?.games ?? 0) >= TIMING_MIN_PICKS)
+  );
+
+  const augments = eligible
+    .map((augmentId) => {
+      const slots = perSlot.map((slot, index) => {
+        const acc = slot.get(augmentId)!;
+        return { slot: index + 1, picks: acc.games, top3Rate: acc.top3Wins / acc.games };
+      });
+      const first = slots[0].top3Rate - baselines[0];
+      const last = slots[TIMING_SLOTS - 1].top3Rate - baselines[TIMING_SLOTS - 1];
+      return {
+        augmentId,
+        totalPicks: slots.reduce((sum, s) => sum + s.picks, 0),
+        slots,
+        swing: last - first,
+      };
+    })
+    .sort((a, b) => b.swing - a.swing);
+
+  return { totalMatches, baselines, augments };
 }
 
 // --- Team comps -----------------------------------------------------------

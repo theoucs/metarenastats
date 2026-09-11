@@ -152,14 +152,16 @@ function TierBandRow({ tier, colSpan, isFirst }: { tier: Tier; colSpan: number; 
   );
 }
 
-export function SortControl({
+/** Generic over the key type so pages with their own sort axes (augment timing)
+ *  reuse it without casting through SortKey. */
+export function SortControl<K extends string>({
   sortBy,
   onChange,
   options,
 }: {
-  sortBy: SortKey;
-  onChange: (s: SortKey) => void;
-  options: { key: SortKey; label: string }[];
+  sortBy: K;
+  onChange: (s: K) => void;
+  options: { key: K; label: string }[];
 }) {
   const { containerRef, register, rect } = useSlidingHighlight(sortBy, options);
 
