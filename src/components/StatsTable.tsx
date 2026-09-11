@@ -16,6 +16,11 @@ export type StatsRow = {
   playRate: number;
   /** Augment rarity (silver/gold/prismatic) — colors the icon frame like in-game. */
   rarity?: EntityRarity;
+  /** When set, the name cell renders as a "name + secondaryName" pair — used
+   * for the Combos tier list (two items/augments picked together). */
+  secondaryName?: string;
+  secondaryIconUrl?: string;
+  secondaryRarity?: EntityRarity;
 };
 
 type SortKey = "tier" | "top3Rate" | "top1Rate" | "avgPlacement" | "playRate";
@@ -86,6 +91,28 @@ function SortControl({
         ))}
       </div>
     </div>
+  );
+}
+
+function NameCellContent({ row }: { row: StatsRow }) {
+  if (row.secondaryName) {
+    return (
+      <>
+        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
+        <span className="font-medium text-zinc-100">{row.name}</span>
+        <span className="text-zinc-600">+</span>
+        {row.secondaryIconUrl && (
+          <EntityIcon iconUrl={row.secondaryIconUrl} rarity={row.secondaryRarity} />
+        )}
+        <span className="font-medium text-zinc-100">{row.secondaryName}</span>
+      </>
+    );
+  }
+  return (
+    <>
+      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
+      <span className="font-medium text-zinc-100">{row.name}</span>
+    </>
   );
 }
 
@@ -194,13 +221,11 @@ export function StatsTable({
                       href={`${linkPrefix}${row.key}`}
                       className="flex items-center gap-2.5 hover:underline"
                     >
-                      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
-                      <span className="font-medium text-zinc-100">{row.name}</span>
+                      <NameCellContent row={row} />
                     </Link>
                   ) : (
                     <div className="flex items-center gap-2.5">
-                      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} />}
-                      <span className="font-medium text-zinc-100">{row.name}</span>
+                      <NameCellContent row={row} />
                     </div>
                   )}
                 </td>

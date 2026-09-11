@@ -421,3 +421,94 @@ export async function getChampionDetail(
     anvilTopPrismaticItems,
   };
 }
+
+// Below this: 2-element combos of items/augments picked by the same player
+// in the same game — a lightweight "synergy" tier list. Boots and "excluded"
+// items (Shardblade, Arcane Sweeper, ...) never take part in a combo.
+const COMBO_MIN_GAMES = 5;
+const COMBO_MAX_ROWS = 200;
+
+export type ComboCategory = "item-item" | "augment-augment" | "item-augment";
+type ComboPick = { type: "item" | "augment"; id: number };
+export type ComboStat = { a: ComboPick; b: ComboPick } & Stat;
+
+// Canonical order so a pair always accumulates under one key regardless of
+// which of the two participant slots each half came from: items before
+// augments, and lower id first within the same type.
+function orderComboPick(x: ComboPick, y: ComboPick): [ComboPick, ComboPick] {
+  if (x.type !== y.type) return x.type === "item" ? [x, y] : [y, x];
+  return x.id <= y.id ? [x, y] : [y, x];
+}
+
+function comboCategory(a: ComboPick, b: ComboPick): ComboCategory {
+  if (a.type === "item" && b.type === "item") return "item-item";
+  if (a.type === "augment" && b.type === "augment") return "augment-augment";
+  return "item-augment";
+}
+
+export async function getComboStats(
+  itemCategoryOf: ItemCategoryLookup
+): Promise<{ totalMatches: number; byCategory: Record<ComboCategory, ComboStat[]> }> {
+  const rows = await fetchAllParticipants();
+  const totalMatches = countMatches(rows);
+  const denominator = totalMatches * PARTICIPANTS_PER_MATCH;
+
+  type ComboAcc = Accumulator & { a: ComboPick; b: ComboPick; category: ComboCategory };
+  const combos = new Map<string, ComboAcc>();
+
+  for (const r of rows) {
+    const picks: ComboPick[] = [
+      ...r.items
+        .filter((id) => {
+          const category = itemCategoryOf(id);
+          return category !== "excluded" && category !== "boots";
+        })
+        .map((id) => ({ type: "item" as const, id })),
+      ...r.augments.map((id) => ({ type: "augment" as const, id })),
+    ];
+
+    for (let i = 0; i < picks.length; i++) {
+      for (let j = i + 1; j < picks.length; j++) {
+        const [a, b] = orderComboPick(picks[i], picks[j]);
+        const key = `${a.type}:${a.id}|${b.type}:${b.id}`;
+        const entry = combos.get(key) ?? {
+          a,
+          b,
+          category: comboCategory(a, b),
+          games: 0,
+          top3Wins: 0,
+          top1Wins: 0,
+          placementSum: 0,
+        };
+        entry.games += 1;
+        entry.placementSum += r.placement;
+        if (r.placement <= TOP3_PLACEMENT_THRESHOLD) entry.top3Wins += 1;
+        if (r.placement === 1) entry.top1Wins += 1;
+        combos.set(key, entry);
+      }
+    }
+  }
+
+  const byCategory: Record<ComboCategory, ComboStat[]> = {
+    "item-item": [],
+    "augment-augment": [],
+    "item-augment": [],
+  };
+  for (const entry of combos.values()) {
+    if (entry.games < COMBO_MIN_GAMES) continue;
+    byCategory[entry.category].push({ a: entry.a, b: entry.b, ...toStat(entry, denominator) });
+  }
+
+  // Same tier-score ranking as everywhere else, used here purely to pick the
+  // 200 best combos per category — computeTiers is called again on just
+  // those 200 wherever they're displayed, so the S–D bands shown are five
+  // even quintiles of what's actually on screen.
+  for (const category of Object.keys(byCategory) as ComboCategory[]) {
+    const keyed = byCategory[category].map((combo, i) => ({ ...combo, key: String(i) }));
+    const tierMap = computeTiers(keyed);
+    keyed.sort((x, y) => tierMap.get(x.key)!.score - tierMap.get(y.key)!.score);
+    byCategory[category] = keyed.slice(0, COMBO_MAX_ROWS).map(({ key: _key, ...combo }) => combo);
+  }
+
+  return { totalMatches, byCategory };
+}
