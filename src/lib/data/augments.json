@@ -2343,7 +2343,8 @@
     "id": 366,
     "name": "Abstain From Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png",
+    "category": "excluded"
   },
   {
     "id": 367,
@@ -2375,7 +2376,8 @@
     "id": 372,
     "name": "Compulsion For Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png",
+    "category": "excluded"
   },
   {
     "id": 373,
@@ -2395,7 +2397,8 @@
     "id": 369,
     "name": "Craving For Power",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/power_small.png",
+    "category": "excluded"
   },
   {
     "id": 370,
