@@ -61,7 +61,7 @@ export function HomeSearch() {
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="Search a player (Name#TAG), champion, item or augment..."
+          placeholder="Search player, champion, item…"
           className="w-full rounded-xl border border-subtle bg-inset px-5 py-3.5 text-base text-primary placeholder:text-muted focus:border-accent sm:[--hint-pad:4rem]"
           style={{ paddingRight: isMac !== null && !focused ? "var(--hint-pad, 1.25rem)" : undefined }}
         />

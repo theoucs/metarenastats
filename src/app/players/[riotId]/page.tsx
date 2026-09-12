@@ -168,7 +168,7 @@ export default async function PlayerPage({
                   <h2 className="font-display text-h2 font-semibold text-primary">Top Champions</h2>
                   <p className="mt-1 text-small text-secondary">Across this player&apos;s own games.</p>
                   <div className="mt-4">
-                    <StatsTable rows={championRows} linkPrefix="/champions/" />
+                    <StatsTable rows={championRows} linkPrefix="/champions/" compact />
                   </div>
                 </div>
               </div>

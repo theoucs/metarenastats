@@ -36,13 +36,14 @@ type TopChampion = {
  * champion by definition — and gives ~2x the pixels besides.
  */
 function ChampionSpotlight({ champion, rank }: { champion: TopChampion; rank: number }) {
-  // Landscape on phones: three stacked portraits would put ~1400px of champion
-  // art between the fold and the rest of the page. The source is landscape
-  // anyway, so the 3/2 phone crop shows more of it, not less.
+  // Landscape on phones, and flatter than the source: three stacked portraits
+  // would put ~1400px of champion art between the fold and the rest of the
+  // page. At 3/2 a single card was still ~500px tall on a 390px screen — three
+  // swipes to see a top 3 on a site built for checking between games.
   return (
     <Link
       href={`/champions/${champion.key}`}
-      className="group relative flex aspect-[3/2] overflow-hidden rounded-xl border border-subtle shadow-[var(--elev-2)] transition-colors hover:border-strong sm:aspect-[3/4]"
+      className="group relative flex aspect-[16/9] overflow-hidden rounded-xl border border-subtle shadow-[var(--elev-2)] transition-colors hover:border-strong sm:aspect-[3/4]"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

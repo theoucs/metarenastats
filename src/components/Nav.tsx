@@ -30,6 +30,7 @@ function NavLink({
   onClick,
   linkRef,
   staticActiveBg,
+  alwaysShowBadge,
 }: {
   href: string;
   label: string;
@@ -41,6 +42,9 @@ function NavLink({
    * highlight from a parent — used by the mobile dropdown, which stacks
    * vertically and has no animated indicator of its own. */
   staticActiveBg?: boolean;
+  /** Keeps the "New" pill at every width — the stacked mobile dropdown has
+   *  the room the compressed desktop row doesn't. */
+  alwaysShowBadge?: boolean;
 }) {
   return (
     <Link
@@ -51,7 +55,7 @@ function NavLink({
       // ("Team / Comps", "Anvil / Run"), which also makes the sliding highlight
       // two lines tall. Better to let the row run out of room than to hyphenate
       // the navigation.
-      className={`relative z-10 flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 transition-colors ${
+      className={`relative z-10 flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 transition-colors ${
         active
           ? staticActiveBg
             ? "bg-overlay text-primary"
@@ -61,7 +65,14 @@ function NavLink({
     >
       {label}
       {badge && (
-        <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-accent">
+        // Hidden between lg and xl: the two badges cost ~82px together, which
+        // is exactly what the 8 links need to fit alongside the search at
+        // 1024px. The mobile dropdown passes `alwaysShowBadge` to keep them.
+        <span
+          className={`rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-accent ${
+            alwaysShowBadge ? "" : "hidden xl:inline-block"
+          }`}
+        >
           {badge}
         </span>
       )}
@@ -83,7 +94,7 @@ function NavLinkList({ pathname }: { pathname: string }) {
   }, [pathname]);
 
   return (
-    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0.5 text-sm xl:flex">
+    <ul ref={listRef} className="relative hidden flex-1 items-center gap-0 text-sm lg:flex">
       {highlight && (
         <div
           className="absolute inset-y-0 z-0 rounded-md bg-overlay shadow-[var(--elev-1)] transition-[left,width] duration-[250ms] ease-out motion-reduce:transition-none"
@@ -148,8 +159,12 @@ export function Nav() {
 
         <NavLinkList pathname={pathname} />
 
+        {/* Visible from md, independently of the links above: between 768 and
+            1024 the links are still behind the burger, but search — the single
+            most-used thing on the site — must not be. Before this, a 1279px
+            window got a logo and a burger and nothing else. */}
         {showSearch && (
-          <div className="hidden xl:block">
+          <div className="ml-auto hidden md:block lg:ml-0">
             <NavSearch />
           </div>
         )}
@@ -159,7 +174,7 @@ export function Nav() {
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-overlay xl:hidden"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-secondary transition-colors hover:bg-overlay active:scale-[0.97] lg:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
             {open ? (
@@ -172,9 +187,11 @@ export function Nav() {
       </nav>
 
       {open && (
-        <div className="border-t border-subtle px-4 py-3 xl:hidden">
+        <div className="border-t border-subtle px-4 py-3 lg:hidden">
+          {/* The header already shows NavSearch from md up, so only the
+              sub-md dropdown needs its own copy. */}
           {showSearch && (
-            <div className="mb-3">
+            <div className="mb-3 md:hidden">
               <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />
             </div>
           )}
@@ -188,6 +205,7 @@ export function Nav() {
                   active={pathname === link.href}
                   onClick={() => setOpen(false)}
                   staticActiveBg
+                  alwaysShowBadge
                 />
               </li>
             ))}

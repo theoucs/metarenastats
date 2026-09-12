@@ -281,6 +281,7 @@ function DataRow({
   bestPlacement,
   worstPlacement,
   hideTierColumn,
+  compact,
 }: {
   row: StatsRow;
   rank: number;
@@ -294,7 +295,10 @@ function DataRow({
   /** Suppressed while tier bands are shown — the band right above already says
    *  the tier, so the badge is the same letter repeated down the whole band. */
   hideTierColumn: boolean;
+  /** See StatsTable's `compact` — must drop the same columns as the header. */
+  compact: boolean;
 }) {
+  const cellX = compact ? "px-2" : "px-4";
   const tierInfo = variant === "tiers" ? tierMap.get(row.key) : undefined;
   const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "transparent";
 
@@ -312,11 +316,11 @@ function DataRow({
         )}
       </td>
       {variant === "tiers" && !hideTierColumn && (
-        <td className="px-4 py-1.5">
+        <td className={`${cellX} py-1.5`}>
           <TierBadge tier={tierMap.get(row.key)!.tier} />
         </td>
       )}
-      <td className="px-4 py-1.5">
+      <td className={`${cellX} py-1.5`}>
         {linkPrefix ? (
           <Link href={`${linkPrefix}${row.key}`} className="flex items-center gap-2.5 hover:underline">
             <NameCellContent row={row} />
@@ -330,7 +334,7 @@ function DataRow({
       {/* Avg Placement leads: it is the metric that outranks the others
           everywhere on this site (docs/design-audit-plan.md §3.6), and it is
           what computeTiers weights at 60%. */}
-      <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
+      <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
         <span
           aria-hidden="true"
           className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
@@ -340,7 +344,7 @@ function DataRow({
           {row.avgPlacement.toFixed(2)}
         </span>
       </td>
-      <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
+      <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
         <span
           aria-hidden="true"
           className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
@@ -348,8 +352,8 @@ function DataRow({
         />
         <span className={`relative ${top3Color(row.top3Rate)}`}>{(row.top3Rate * 100).toFixed(1)}%</span>
       </td>
-      {variant === "tiers" && (
-        <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
+      {variant === "tiers" && !compact && (
+        <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
           <span
             aria-hidden="true"
             className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
@@ -358,9 +362,9 @@ function DataRow({
           <span className={`relative ${top1Color(row.top1Rate)}`}>{(row.top1Rate * 100).toFixed(1)}%</span>
         </td>
       )}
-      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">{row.games}</td>
-      {variant === "tiers" && (
-        <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">
+      <td className={`${cellX} py-1.5 text-right font-mono tabular-nums text-secondary`}>{row.games}</td>
+      {variant === "tiers" && !compact && (
+        <td className={`${cellX} py-1.5 text-right font-mono tabular-nums text-secondary`}>
           {(row.playRate * 100).toFixed(1)}%
         </td>
       )}
@@ -496,6 +500,7 @@ export function StatsTable({
   variant = "tiers",
   linkPrefix,
   playRateLabel = "% Played",
+  compact = false,
 }: {
   rows: StatsRow[];
   variant?: "tiers" | "ranked";
@@ -503,6 +508,10 @@ export function StatsTable({
   linkPrefix?: string;
   /** Column/sort label for `playRate` — its meaning (and denominator) varies by page. */
   playRateLabel?: string;
+  /** For a narrow sidebar column (the player page's Top Champions sits in a
+   *  380px track). Drops the 640px floor and the two least important columns
+   *  rather than clipping the table mid-cell behind a scrollbar nobody sees. */
+  compact?: boolean;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
   // Mobile-only: see CARD_PAGE_SIZE. Reset from the sort handler rather than an
@@ -558,7 +567,8 @@ export function StatsTable({
         ];
 
   const showBands = variant === "tiers" && sortBy === "tier";
-  const colCount = variant === "tiers" ? (showBands ? 7 : 8) : 5;
+  const colCount = variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5;
+  const cellX = compact ? "px-2" : "px-4";
 
   let lastTier: Tier | null = null;
 
@@ -619,7 +629,7 @@ export function StatsTable({
           internally, so a sticky child inside it just sits at a fixed
           `top` offset forever instead of reacting to scroll. */}
       <div className="hidden max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle md:block">
-        <table className="w-full min-w-[640px] text-body">
+        <table className={`w-full text-body ${compact ? "" : "min-w-[640px]"}`}>
           <thead>
             <tr className="text-left text-micro uppercase tracking-wide text-muted">
               <th className={`${stickyHeadCell} w-12 border-l-2 border-l-transparent pl-[14px] pr-4`}>
@@ -629,12 +639,16 @@ export function StatsTable({
                 <th className={`${stickyHeadCell} w-14 px-4`}>Tier</th>
               )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
-              <th className={`${stickyHeadCell} px-4 text-right`}>Avg Placement</th>
-              <th className={`${stickyHeadCell} px-4 text-right`}>% Top 3</th>
-              {variant === "tiers" && <th className={`${stickyHeadCell} px-4 text-right`}>% Top 1</th>}
-              <th className={`${stickyHeadCell} px-4 text-right`}>Games</th>
-              {variant === "tiers" && (
-                <th className={`${stickyHeadCell} px-4 text-right`}>{playRateLabel}</th>
+              <th className={`${stickyHeadCell} ${cellX} text-right`}>
+                {compact ? "Avg" : "Avg Placement"}
+              </th>
+              <th className={`${stickyHeadCell} ${cellX} text-right`}>% Top 3</th>
+              {variant === "tiers" && !compact && (
+                <th className={`${stickyHeadCell} ${cellX} text-right`}>% Top 1</th>
+              )}
+              <th className={`${stickyHeadCell} ${cellX} text-right`}>Games</th>
+              {variant === "tiers" && !compact && (
+                <th className={`${stickyHeadCell} ${cellX} text-right`}>{playRateLabel}</th>
               )}
             </tr>
           </thead>
@@ -659,6 +673,7 @@ export function StatsTable({
                     bestPlacement={bestPlacement}
                     worstPlacement={worstPlacement}
                     hideTierColumn={showBands}
+                    compact={compact}
                   />
                 </Fragment>
               );
