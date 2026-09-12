@@ -8,7 +8,7 @@ import {
   type ChampionItemSlotStat,
   type Stat,
 } from "@/lib/aggregate";
-import { resolveChampion, resolveItem, resolveAugment, itemCategory } from "@/lib/gameData";
+import { resolveChampion, resolveItem, resolveAugment, itemCategory, heroSplashUrl } from "@/lib/gameData";
 import { EntityIcon, top1Color, top3Color, StatPill, MiniStat } from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
@@ -292,10 +292,13 @@ export default async function ChampionDetailPage({
             which is what turned this header into a grey smear. The centered
             splash is already landscape and near 1:1 at this size. object-top
             would cut foreheads on a 720px-tall source, so bias just below
-            center where splash art puts the face. */}
+            center where splash art puts the face. Uses the champion's most
+            popular skin (same pick as the homepage hero) rather than the base
+            splash — the base splash next to the base square icon just below
+            is the same art twice. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${champInfo.id}_0.jpg`}
+          src={heroSplashUrl(champInfo.id)}
           alt=""
           width={1280}
           height={720}
