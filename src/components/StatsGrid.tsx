@@ -7,6 +7,7 @@ import { top1Color, top3Color, avgPlacementColor, EntityIcon } from "@/lib/stats
 import {
   CARD_PAGE_SIZE,
   RoleChips,
+  EmptyState,
   ShowMoreButton,
   SortControl,
   TierBadge,
@@ -52,7 +53,8 @@ function GridCard({
   return (
     <article
       id={`entity-${row.key}`}
-      className="group relative rounded-xl border border-subtle bg-raised/40 p-3.5 shadow-[var(--elev-1)] transition-[transform,border-color,background-color,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-default hover:bg-overlay hover:shadow-[var(--elev-2)] motion-reduce:hover:translate-y-0"
+      className="group relative isolate overflow-hidden rounded-xl border border-subtle bg-raised/40 p-3.5 shadow-[var(--elev-1)] transition-[transform,border-color,background-color,box-shadow] duration-150 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-[radial-gradient(140px_70px_at_10%_0%,color-mix(in_srgb,var(--tier-hex)_16%,transparent),transparent)] hover:-translate-y-0.5 hover:border-default hover:bg-overlay hover:shadow-[var(--elev-2)] motion-reduce:hover:translate-y-0"
+      style={{ "--tier-hex": TIER_STYLES[tier].hex } as React.CSSProperties}
     >
       {/* Tier rail: same left-edge language as the table rows, so the two
           layouts still read as one system. */}
@@ -202,11 +204,7 @@ export function StatsGrid({
   }, [rows, sortBy, tierMap]);
 
   if (rows.length === 0) {
-    return (
-      <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
-        No data yet. Search a player on the home page to start populating stats.
-      </div>
-    );
+    return <EmptyState />;
   }
 
   const showBands = sortBy === "tier";

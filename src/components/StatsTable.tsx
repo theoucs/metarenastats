@@ -240,10 +240,33 @@ function NameCellContent({ row }: { row: StatsRow }) {
   );
 }
 
-function EmptyState() {
+export function EmptyState({
+  message = "Nothing tracked here yet.",
+}: {
+  message?: string;
+}) {
   return (
-    <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
-      No data yet. Search a player on the home page to start populating stats.
+    <div className="flex flex-col items-center rounded-xl border border-dashed border-default bg-raised/30 px-6 py-12 text-center">
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        className="h-8 w-8 text-muted"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <path strokeLinecap="round" d="M4 19V9m5 10V5m5 14v-7m5 7V8" />
+      </svg>
+      <p className="mt-3 text-secondary">{message}</p>
+      <p className="mt-1 max-w-xs text-small text-muted">
+        Every search on this site adds its matches to the pool.
+      </p>
+      <Link
+        href="/"
+        className="mt-4 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-3.5 py-1.5 text-small font-medium text-accent transition-[background-color,transform] duration-150 hover:bg-[color:var(--accent)]/20 active:scale-[0.97]"
+      >
+        Search a player
+      </Link>
     </div>
   );
 }

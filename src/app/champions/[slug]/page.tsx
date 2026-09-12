@@ -293,20 +293,20 @@ export default async function ChampionDetailPage({
           height={720}
           className="absolute inset-0 h-full w-full object-cover object-[center_28%]"
         />
-        {/* Two scrims, each doing one job. Vertical: from-35% guarantees the
-            bottom ~84px is fully opaque bg-base — the stat pills below overlap
-            the last 32px of this banner (-mt-8), and their grid gaps are
-            transparent, so anything less than fully solid there lets the
-            splash bleed through behind them. Horizontal: keeps the name legible
-            over whatever the art happens to be doing on the left, while leaving
-            the right side of the splash actually visible. */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/60 via-65% to-transparent" />
+        {/* Two scrims, each doing one job. Vertical: from-15% keeps the art
+            visible almost to the bottom edge — the pills that overlap it are
+            translucent-with-blur by design now, so the splash showing through
+            between them is the effect, not a bug. Horizontal: keeps the name
+            legible over whatever the art happens to be doing on the left, while
+            leaving the right side of the splash actually visible. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-15% via-[var(--bg-base)]/55 via-55% to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base)]/90 via-[var(--bg-base)]/30 via-45% to-transparent" />
-        {/* pb-16, not pb-10: the stat pills below pull up 32px into this banner
-            (-mt-8), so the visible gap under the name is the padding minus that
-            overlap. At pb-10 it measured 13px against 40px below the pills —
-            the name looked stuck to them. */}
-        <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-16 sm:px-6">
+        {/* The name now sits *on* the art rather than on the solid strip the old
+            scrim guaranteed below it. The pills overlap the banner by 48px
+            (-mt-12), so the padding here has to clear that overlap *plus* a
+            real gap: at pb-8 the pills sat straight on top of "Rank #1 of 173".
+            80 - 48 = 32px of visible air under the name. */}
+        <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-20 sm:px-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -344,7 +344,7 @@ export default async function ChampionDetailPage({
             up into it (e.g. the stat pill labels, which sit higher in each
             pill than the value). Making this positioned too puts DOM order
             back in charge, and it comes after the banner in the DOM. */}
-        <div className="relative z-10 -mt-8">
+        <div className="relative z-10 -mt-12">
           {!detail ? (
             <div className="rounded-lg border border-subtle bg-raised/40 p-10 text-center text-secondary">
               No data yet for {champInfo.name}. Search a player who played this champion to start

@@ -63,10 +63,13 @@ export function StatPill({
 }) {
   return (
     <div
-      className={`rounded-xl border px-4 py-2.5 text-center ${
+      // Translucent + blurred rather than opaque: on the champion page this row
+      // overlaps the splash banner, and letting the art show through is the
+      // point. On a plain background it reads as a normal raised card.
+      className={`rounded-xl border px-4 py-2.5 text-center backdrop-blur-md ${
         emphasis
           ? "border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] shadow-[var(--elev-2)]"
-          : "border-subtle bg-raised shadow-[var(--elev-1)]"
+          : "border-subtle bg-[color:var(--bg-raised)]/80 shadow-[var(--elev-1)]"
       }`}
     >
       <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
