@@ -1,9 +1,13 @@
+import { PageHeader } from "@/components/PageHeader";
+
 export default function InfoPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">Info &amp; Tips</h1>
+    // Container matches every other page so the left edge doesn't jump on
+    // navigation; the prose inside stays bounded to a readable measure.
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <PageHeader eyebrow="Help" title="Info & Tips" />
 
-      <section className="mt-8">
+      <section className="max-w-3xl">
         <h2 className="font-display text-h2 font-semibold text-primary">
           How is the leaderboard calculated?
         </h2>
@@ -22,7 +26,7 @@ export default function InfoPage() {
         </div>
       </section>
 
-      <section className="mt-10">
+      <section className="mt-10 max-w-3xl">
         <h2 className="font-display text-h2 font-semibold text-primary">Tips</h2>
         <div className="mt-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
           <p>Tips content coming soon.</p>

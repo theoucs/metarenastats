@@ -196,7 +196,7 @@ export function SortControl<K extends string>({
             key={opt.key}
             ref={register(opt.key)}
             onClick={() => onChange(opt.key)}
-            className={`relative z-10 rounded-md px-3 py-1 font-medium transition-colors ${
+            className={`relative z-10 rounded-md px-3 py-1.5 font-medium transition-colors ${
               sortBy === opt.key ? "text-primary" : "text-muted hover:text-secondary"
             }`}
           >

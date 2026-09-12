@@ -317,7 +317,7 @@ export default async function ChampionDetailPage({
             (-mt-8), so the visible gap under the name is the padding minus that
             overlap. At pb-10 it measured 13px against 40px below the pills —
             the name looked stuck to them. */}
-        <div className="relative mx-auto flex h-full max-w-5xl items-end px-4 pb-16 sm:px-6">
+        <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-16 sm:px-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -347,7 +347,7 @@ export default async function ChampionDetailPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 pb-8 sm:px-6 sm:pb-12">
+      <div className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 sm:pb-12">
         {/* relative + z-10: the banner above is `position: relative` (for its
             absolute img/scrim children) — CSS paints positioned elements above
             non-positioned siblings regardless of DOM order, so without this,

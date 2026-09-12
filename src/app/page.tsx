@@ -153,7 +153,7 @@ export default async function Home() {
             something to look at; now that the splash art carries it, thin arcs
             crossing the tagline just read as a rendering artefact. */}
 
-        <div className="relative mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-20">
+        <div className="relative mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
           <p className="text-micro font-semibold uppercase tracking-[0.18em] text-muted">
             League of Legends Arena · 3v3 Three by Six
           </p>
@@ -176,7 +176,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h2 className="font-display text-h1 font-semibold text-primary">Meta Snapshot</h2>
           <Link href="/champions" className="text-small text-accent hover:underline">

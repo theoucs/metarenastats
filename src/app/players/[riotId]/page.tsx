@@ -38,7 +38,7 @@ export default async function PlayerPage({
 
   if (!puuid) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8 text-center sm:px-6 sm:py-12">
+      <div className="mx-auto max-w-6xl px-4 py-8 text-center sm:px-6 sm:py-12">
         <h1 className="font-display text-h1 font-semibold tracking-tight text-primary">{riotId}</h1>
         <div className="mt-8 rounded-lg border border-subtle bg-raised/40 p-10 text-secondary">
           {liveError ?? "Player not found."}

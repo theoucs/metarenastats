@@ -58,7 +58,7 @@ export function TieredStatsTabs({
               key={tab.key}
               // A disabled <button> would still be a tab stop in some browsers
               // and reads as "broken control"; this is a label, so it's markup.
-              className="relative z-10 flex cursor-not-allowed items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-muted/60"
+              className="relative z-10 flex cursor-not-allowed items-center gap-1.5 rounded-md px-3 py-1.5 text-small font-medium text-muted/60"
               title="Not enough matches tracked yet"
             >
               {tab.label}
@@ -73,7 +73,7 @@ export function TieredStatsTabs({
               aria-selected={active === tab.key}
               ref={register(tab.key)}
               onClick={() => setActive(tab.key)}
-              className={`relative z-10 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`relative z-10 rounded-md px-3 py-1.5 text-small font-medium transition-colors ${
                 active === tab.key ? "text-primary" : "text-muted hover:text-secondary"
               }`}
             >
