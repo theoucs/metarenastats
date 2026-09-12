@@ -593,6 +593,17 @@ export function StatsTable({
           { key: "avgPlacement", label: "Avg Placement" },
         ];
 
+  // Pair rows (Combos) carry two icon+name blocks in one cell, so the table
+  // needs ~785px rather than the ~640px the rest of the site's rows need. At
+  // the md breakpoint that silently cut the last columns off inside the
+  // scrollport, with no scroll affordance — the same failure the `compact`
+  // prop fixes on the player page. Hand those rows the card layout for one
+  // breakpoint longer instead. Classes are written out in full: Tailwind's
+  // scanner can't see an interpolated breakpoint.
+  const needsWideTable = rows.some((r) => r.secondaryName);
+  const cardsClass = needsWideTable ? "lg:hidden" : "md:hidden";
+  const tableClass = needsWideTable ? "hidden lg:block" : "hidden md:block";
+
   const showBands = variant === "tiers" && sortBy === "tier";
   const colCount = variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5;
   const cellX = compact ? "px-2" : "px-4";
@@ -612,10 +623,11 @@ export function StatsTable({
         options={sortOptions}
       />
 
-      {/* Under md the table can't fit (8 columns need ~640px) — same rows as
-          stacked cards instead, in normal page flow so there's no scroll
-          container nested inside the page scroll on a phone. */}
-      <div className="md:hidden">
+      {/* Below the breakpoint the table can't fit (8 columns need ~640px, or
+          ~785px for pair rows) — same rows as stacked cards instead, in normal
+          page flow so there's no scroll container nested inside the page
+          scroll on a phone. */}
+      <div className={cardsClass}>
         <div className="flex flex-col gap-2">
           {sorted.slice(0, cardLimit).map((row, i) => {
             const tier = showBands ? tierMap.get(row.key)!.tier : null;
@@ -656,7 +668,9 @@ export function StatsTable({
           overflow-x-auto div with unconstrained height never actually scrolls
           internally, so a sticky child inside it just sits at a fixed
           `top` offset forever instead of reacting to scroll. */}
-      <div className="hidden max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle md:block">
+      <div
+        className={`max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle ${tableClass}`}
+      >
         <table className={`w-full text-body ${compact ? "" : "min-w-[640px]"}`}>
           <thead>
             <tr className="text-left text-micro uppercase tracking-wide text-muted">
