@@ -2,6 +2,7 @@ import { getAugmentStats, getAugmentTimingStats } from "@/lib/aggregate";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { resolveAugment } from "@/lib/gameData";
 
 export const dynamic = "force-dynamic";
@@ -52,13 +53,15 @@ export default async function AugmentsPage() {
         description="Split by rarity."
         totalMatches={totalMatches}
       >
-        <p className="mt-3 max-w-2xl text-small text-muted">
-          Sort by <span className="text-secondary">Better early</span> or{" "}
-          <span className="text-secondary">Better late</span> to see which augments change value
-          depending on when you take them — the figure is the gap between an augment&apos;s % Top 3
-          as a 1st pick and as a 3rd pick, with each slot measured against its own baseline so a
-          late pick doesn&apos;t score well just for having survived. Needs 30 picks per slot.
-        </p>
+        <ShowMoreNote>
+          <p className="max-w-2xl text-small text-muted">
+            Sort by <span className="text-secondary">Better early</span> or{" "}
+            <span className="text-secondary">Better late</span> to see which augments change value
+            depending on when you take them — the figure is the gap between an augment&apos;s % Top 3
+            as a 1st pick and as a 3rd pick, with each slot measured against its own baseline so a
+            late pick doesn&apos;t score well just for having survived. Needs 30 picks per slot.
+          </p>
+        </ShowMoreNote>
       </PageHeader>
       <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} display="grid" />
     </div>
