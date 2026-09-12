@@ -37,7 +37,6 @@ export default async function CompsPage() {
       <PageHeader
         eyebrow="Tier list"
         title="Team Comps"
-        isNew
         description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
         totalMatches={totalMatches}
       >
