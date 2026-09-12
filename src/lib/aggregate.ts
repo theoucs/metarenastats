@@ -58,24 +58,42 @@ const MAX_PAGES = 30;
  * Per-request only: the cache lives for one render pass, so pages still see
  * fresh data on every request.
  */
+const PARTICIPANT_COLUMNS = "match_id, puuid, riot_id, subteam_id, champion, placement, augments, items";
+
+/**
+ * Fetches one page. Split out from fetchAllParticipants so pages can be
+ * requested with Promise.all instead of a sequential loop — at ~13k rows/14
+ * pages, one-at-a-time round trips added up to several seconds per page load
+ * and occasionally tipped over the platform's request timeout.
+ */
+function fetchParticipantPage(page: number) {
+  if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
+  const from = page * PAGE_SIZE;
+  return supabaseAdmin
+    .from("match_participants")
+    .select(PARTICIPANT_COLUMNS)
+    .range(from, from + PAGE_SIZE - 1)
+    .then(({ data, error }) => {
+      if (error) throw error;
+      return data ?? [];
+    });
+}
+
 export const fetchAllParticipants = cache(async function fetchAllParticipants(): Promise<
   ParticipantRow[]
 > {
   if (!supabaseAdmin) return [];
 
-  const allRows: ParticipantRow[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const from = page * PAGE_SIZE;
-    const { data, error } = await supabaseAdmin
-      .from("match_participants")
-      .select("match_id, puuid, riot_id, subteam_id, champion, placement, augments, items")
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allRows.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
-  return dropAfkTeams(allRows);
+  const { count, error } = await supabaseAdmin
+    .from("match_participants")
+    .select("*", { count: "exact", head: true });
+  if (error) throw error;
+
+  const pageCount = Math.min(Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)), MAX_PAGES);
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page)),
+  );
+  return dropAfkTeams(pages.flat());
 });
 
 // Drops every row belonging to a (match, subteam) where at least one
