@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier } from "@/lib/tiers";
 
-import { top1Color, top3Color, EntityIcon } from "@/lib/statsDisplay";
+import { top1Color, top3Color, avgPlacementColor, EntityIcon } from "@/lib/statsDisplay";
 import {
   CARD_PAGE_SIZE,
   RoleChips,
@@ -11,7 +11,7 @@ import {
   SortControl,
   TierBadge,
   TierBandHeading,
-  meterWidth,
+  placementMeterWidth,
   type SortKey,
   type StatsRow,
 } from "@/components/StatsTable";
@@ -30,18 +30,24 @@ function GridCard({
   row,
   rank,
   tier,
-  maxTop3,
+  bestPlacement,
+  worstPlacement,
   playRateLabel,
   unitLabel,
   showTiming,
+  hideTierBadge,
 }: {
   row: StatsRow;
   rank: number;
   tier: Tier;
-  maxTop3: number;
+  bestPlacement: number;
+  worstPlacement: number;
   playRateLabel: string;
   unitLabel: string;
   showTiming: boolean;
+  /** Suppressed while tier bands are shown — the band right above already
+   *  says the tier, so the badge is the same letter twice. */
+  hideTierBadge: boolean;
 }) {
   return (
     <article
@@ -93,30 +99,32 @@ function GridCard({
             #{rank + 1} · {row.games} {unitLabel}
           </p>
         </div>
-        <TierBadge tier={tier} />
+        {!hideTierBadge && <TierBadge tier={tier} />}
       </div>
 
+      {/* Avg Placement is the headline number everywhere on this site — see
+          docs/design-audit-plan.md §3.6. % Top 3 drops into the row below. */}
       <div className="mt-3.5 flex items-baseline justify-between gap-2">
-        <span className={`font-display text-h1 font-semibold ${top3Color(row.top3Rate)}`}>
-          {(row.top3Rate * 100).toFixed(1)}%
+        <span className={`font-display text-h1 font-semibold ${avgPlacementColor(row.avgPlacement)}`}>
+          {row.avgPlacement.toFixed(2)}
         </span>
-        <span className="text-micro uppercase tracking-wide text-muted">% Top 3</span>
+        <span className="text-micro uppercase tracking-wide text-muted">Avg Placement</span>
       </div>
       <div aria-hidden="true" className="mt-1.5 h-1 overflow-hidden rounded-full bg-inset">
         <div
           className="h-full rounded-full bg-[color:var(--accent)]/45"
-          style={{ width: `${meterWidth(row.top3Rate, maxTop3)}%` }}
+          style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
         />
       </div>
 
       <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-micro tabular-nums text-muted">
         <div className="flex items-baseline gap-1">
-          <dt>Top 1</dt>
-          <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
+          <dt>Top 3</dt>
+          <dd className={top3Color(row.top3Rate)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
         </div>
         <div className="flex items-baseline gap-1">
-          <dt>Avg</dt>
-          <dd className="text-secondary">{row.avgPlacement.toFixed(2)}</dd>
+          <dt>Top 1</dt>
+          <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
         </div>
         <div className="flex items-baseline gap-1">
           <dt>{playRateLabel.replace(/^%\s*/, "")}</dt>
@@ -161,7 +169,14 @@ export function StatsGrid({
   const [limit, setLimit] = useState(CARD_PAGE_SIZE);
 
   const tierMap = useMemo(() => computeTiers(rows, { gamesBonus }), [rows, gamesBonus]);
-  const maxTop3 = useMemo(() => rows.reduce((m, r) => Math.max(m, r.top3Rate), 0), [rows]);
+  // "best" is the *lowest* average placement, hence the flipped reduces.
+  const { bestPlacement, worstPlacement } = useMemo(
+    () => ({
+      bestPlacement: rows.reduce((m, r) => Math.min(m, r.avgPlacement), Infinity),
+      worstPlacement: rows.reduce((m, r) => Math.max(m, r.avgPlacement), 0),
+    }),
+    [rows]
+  );
 
   const hasTiming = useMemo(() => rows.some((r) => r.timing), [rows]);
   const showTiming = sortBy === "later" || sortBy === "earlier";
@@ -238,7 +253,9 @@ export function StatsGrid({
                 row={row}
                 rank={i}
                 tier={tier}
-                maxTop3={maxTop3}
+                bestPlacement={bestPlacement}
+                worstPlacement={worstPlacement}
+                hideTierBadge={showBands}
                 playRateLabel={playRateLabel}
                 unitLabel={unitLabel}
                 showTiming={showTiming}

@@ -26,6 +26,16 @@ export function top1Color(rate: number) {
   return "text-stat-bad";
 }
 
+// Avg placement over 6 teams — the expected value is 3.5, so the band sits
+// around that: -0.3 to clear into green, +0.2 to drop into red. Comparisons are
+// inverted relative to top3Color/top1Color because here *lower* is better.
+// Same reserved-color rule: green/red only ever mean "this number is good/bad".
+export function avgPlacementColor(avg: number) {
+  if (avg <= 3.2) return "text-stat-good";
+  if (avg <= 3.7) return "text-secondary";
+  return "text-stat-bad";
+}
+
 // Matches the in-game augment rarity frame colors — silver/gold border, a
 // holo gradient ring for prismatic (plain items/champions get a neutral
 // border). silver/gold are nudged toward the game's metallic frame hue
@@ -41,36 +51,57 @@ export function StatPill({
   label,
   value,
   colorClass,
+  emphasis = false,
 }: {
   label: string;
   value: string;
   colorClass?: string;
+  /** The one metric that outranks the others in this group — always Avg
+   * Placement (see docs/design-audit-plan.md, "Décision actée"). Five pills at
+   * the same weight meant no pill carried anything. */
+  emphasis?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-subtle bg-raised px-4 py-2.5 text-center shadow-[var(--elev-1)]">
+    <div
+      className={`rounded-xl border px-4 py-2.5 text-center ${
+        emphasis
+          ? "border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] shadow-[var(--elev-2)]"
+          : "border-subtle bg-raised shadow-[var(--elev-1)]"
+      }`}
+    >
       <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-1 font-display text-display font-semibold ${colorClass ?? "text-primary"}`}>
+      <div
+        className={`mt-1 font-display font-semibold ${
+          emphasis ? "text-display sm:text-display-lg" : "text-h1"
+        } ${colorClass ?? "text-primary"}`}
+      >
         {value}
       </div>
     </div>
   );
 }
 
-export function MiniStat({
-  label,
-  value,
-  colorClass,
-}: {
-  label: string;
-  value: string;
-  colorClass?: string;
-}) {
+/** The five column labels every stat row under a MiniStatRow header repeats.
+ *  Written once per column instead of once per card — on the champion page
+ *  that was the same five words rendered ~75 times. */
+export const MINI_STAT_LABELS = ["Avg", "Top 1", "Top 3", "Games", "Played"] as const;
+
+export function MiniStatHeader() {
   return (
-    <div>
-      <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
-      <div className={`font-mono text-xs [font-variant-numeric:tabular-nums] ${colorClass ?? "text-secondary"}`}>
-        {value}
-      </div>
+    <div className="grid grid-cols-5 gap-1 px-3 text-center text-micro uppercase tracking-wide text-muted">
+      {MINI_STAT_LABELS.map((label) => (
+        <div key={label}>{label}</div>
+      ))}
+    </div>
+  );
+}
+
+/** One value cell. The label lives in the sibling MiniStatHeader, so the number
+ *  gets the room the label used to take (text-xs -> text-small). */
+export function MiniStat({ value, colorClass }: { value: string; colorClass?: string }) {
+  return (
+    <div className={`font-mono text-small [font-variant-numeric:tabular-nums] ${colorClass ?? "text-secondary"}`}>
+      {value}
     </div>
   );
 }

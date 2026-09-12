@@ -2,12 +2,19 @@ import Link from "next/link";
 import { getSiteStats, getChampionStats } from "@/lib/aggregate";
 import { computeTiers, type Tier } from "@/lib/tiers";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
-import { EntityIcon, top3Color } from "@/lib/statsDisplay";
+import { EntityIcon, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
 import { TierBadge } from "@/components/StatsTable";
 import { HomeSearch } from "@/components/HomeSearch";
 import { Wordmark } from "@/components/Wordmark";
 
 export const dynamic = "force-dynamic";
+
+const EXPLORE = [
+  { href: "/items", title: "Items", blurb: "Legendary and prismatic, split by rarity." },
+  { href: "/augments", title: "Augments", blurb: "Silver, gold and prismatic tier lists." },
+  { href: "/combos", title: "Combos", blurb: "Pairs that actually place together." },
+  { href: "/comps", title: "Team Comps", blurb: "Which three-champion shapes place." },
+] as const;
 
 type TopChampion = {
   key: string;
@@ -58,14 +65,17 @@ function ChampionSpotlight({ champion, rank }: { champion: TopChampion; rank: nu
             {champion.name}
           </span>
         </div>
+        {/* Avg placement leads here too — see docs/design-audit-plan.md §3.6. */}
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-small tabular-nums">
+          <span className={avgPlacementColor(champion.avgPlacement)}>
+            {champion.avgPlacement.toFixed(2)}
+          </span>
+          <span className="text-micro uppercase tracking-wide text-muted">avg</span>
+          <span className="text-muted">·</span>
           <span className={top3Color(champion.top3Rate)}>
             {(champion.top3Rate * 100).toFixed(1)}%
           </span>
           <span className="text-micro uppercase tracking-wide text-muted">top 3</span>
-          <span className="text-muted">·</span>
-          <span className="text-secondary">{champion.avgPlacement.toFixed(2)}</span>
-          <span className="text-micro uppercase tracking-wide text-muted">avg</span>
         </div>
       </div>
     </Link>
@@ -86,10 +96,10 @@ function ChampionChip({ champion, rank }: { champion: TopChampion; rank: number 
       <div className="min-w-0 flex-1">
         <div className="truncate text-small font-medium text-primary">{champion.name}</div>
         <div className="whitespace-nowrap font-mono text-micro tabular-nums text-muted">
-          <span className={top3Color(champion.top3Rate)}>
-            {(champion.top3Rate * 100).toFixed(0)}%
+          <span className={avgPlacementColor(champion.avgPlacement)}>
+            {champion.avgPlacement.toFixed(2)}
           </span>{" "}
-          top 3
+          avg
         </div>
       </div>
     </Link>
@@ -202,6 +212,28 @@ export default async function Home() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Half the nav was reachable only from the nav itself. No extra fetch
+          here: every number below is already loaded for the section above. */}
+      <section className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
+        <h2 className="font-display text-h1 font-semibold text-primary">Explore</h2>
+        <p className="mt-1 text-small text-muted">Every tier list, ranked the same way.</p>
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {EXPLORE.map((card) => (
+            <Link
+              key={card.href}
+              href={card.href}
+              className="group flex flex-col rounded-xl border border-subtle bg-raised/40 p-4 transition-colors hover:border-default hover:bg-overlay"
+            >
+              <span className="font-display text-h2 font-semibold text-primary">{card.title}</span>
+              <span className="mt-1 text-small text-muted">{card.blurb}</span>
+              <span className="mt-3 text-small text-accent">
+                Open <span className="inline-block transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none">→</span>
+              </span>
+            </Link>
+          ))}
+        </div>
       </section>
     </div>
   );

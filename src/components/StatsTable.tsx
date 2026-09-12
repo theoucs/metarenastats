@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
-import { top1Color, top3Color, EntityIcon, type EntityRarity } from "@/lib/statsDisplay";
+import {
+  top1Color,
+  top3Color,
+  avgPlacementColor,
+  EntityIcon,
+  type EntityRarity,
+} from "@/lib/statsDisplay";
 import { SlidingHighlight, useSlidingHighlight } from "@/components/SlidingHighlight";
 
 export type StatsRow = {
@@ -254,6 +260,14 @@ export function meterWidth(value: number, max: number) {
   return Math.max(3, Math.min(92, (value / max) * 92));
 }
 
+// Sibling of meterWidth for metrics where *lower* is better (avg placement).
+// Normalized against this batch's own best/worst rather than the theoretical
+// 1..6, so the bars actually spread out instead of all sitting near the middle.
+export function placementMeterWidth(avg: number, best: number, worst: number) {
+  if (worst - best < 1e-9) return 50;
+  return Math.max(3, Math.min(92, ((worst - avg) / (worst - best)) * 92));
+}
+
 const stickyHeadCell = "sticky top-0 z-30 border-b border-default bg-inset py-3 font-medium";
 
 function DataRow({
@@ -264,6 +278,9 @@ function DataRow({
   linkPrefix,
   maxTop3,
   maxTop1,
+  bestPlacement,
+  worstPlacement,
+  hideTierColumn,
 }: {
   row: StatsRow;
   rank: number;
@@ -272,6 +289,11 @@ function DataRow({
   linkPrefix?: string;
   maxTop3: number;
   maxTop1: number;
+  bestPlacement: number;
+  worstPlacement: number;
+  /** Suppressed while tier bands are shown — the band right above already says
+   *  the tier, so the badge is the same letter repeated down the whole band. */
+  hideTierColumn: boolean;
 }) {
   const tierInfo = variant === "tiers" ? tierMap.get(row.key) : undefined;
   const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "transparent";
@@ -289,7 +311,7 @@ function DataRow({
           <span className="font-mono tabular-nums text-muted">{rank + 1}</span>
         )}
       </td>
-      {variant === "tiers" && (
+      {variant === "tiers" && !hideTierColumn && (
         <td className="px-4 py-1.5">
           <TierBadge tier={tierMap.get(row.key)!.tier} />
         </td>
@@ -305,7 +327,19 @@ function DataRow({
           </div>
         )}
       </td>
-      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">{row.games}</td>
+      {/* Avg Placement leads: it is the metric that outranks the others
+          everywhere on this site (docs/design-audit-plan.md §3.6), and it is
+          what computeTiers weights at 60%. */}
+      <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
+          style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
+        />
+        <span className={`relative ${avgPlacementColor(row.avgPlacement)}`}>
+          {row.avgPlacement.toFixed(2)}
+        </span>
+      </td>
       <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
         <span
           aria-hidden="true"
@@ -324,9 +358,7 @@ function DataRow({
           <span className={`relative ${top1Color(row.top1Rate)}`}>{(row.top1Rate * 100).toFixed(1)}%</span>
         </td>
       )}
-      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">
-        {row.avgPlacement.toFixed(2)}
-      </td>
+      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">{row.games}</td>
       {variant === "tiers" && (
         <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">
           {(row.playRate * 100).toFixed(1)}%
@@ -350,7 +382,8 @@ function MobileCard({
   variant,
   tierInfo,
   linkPrefix,
-  maxTop3,
+  bestPlacement,
+  worstPlacement,
   playRateLabel,
 }: {
   row: StatsRow;
@@ -358,7 +391,8 @@ function MobileCard({
   variant: "tiers" | "ranked";
   tierInfo?: TierInfo;
   linkPrefix?: string;
-  maxTop3: number;
+  bestPlacement: number;
+  worstPlacement: number;
   playRateLabel: string;
 }) {
   const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "var(--border-default)";
@@ -416,30 +450,32 @@ function MobileCard({
         {tierInfo && <TierBadge tier={tierInfo.tier} />}
       </div>
 
+      {/* Avg Placement is the headline number everywhere on this site — see
+          docs/design-audit-plan.md §3.6. % Top 3 drops into the row below. */}
       <div className="mt-3 flex items-baseline gap-2">
-        <span className={`font-display text-h1 font-semibold ${top3Color(row.top3Rate)}`}>
-          {(row.top3Rate * 100).toFixed(1)}%
+        <span className={`font-display text-h1 font-semibold ${avgPlacementColor(row.avgPlacement)}`}>
+          {row.avgPlacement.toFixed(2)}
         </span>
-        <span className="text-micro uppercase tracking-wide text-muted">% Top 3</span>
+        <span className="text-micro uppercase tracking-wide text-muted">Avg Placement</span>
       </div>
       <div aria-hidden="true" className="mt-1.5 h-1 overflow-hidden rounded-full bg-inset">
         <div
           className="h-full rounded-full bg-[color:var(--accent)]/45"
-          style={{ width: `${meterWidth(row.top3Rate, maxTop3)}%` }}
+          style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
         />
       </div>
 
       <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-micro tabular-nums text-muted">
+        <div className="flex items-baseline gap-1">
+          <dt>Top 3</dt>
+          <dd className={top3Color(row.top3Rate)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
+        </div>
         {variant === "tiers" && (
           <div className="flex items-baseline gap-1">
             <dt>Top 1</dt>
             <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
           </div>
         )}
-        <div className="flex items-baseline gap-1">
-          <dt>Avg</dt>
-          <dd className="text-secondary">{row.avgPlacement.toFixed(2)}</dd>
-        </div>
         <div className="flex items-baseline gap-1">
           <dt>Games</dt>
           <dd className="text-secondary">{row.games}</dd>
@@ -478,10 +514,13 @@ export function StatsTable({
   // score, independent of whatever sort is currently selected.
   const tierMap = useMemo(() => computeTiers(rows), [rows]);
 
-  const { maxTop3, maxTop1 } = useMemo(
+  const { maxTop3, maxTop1, bestPlacement, worstPlacement } = useMemo(
     () => ({
       maxTop3: rows.reduce((m, r) => Math.max(m, r.top3Rate), 0),
       maxTop1: rows.reduce((m, r) => Math.max(m, r.top1Rate), 0),
+      // "best" is the *lowest* average placement, hence the flipped reduces.
+      bestPlacement: rows.reduce((m, r) => Math.min(m, r.avgPlacement), Infinity),
+      worstPlacement: rows.reduce((m, r) => Math.max(m, r.avgPlacement), 0),
     }),
     [rows]
   );
@@ -518,8 +557,8 @@ export function StatsTable({
           { key: "avgPlacement", label: "Avg Placement" },
         ];
 
-  const colCount = variant === "tiers" ? 8 : 5;
   const showBands = variant === "tiers" && sortBy === "tier";
+  const colCount = variant === "tiers" ? (showBands ? 7 : 8) : 5;
 
   let lastTier: Tier | null = null;
 
@@ -558,7 +597,8 @@ export function StatsTable({
                   variant={variant}
                   tierInfo={variant === "tiers" ? tierMap.get(row.key) : undefined}
                   linkPrefix={linkPrefix}
-                  maxTop3={maxTop3}
+                  bestPlacement={bestPlacement}
+                  worstPlacement={worstPlacement}
                   playRateLabel={playRateLabel}
                 />
               </Fragment>
@@ -585,12 +625,14 @@ export function StatsTable({
               <th className={`${stickyHeadCell} w-12 border-l-2 border-l-transparent pl-[14px] pr-4`}>
                 #
               </th>
-              {variant === "tiers" && <th className={`${stickyHeadCell} w-14 px-4`}>Tier</th>}
+              {variant === "tiers" && !showBands && (
+                <th className={`${stickyHeadCell} w-14 px-4`}>Tier</th>
+              )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
-              <th className={`${stickyHeadCell} px-4 text-right`}>Games</th>
+              <th className={`${stickyHeadCell} px-4 text-right`}>Avg Placement</th>
               <th className={`${stickyHeadCell} px-4 text-right`}>% Top 3</th>
               {variant === "tiers" && <th className={`${stickyHeadCell} px-4 text-right`}>% Top 1</th>}
-              <th className={`${stickyHeadCell} px-4 text-right`}>Avg Placement</th>
+              <th className={`${stickyHeadCell} px-4 text-right`}>Games</th>
               {variant === "tiers" && (
                 <th className={`${stickyHeadCell} px-4 text-right`}>{playRateLabel}</th>
               )}
@@ -614,6 +656,9 @@ export function StatsTable({
                     linkPrefix={linkPrefix}
                     maxTop3={maxTop3}
                     maxTop1={maxTop1}
+                    bestPlacement={bestPlacement}
+                    worstPlacement={worstPlacement}
+                    hideTierColumn={showBands}
                   />
                 </Fragment>
               );

@@ -1,7 +1,7 @@
 import { searchPlayerMatches, findKnownPlayerByRiotId } from "@/lib/riotSearch";
 import { getPlayerProfile } from "@/lib/aggregate";
 import { resolveChampion } from "@/lib/gameData";
-import { StatPill, top1Color, top3Color } from "@/lib/statsDisplay";
+import { StatPill, top1Color, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { MatchCard } from "@/components/MatchCard";
 
@@ -126,8 +126,13 @@ export default async function PlayerPage({
             </div>
           ) : (
             <>
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatPill label="Avg Placement" value={profile.avgPlacement.toFixed(2)} />
+              <div className="mt-6 grid grid-cols-2 gap-3 [&>*:first-child]:col-span-2 sm:grid-cols-4 sm:[&>*:first-child]:col-span-1">
+                <StatPill
+                  label="Avg Placement"
+                  value={profile.avgPlacement.toFixed(2)}
+                  colorClass={avgPlacementColor(profile.avgPlacement)}
+                  emphasis
+                />
                 <StatPill
                   label="% Top 1"
                   value={`${(profile.top1Rate * 100).toFixed(1)}%`}

@@ -9,7 +9,15 @@ import {
   type Stat,
 } from "@/lib/aggregate";
 import { resolveChampion, resolveItem, resolveAugment, itemCategory, heroSplashUrl } from "@/lib/gameData";
-import { EntityIcon, top1Color, top3Color, StatPill, MiniStat } from "@/lib/statsDisplay";
+import {
+  EntityIcon,
+  top1Color,
+  top3Color,
+  avgPlacementColor,
+  StatPill,
+  MiniStat,
+  MiniStatHeader,
+} from "@/lib/statsDisplay";
 import { Tooltip } from "@/components/Tooltip";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { TierBadge, type StatsRow } from "@/components/StatsTable";
@@ -49,19 +57,11 @@ function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
         <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
-        <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
-        <MiniStat
-          label="Top 1"
-          value={`${(stat.top1Rate * 100).toFixed(0)}%`}
-          colorClass={top1Color(stat.top1Rate)}
-        />
-        <MiniStat
-          label="Top 3"
-          value={`${(stat.top3Rate * 100).toFixed(0)}%`}
-          colorClass={top3Color(stat.top3Rate)}
-        />
-        <MiniStat label="Games" value={String(stat.games)} />
-        <MiniStat label="Played" value={`${(stat.playRate * 100).toFixed(0)}%`} />
+        <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
+        <MiniStat value={`${(stat.top1Rate * 100).toFixed(0)}%`} colorClass={top1Color(stat.top1Rate)} />
+        <MiniStat value={`${(stat.top3Rate * 100).toFixed(0)}%`} colorClass={top3Color(stat.top3Rate)} />
+        <MiniStat value={String(stat.games)} />
+        <MiniStat value={`${(stat.playRate * 100).toFixed(0)}%`} />
       </div>
     </div>
   );
@@ -71,7 +71,8 @@ function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugment
   return (
     <div>
       <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">{title}</h3>
-      <div className="flex flex-col gap-2">
+      {stats.length > 0 && <MiniStatHeader />}
+      <div className="mt-1.5 flex flex-col gap-2">
         {stats.length === 0 ? (
           <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
             No data yet.
@@ -116,19 +117,11 @@ function PrismaticItemCard({ stat }: { stat: ChampionItemSlotStat }) {
         <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
-        <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
-        <MiniStat
-          label="Top 1"
-          value={`${(stat.top1Rate * 100).toFixed(0)}%`}
-          colorClass={top1Color(stat.top1Rate)}
-        />
-        <MiniStat
-          label="Top 3"
-          value={`${(stat.top3Rate * 100).toFixed(0)}%`}
-          colorClass={top3Color(stat.top3Rate)}
-        />
-        <MiniStat label="Games" value={String(stat.games)} />
-        <MiniStat label="Played" value={`${(stat.playRate * 100).toFixed(0)}%`} />
+        <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
+        <MiniStat value={`${(stat.top1Rate * 100).toFixed(0)}%`} colorClass={top1Color(stat.top1Rate)} />
+        <MiniStat value={`${(stat.top3Rate * 100).toFixed(0)}%`} colorClass={top3Color(stat.top3Rate)} />
+        <MiniStat value={String(stat.games)} />
+        <MiniStat value={`${(stat.playRate * 100).toFixed(0)}%`} />
       </div>
     </div>
   );
@@ -147,24 +140,19 @@ function AnvilRunPanel({
   topPrismaticItems: ChampionItemSlotStat[];
 }) {
   return (
-    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
+    <div>
       <h2 className="font-display text-h2 font-semibold text-primary">Anvil Run</h2>
       <p className="mt-0.5 text-small text-secondary">Stat anvils only, no items bought.</p>
 
-      <div className="mt-2 grid grid-cols-5 gap-1 text-center">
-        <MiniStat label="Avg" value={stat.avgPlacement.toFixed(2)} />
-        <MiniStat
-          label="Top 1"
-          value={`${(stat.top1Rate * 100).toFixed(0)}%`}
-          colorClass={top1Color(stat.top1Rate)}
-        />
-        <MiniStat
-          label="Top 3"
-          value={`${(stat.top3Rate * 100).toFixed(0)}%`}
-          colorClass={top3Color(stat.top3Rate)}
-        />
-        <MiniStat label="Games" value={String(stat.games)} />
-        <MiniStat label="Played" value={`${(stat.playRate * 100).toFixed(0)}%`} />
+      <div className="mt-2">
+        <MiniStatHeader />
+        <div className="mt-1 grid grid-cols-5 gap-1 px-3 text-center">
+          <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
+          <MiniStat value={`${(stat.top1Rate * 100).toFixed(0)}%`} colorClass={top1Color(stat.top1Rate)} />
+          <MiniStat value={`${(stat.top3Rate * 100).toFixed(0)}%`} colorClass={top3Color(stat.top3Rate)} />
+          <MiniStat value={String(stat.games)} />
+          <MiniStat value={`${(stat.playRate * 100).toFixed(0)}%`} />
+        </div>
       </div>
 
       <ShardbladeRateBlock rate={shardbladeRate} />
@@ -173,7 +161,8 @@ function AnvilRunPanel({
         <h3 className="mb-1.5 text-small font-semibold uppercase tracking-wide text-muted">
           Top Prismatic Items
         </h3>
-        <div className="flex flex-col gap-1.5">
+        {topPrismaticItems.length > 0 && <MiniStatHeader />}
+        <div className="mt-1.5 flex flex-col gap-1.5">
           {topPrismaticItems.length === 0 ? (
             <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
               No data yet.
@@ -363,8 +352,13 @@ export default async function ChampionDetailPage({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <StatPill label="Avg Placement" value={detail.avgPlacement.toFixed(2)} />
+              <div className="grid grid-cols-2 gap-3 [&>*:first-child]:col-span-2 sm:grid-cols-5 sm:[&>*:first-child]:col-span-1">
+                <StatPill
+                  label="Avg Placement"
+                  value={detail.avgPlacement.toFixed(2)}
+                  colorClass={avgPlacementColor(detail.avgPlacement)}
+                  emphasis
+                />
                 <StatPill
                   label="% Top 1"
                   value={`${(detail.top1Rate * 100).toFixed(1)}%`}
@@ -379,7 +373,7 @@ export default async function ChampionDetailPage({
                 <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
               </div>
 
-              <section className="mt-10">
+              <section className="mt-10 border-t border-subtle pt-8">
                 <h2 className="font-display text-h2 font-semibold text-primary">Best Augments</h2>
                 <p className="mt-1 text-small text-secondary">Among this champion&apos;s own games.</p>
                 <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
@@ -389,9 +383,9 @@ export default async function ChampionDetailPage({
                 </div>
               </section>
 
-              <section className="mt-10">
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-                  <div className="rounded-lg border border-subtle bg-raised/40 p-4">
+              <section className="mt-10 border-t border-subtle pt-8">
+                <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <div>
                     <h2 className="font-display text-h2 font-semibold text-primary">Item Build</h2>
                     {detail.itemBuild.length === 0 ? (
                       <p className="mt-3 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
@@ -409,7 +403,12 @@ export default async function ChampionDetailPage({
                       <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">
                         Top Prismatic Items
                       </h3>
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      {detail.topPrismaticItems.length > 0 && <MiniStatHeader />}
+                      {/* Single column, unlike before: the five stat labels are
+                          now written once above the list, and a 2-up grid would
+                          leave that header spanning both columns while the
+                          values sat under only the first. */}
+                      <div className="mt-1.5 grid gap-2">
                         {detail.topPrismaticItems.length === 0 ? (
                           <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
                             No data yet.
@@ -432,7 +431,7 @@ export default async function ChampionDetailPage({
                 </div>
               </section>
 
-              <section className="mt-10">
+              <section className="mt-10 border-t border-subtle pt-8">
                 <h2 className="font-display text-h2 font-semibold text-primary">Top Combos</h2>
                 <p className="mt-1 text-small text-secondary">
                   Best-performing pairs on this champion specifically.
