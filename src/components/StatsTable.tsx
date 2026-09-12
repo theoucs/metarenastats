@@ -149,8 +149,11 @@ export function TierBandHeading({ tier }: { tier: Tier }) {
   const style = TIER_STYLES[tier];
   return (
     <div
-      className="flex items-center gap-2 text-micro font-semibold uppercase tracking-wide"
-      style={{ color: style.hex }}
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 font-display text-h2 font-semibold"
+      style={{
+        color: style.hex,
+        backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${style.hex} 14%, transparent), transparent 55%)`,
+      }}
     >
       {tier} Tier
       <span className="h-px flex-1" style={{ backgroundColor: style.hex, opacity: 0.25 }} />
@@ -213,11 +216,11 @@ function NameCellContent({ row }: { row: StatsRow }) {
   if (row.secondaryName) {
     return (
       <>
-        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-9 w-9" />}
+        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
         <span className="font-medium text-primary">{row.name}</span>
         <span className="text-muted">+</span>
         {row.secondaryIconUrl && (
-          <EntityIcon iconUrl={row.secondaryIconUrl} rarity={row.secondaryRarity} sizeClass="h-9 w-9" />
+          <EntityIcon iconUrl={row.secondaryIconUrl} rarity={row.secondaryRarity} sizeClass="h-8 w-8" />
         )}
         <span className="font-medium text-primary">{row.secondaryName}</span>
       </>
@@ -225,7 +228,7 @@ function NameCellContent({ row }: { row: StatsRow }) {
   }
   return (
     <>
-      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-9 w-9" />}
+      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
       <span className="font-medium text-primary">{row.name}</span>
     </>
   );
@@ -242,6 +245,10 @@ function EmptyState() {
 // Normalized-to-column-max bar width behind %Top3/%Top1, in percent of cell
 // width — capped so it never touches the far edge, floored so a near-zero
 // value still shows a visible sliver.
+//
+// The bar is anchored right (`right-0`), not left: the number it sits behind is
+// right-aligned, so a left-anchored bar stopped short of the digits on any low
+// value and read as a stray empty rectangle next to an orphan number.
 export function meterWidth(value: number, max: number) {
   if (max <= 0) return 0;
   return Math.max(3, Math.min(92, (value / max) * 92));
@@ -275,7 +282,7 @@ function DataRow({
       className="group border-b border-subtle transition-colors duration-150 last:border-0 hover:bg-overlay"
       style={{ "--rail": railHex } as React.CSSProperties}
     >
-      <td className="border-l-2 border-l-[color:var(--rail)] py-2.5 pl-[14px] pr-4 transition-colors duration-150 group-hover:border-l-[color:var(--accent)]">
+      <td className="border-l-2 border-l-[color:var(--rail)] py-1.5 pl-[14px] pr-4 transition-colors duration-150 group-hover:border-l-[color:var(--accent)]">
         {variant === "ranked" ? (
           <RankCell rank={rank + 1} />
         ) : (
@@ -283,11 +290,11 @@ function DataRow({
         )}
       </td>
       {variant === "tiers" && (
-        <td className="px-4 py-2.5">
+        <td className="px-4 py-1.5">
           <TierBadge tier={tierMap.get(row.key)!.tier} />
         </td>
       )}
-      <td className="px-4 py-2.5">
+      <td className="px-4 py-1.5">
         {linkPrefix ? (
           <Link href={`${linkPrefix}${row.key}`} className="flex items-center gap-2.5 hover:underline">
             <NameCellContent row={row} />
@@ -298,30 +305,30 @@ function DataRow({
           </div>
         )}
       </td>
-      <td className="px-4 py-2.5 text-right font-mono tabular-nums text-secondary">{row.games}</td>
-      <td className="relative px-4 py-2.5 text-right font-mono tabular-nums">
+      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">{row.games}</td>
+      <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
         <span
           aria-hidden="true"
-          className="absolute inset-y-[7px] left-0 rounded-[3px] bg-[color:var(--accent-muted)]"
+          className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
           style={{ width: `${meterWidth(row.top3Rate, maxTop3)}%` }}
         />
         <span className={`relative ${top3Color(row.top3Rate)}`}>{(row.top3Rate * 100).toFixed(1)}%</span>
       </td>
       {variant === "tiers" && (
-        <td className="relative px-4 py-2.5 text-right font-mono tabular-nums">
+        <td className="relative px-4 py-1.5 text-right font-mono tabular-nums">
           <span
             aria-hidden="true"
-            className="absolute inset-y-[7px] left-0 rounded-[3px] bg-[color:var(--accent-muted)]"
+            className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
             style={{ width: `${meterWidth(row.top1Rate, maxTop1)}%` }}
           />
           <span className={`relative ${top1Color(row.top1Rate)}`}>{(row.top1Rate * 100).toFixed(1)}%</span>
         </td>
       )}
-      <td className="px-4 py-2.5 text-right font-mono tabular-nums text-secondary">
+      <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">
         {row.avgPlacement.toFixed(2)}
       </td>
       {variant === "tiers" && (
-        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-secondary">
+        <td className="px-4 py-1.5 text-right font-mono tabular-nums text-secondary">
           {(row.playRate * 100).toFixed(1)}%
         </td>
       )}
