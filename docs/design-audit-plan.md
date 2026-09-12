@@ -4,6 +4,12 @@ Suite de `design-refresh-plan.md`. Ce document part d'un audit fait **sur captur
 réelles** (11 pages, aux largeurs 1440 / 1279 / 820 / 390px) et liste les
 correctifs à appliquer, dans un ordre où chaque phase est livrable seule.
 
+> **✅ Plan entièrement exécuté le 2026-09-12.** Les 7 phases sont livrées et
+> poussées sur `main` (un commit par phase). Ce document reste la référence du
+> *pourquoi* de chaque choix — il décrit désormais l'état du code, pas un
+> chantier à venir. Les écarts constatés à l'exécution sont notés en ligne,
+> préfixés « À l'exécution ».
+
 ## Contraintes
 
 - **Ne toucher ni aux données, ni aux calculs de stats, ni aux fetchs.**
@@ -408,6 +414,8 @@ un bloc vide flottant et un nombre orphelin. Très visible sur `/anvil` (colonne
 deux spans. La barre grandit alors *sous* le nombre, le chiffre reste toujours
 dans la zone teintée.
 
+> **À l'exécution :** l'option retenue a suffi, le repli n'a pas été nécessaire.
+
 Si le rendu manque de lisibilité en comparaison ligne à ligne, repli : vraie
 piste — un fond `absolute inset-y-[7px] inset-x-0 rounded-[3px] bg-inset` + un
 remplissage `absolute right-0` par-dessus, chiffre en `relative` au-dessus des deux.
@@ -521,6 +529,10 @@ valeurs actuelles sont ce qu'elles sont — les mettre à jour en même temps) :
    `bg-[var(--bg-base)]/70 backdrop-blur-md` sur `StatPill` quand elles
    chevauchent, et `-mt-12` pour un chevauchement franc et assumé.
 
+> **À l'exécution :** `pb-8` était trop court — les pilules recouvraient
+> « Rank #1 of 173 champions ». Il faut `pb-20` : le padding doit couvrir les
+> 48px de chevauchement *plus* un vrai écart (80 − 48 = 32px d'air sous le nom).
+
 ### 7.2 Le skeleton de chargement est invisible
 
 `players/[riotId]/loading.tsx` : `bg-raised` (#111318) sur `bg-base` (#0A0B0F)
@@ -564,6 +576,26 @@ Faible priorité, à faire en dernier.
 
 ---
 
+## Trouvé pendant la vérification (corrigé)
+
+Non prévu par le plan, détecté en repassant les 11 pages à 8 largeurs :
+
+- **Tables à paires coupées entre 768 et 1024px.** Les lignes de `/combos`
+  portent deux blocs icône+nom dans une seule cellule, donc la table réclame
+  ~785px là où le reste du site tient en ~640px. À partir de `md` elle
+  s'affichait quand même et les deux dernières colonnes étaient coupées dans le
+  scrollport sans affordance — le défaut que le §4.2 corrige sur la page
+  joueur. Ces lignes (`rows.some(r => r.secondaryName)`) gardent les cartes
+  jusqu'à `lg`.
+- **Bande de 25px sous le header, menu mobile fermé.** Le grid item du §6.5 ne
+  doit porter ni padding ni bordure : ils survivent à la piste `0fr`. Trois
+  niveaux de `div`, le padding tout à l'intérieur.
+- **En-tête de colonnes désaligné** sur « Top Prismatic Items » de la page
+  champion : le §3.4 écrit les 5 labels une fois au-dessus de la liste, ce qui
+  suppose une liste en **une** colonne. Le bloc était en `sm:grid-cols-2`, donc
+  l'en-tête couvrait les deux colonnes et les valeurs une seule. Passé en une
+  colonne, comme le panneau Anvil Run voisin.
+
 ## Hors périmètre / reporté
 
 Identifié pendant l'audit, volontairement **pas** dans ce plan :
@@ -575,6 +607,9 @@ Identifié pendant l'audit, volontairement **pas** dans ce plan :
   visuel.
 - **Tri par défaut du Leaderboard** — cf. la décision actée en tête de document :
   c'est la méthodologie du classement, pas du rendu.
+- **3 erreurs ESLint préexistantes** (`setState` synchrone dans un `useEffect`,
+  dans `HomeSearch`, `Nav` et `NavSearch`) : antérieures à ce plan, vérifiées
+  identiques avant et après. C'est du comportement, pas du rendu.
 
 ## Ordre de bataille
 
