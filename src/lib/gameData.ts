@@ -44,6 +44,38 @@ export function resolveAugment(id: number) {
   return augmentsById.get(id);
 }
 
+/**
+ * Data Dragon skin numbers for the homepage hero background, keyed by
+ * champion id. There's no usage data to pick a "most popular" skin from —
+ * match_participants doesn't track which skin was worn — so this is a
+ * hand-picked list of recognizable skins for champions likely to top the
+ * tier list. Falls back to the base splash (skin 0) for anyone not listed;
+ * add an entry here when a new champion takes the #1 spot.
+ */
+const HERO_SKIN_BY_CHAMPION: Record<string, number> = {
+  Fiora: 4, // PROJECT: Fiora
+  Yone: 1, // Spirit Blossom Yone
+  Yasuo: 3, // Blood Moon Yasuo
+  Katarina: 9, // PROJECT: Katarina
+  Jinx: 4, // Star Guardian Jinx
+  Kaisa: 14, // K/DA Kai'Sa
+  Ahri: 15, // K/DA Ahri
+  Darius: 4, // Dunkmaster Darius
+  Sett: 8, // Obsidian Dragon Sett
+  Volibear: 7, // Duality Dragon Volibear
+  Ashe: 8, // PROJECT: Ashe
+  Ezreal: 5, // Pulsefire Ezreal
+  Vex: 10, // Empyrean Vex
+  Ambessa: 8, // T1 Ambessa
+  MissFortune: 16, // Gun Goddess Miss Fortune
+};
+
+/** Centered splash URL for a champion's hero-background skin (see above). */
+export function heroSplashUrl(championKey: string): string {
+  const skinNum = HERO_SKIN_BY_CHAMPION[championKey] ?? 0;
+  return `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${championKey}_${skinNum}.jpg`;
+}
+
 // "boots"/"prismatic"/"excluded" tag a minority of items (see items.json) —
 // everything else (undefined) is a normal shop-bought Legendary/Mythic item.
 // "excluded" covers items that are never a real shop choice: quest-only

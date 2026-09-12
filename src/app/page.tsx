@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSiteStats, getChampionStats } from "@/lib/aggregate";
 import { computeTiers, type Tier } from "@/lib/tiers";
-import { resolveChampion } from "@/lib/gameData";
+import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
 import { EntityIcon, top3Color } from "@/lib/statsDisplay";
 import { TierBadge } from "@/components/StatsTable";
 import { HomeSearch } from "@/components/HomeSearch";
@@ -136,7 +136,7 @@ export default async function Home() {
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${podium[0].key}_0.jpg`}
+              src={heroSplashUrl(podium[0].key)}
               alt=""
               width={1280}
               height={720}
