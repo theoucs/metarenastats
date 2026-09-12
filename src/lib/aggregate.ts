@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { computeTiers } from "@/lib/tiers";
+import { augmentCategory } from "@/lib/gameData";
 
 export type ParticipantRow = {
   match_id: string;
@@ -93,8 +94,19 @@ export const fetchAllParticipants = cache(async function fetchAllParticipants():
   const pages = await Promise.all(
     Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page)),
   );
-  return dropAfkTeams(pages.flat());
+  return dropExcludedAugments(dropAfkTeams(pages.flat()));
 });
+
+// Strips one-off event augments (see gameData's augmentCategory) out of every
+// row's augment list before any stat sees them — done once here rather than
+// at each of the four places augments get aggregated, so nothing can miss it.
+function dropExcludedAugments(rows: ParticipantRow[]): ParticipantRow[] {
+  return rows.map((r) =>
+    r.augments.some((id) => augmentCategory(id) === "excluded")
+      ? { ...r, augments: r.augments.filter((id) => augmentCategory(id) !== "excluded") }
+      : r,
+  );
+}
 
 // Drops every row belonging to a (match, subteam) where at least one
 // teammate still had an Anvil/Bravery Voucher at game end — see

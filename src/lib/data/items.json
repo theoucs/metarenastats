@@ -134,7 +134,8 @@
   {
     "id": 3400,
     "name": "Your Cut",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.18.1/img/item/3400.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.18.1/img/item/3400.png",
+    "category": "excluded"
   },
   {
     "id": 3430,
@@ -274,7 +275,8 @@
   {
     "id": 221058,
     "name": "Needlessly Large Rod",
-    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.18.1/img/item/221058.png"
+    "iconUrl": "https://ddragon.leagueoflegends.com/cdn/16.18.1/img/item/221058.png",
+    "category": "excluded"
   },
   {
     "id": 222065,

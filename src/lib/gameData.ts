@@ -88,6 +88,16 @@ export function itemCategory(id: number): ItemCategory | undefined {
   return itemsById.get(id)?.category as ItemCategory | undefined;
 }
 
+/**
+ * "excluded" augments are picks from one-off Arena events (the Predator/Prey
+ * duo, the Risk/Wealth trio) that showed up in tracked matches but were never
+ * part of the normal augment pool — never a real strategic choice, so they're
+ * dropped from every augment-based stat (see fetchAllParticipants).
+ */
+export function augmentCategory(id: number): "excluded" | undefined {
+  return augmentsById.get(id)?.category as "excluded" | undefined;
+}
+
 /** Resolves one half of a Combos pair (see lib/aggregate.ts's ComboPick) to
  * display info, regardless of whether it's an item or an augment. */
 export function resolveComboPick(pick: { type: "item" | "augment"; id: number }) {

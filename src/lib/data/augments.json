@@ -2349,13 +2349,15 @@
     "id": 367,
     "name": "Abstain From Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png",
+    "category": "excluded"
   },
   {
     "id": 365,
     "name": "Abstain From Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png",
+    "category": "excluded"
   },
   {
     "id": 348,
@@ -2379,13 +2381,15 @@
     "id": 373,
     "name": "Compulsion For Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png",
+    "category": "excluded"
   },
   {
     "id": 371,
     "name": "Compulsion For Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_small.png",
+    "category": "excluded"
   },
   {
     "id": 369,
@@ -2397,13 +2401,15 @@
     "id": 370,
     "name": "Craving For Risk",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/risk_small.png",
+    "category": "excluded"
   },
   {
     "id": 368,
     "name": "Craving For Wealth",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_large.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wealth_large.png",
+    "category": "excluded"
   },
   {
     "id": 349,
@@ -2427,7 +2433,8 @@
     "id": 359,
     "name": "Lamb's Respite",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/lamb_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/lamb_small.png",
+    "category": "excluded"
   },
   {
     "id": 354,
@@ -2475,7 +2482,8 @@
     "id": 358,
     "name": "Wolf's Frenzy",
     "tier": "prismatic",
-    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wolf_small.png"
+    "iconUrl": "https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/wolf_small.png",
+    "category": "excluded"
   },
   {
     "id": 41,
