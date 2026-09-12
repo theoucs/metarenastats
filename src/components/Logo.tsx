@@ -14,7 +14,7 @@
 // unwinds smoothly instead of snapping back. Requires a `group` ancestor —
 // Nav.tsx is the only call site.
 const ROLL =
-  "transition-transform duration-[600ms] [transition-timing-function:cubic-bezier(.22,1.15,.36,1)] " +
+  "transition-transform duration-[720ms] [transition-timing-function:cubic-bezier(.22,1.15,.36,1)] " +
   "motion-safe:group-hover:rotate-[360deg] motion-safe:group-hover:scale-[1.06] " +
   "motion-safe:group-focus-visible:rotate-[360deg] motion-safe:group-focus-visible:scale-[1.06]";
 
