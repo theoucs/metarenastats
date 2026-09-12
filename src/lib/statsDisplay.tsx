@@ -13,11 +13,16 @@ export function top3Color(rate: number) {
   return "text-stat-bad";
 }
 
-// % Top 1 averages ~16.7% (1 of 6 teams) — a much lower baseline, needs its
-// own thresholds or almost everything reads as "bad" red.
+// % Top 1 averages 16.7% (1 of 6 teams) — a much lower baseline than % Top 3,
+// so it needs its own thresholds or almost everything reads as "bad" red.
+//
+// The band sits roughly symmetrically around that baseline: +3.3pp to clear
+// into green, -3.7pp to drop into red. The previous 25% green cutoff was most
+// of a doubling above the baseline, which almost nothing reaches once a
+// champion has enough games for its rate to stop swinging.
 export function top1Color(rate: number) {
-  if (rate >= 0.25) return "text-stat-good";
-  if (rate >= 0.1) return "text-secondary";
+  if (rate >= 0.2) return "text-stat-good";
+  if (rate >= 0.13) return "text-secondary";
   return "text-stat-bad";
 }
 
