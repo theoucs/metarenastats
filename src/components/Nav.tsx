@@ -151,7 +151,9 @@ export function Nav() {
       <nav className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-primary"
+          // `group` drives the die roll in Logo.tsx — hovering anywhere on the
+          // brand (mark *or* wordmark) rolls it, so the two read as one target.
+          className="group flex items-center gap-2 text-sm font-semibold tracking-tight text-primary"
         >
           <LogoMark />
           <Wordmark />
