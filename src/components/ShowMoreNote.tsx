@@ -13,7 +13,7 @@ export function ShowMoreNote({ children }: { children: ReactNode }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="text-small font-medium text-accent hover:underline"
+        className="text-small font-medium text-accent transition-transform duration-75 hover:underline active:scale-[0.97]"
       >
         {open ? "Show less" : "Show more"}
       </button>

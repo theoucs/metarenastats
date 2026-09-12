@@ -52,7 +52,7 @@ function GridCard({
   return (
     <article
       id={`entity-${row.key}`}
-      className="group relative rounded-xl border border-subtle bg-raised/40 p-3.5 shadow-[var(--elev-1)] transition-colors duration-150 hover:border-default hover:bg-overlay"
+      className="group relative rounded-xl border border-subtle bg-raised/40 p-3.5 shadow-[var(--elev-1)] transition-[transform,border-color,background-color,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-default hover:bg-overlay hover:shadow-[var(--elev-2)] motion-reduce:hover:translate-y-0"
     >
       {/* Tier rail: same left-edge language as the table rows, so the two
           layouts still read as one system. */}

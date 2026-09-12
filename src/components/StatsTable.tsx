@@ -96,7 +96,7 @@ export function ShowMoreButton({
   return (
     <button
       onClick={onClick}
-      className="mt-3 w-full rounded-lg border border-subtle bg-raised/40 py-2.5 text-small font-medium text-secondary transition-colors hover:border-default hover:bg-overlay hover:text-primary"
+      className="mt-3 w-full rounded-lg border border-subtle bg-raised/40 py-2.5 text-small font-medium text-secondary transition-[color,background-color,border-color,transform] duration-150 hover:border-default hover:bg-overlay hover:text-primary active:scale-[0.99]"
     >
       Show more · {shown} of {total}
     </button>
@@ -205,7 +205,7 @@ export function SortControl<K extends string>({
             key={opt.key}
             ref={register(opt.key)}
             onClick={() => onChange(opt.key)}
-            className={`relative z-10 rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`relative z-10 rounded-md px-3 py-1.5 font-medium transition-[color,transform] duration-75 active:scale-[0.97] ${
               sortBy === opt.key ? "text-primary" : "text-muted hover:text-secondary"
             }`}
           >
@@ -308,7 +308,7 @@ function DataRow({
       className="group border-b border-subtle transition-colors duration-150 last:border-0 hover:bg-overlay"
       style={{ "--rail": railHex } as React.CSSProperties}
     >
-      <td className="border-l-2 border-l-[color:var(--rail)] py-1.5 pl-[14px] pr-4 transition-colors duration-150 group-hover:border-l-[color:var(--accent)]">
+      <td className="border-l-2 border-l-[color:var(--rail)] py-1.5 pl-[14px] pr-4 transition-[border-width,padding] duration-150 group-hover:border-l-4 group-hover:pl-3">
         {variant === "ranked" ? (
           <RankCell rank={rank + 1} />
         ) : (
@@ -389,11 +389,15 @@ function MobileCard({
   bestPlacement,
   worstPlacement,
   playRateLabel,
+  hideTierBadge,
 }: {
   row: StatsRow;
   rank: number;
   variant: "tiers" | "ranked";
   tierInfo?: TierInfo;
+  /** Same rule as the desktop table's Tier column: suppressed while bands are
+   *  shown, since the band right above already says the letter. */
+  hideTierBadge: boolean;
   linkPrefix?: string;
   bestPlacement: number;
   worstPlacement: number;
@@ -451,7 +455,7 @@ function MobileCard({
         ) : (
           heading
         )}
-        {tierInfo && <TierBadge tier={tierInfo.tier} />}
+        {tierInfo && !hideTierBadge && <TierBadge tier={tierInfo.tier} />}
       </div>
 
       {/* Avg Placement is the headline number everywhere on this site — see
@@ -610,6 +614,7 @@ export function StatsTable({
                   bestPlacement={bestPlacement}
                   worstPlacement={worstPlacement}
                   playRateLabel={playRateLabel}
+                  hideTierBadge={showBands}
                 />
               </Fragment>
             );

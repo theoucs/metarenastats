@@ -156,6 +156,15 @@
 /* Slides the oversized --prism-brand gradient back and forth behind the
    logo/wordmark. Only ever applied via motion-safe: (see Logo.tsx/Wordmark.tsx),
    so prefers-reduced-motion:reduce users just get the gradient at its 30% frame. */
+/* Tab-panel swap: the content used to be replaced with no transition at all.
+   Applied via motion-safe: only (see TieredStatsTabs). */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 @keyframes prism-shimmer {
   0% {
     background-position: 0% 50%;

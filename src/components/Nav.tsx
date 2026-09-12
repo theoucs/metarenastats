@@ -186,16 +186,28 @@ export function Nav() {
         </button>
       </nav>
 
-      {open && (
-        <div className="border-t border-subtle px-4 py-3 lg:hidden">
-          {/* The header already shows NavSearch from md up, so only the
-              sub-md dropdown needs its own copy. */}
-          {showSearch && (
-            <div className="mb-3 md:hidden">
-              <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />
-            </div>
-          )}
-          <ul className="flex flex-col gap-1 text-sm">
+      {/* Always mounted and animated by grid-template-rows: `{open && …}`
+          popped in and out with no transition at all. `inert` keeps the
+          collapsed copy out of the tab order and the accessibility tree. */}
+      <div
+        inert={!open}
+        className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none lg:hidden ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        {/* Three levels on purpose: the grid item itself must carry no padding
+            or border, otherwise they survive the 0fr track and leave a ~25px
+            strip under the header while "closed". All spacing lives inside. */}
+        <div className="overflow-hidden">
+          <div className="border-t border-subtle px-4 py-3">
+            {/* The header already shows NavSearch from md up, so only the
+                sub-md dropdown needs its own copy. */}
+            {showSearch && (
+              <div className="mb-3 md:hidden">
+                <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />
+              </div>
+            )}
+            <ul className="flex flex-col gap-1 text-sm">
             {LINKS.slice(1).map((link) => (
               <li key={link.href}>
                 <NavLink
@@ -209,9 +221,10 @@ export function Nav() {
                 />
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
         </div>
-      )}
+      </div>
     </header>
   );
 }

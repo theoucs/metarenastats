@@ -73,7 +73,7 @@ export function TieredStatsTabs({
               aria-selected={active === tab.key}
               ref={register(tab.key)}
               onClick={() => setActive(tab.key)}
-              className={`relative z-10 rounded-md px-3 py-1.5 text-small font-medium transition-colors ${
+              className={`relative z-10 rounded-md px-3 py-1.5 text-small font-medium transition-[color,transform] duration-75 active:scale-[0.97] ${
                 active === tab.key ? "text-primary" : "text-muted hover:text-secondary"
               }`}
             >
@@ -82,6 +82,7 @@ export function TieredStatsTabs({
           )
         )}
       </div>
+      <div key={active} className="motion-safe:animate-[fade-in_150ms_ease-out]">
       {display === "grid" ? (
         <StatsGrid
           rows={rowsByTier[active] ?? []}
@@ -96,6 +97,7 @@ export function TieredStatsTabs({
           playRateLabel={playRateLabel}
         />
       )}
+      </div>
     </div>
   );
 }
