@@ -230,10 +230,18 @@ const POPULAR_SKIN_BY_CHAMPION: Record<string, number> = {
   Zyra: 5, // Coven Zyra
 };
 
-/** Centered splash URL for a champion's most popular skin (see above). */
+/**
+ * Data Dragon's `centered` crop 403s for every skin of these champions (not
+ * just specific skin numbers) — a gap in Riot's CDN, not a bad skin pick.
+ * `splash` (the full, uncropped splash art) exists for all of them instead.
+ */
+const NO_CENTERED_CROP = new Set(["Fiddlesticks"]);
+
+/** Splash URL for a champion's most popular skin (see above). */
 export function heroSplashUrl(championKey: string): string {
   const skinNum = POPULAR_SKIN_BY_CHAMPION[championKey] ?? 0;
-  return `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${championKey}_${skinNum}.jpg`;
+  const variant = NO_CENTERED_CROP.has(championKey) ? "splash" : "centered";
+  return `https://ddragon.leagueoflegends.com/cdn/img/champion/${variant}/${championKey}_${skinNum}.jpg`;
 }
 
 // "boots"/"prismatic"/"excluded" tag a minority of items (see items.json) —
