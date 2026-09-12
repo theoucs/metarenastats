@@ -47,7 +47,7 @@ export function StatPill({
   colorClass?: string;
 }) {
   return (
-    <div className="rounded-[10px] border border-subtle bg-raised px-4 py-2.5 text-center shadow-[var(--elev-1)]">
+    <div className="rounded-xl border border-subtle bg-raised px-4 py-2.5 text-center shadow-[var(--elev-1)]">
       <div className="text-micro uppercase tracking-wide text-muted">{label}</div>
       <div className={`mt-1 font-display text-display font-semibold ${colorClass ?? "text-primary"}`}>
         {value}

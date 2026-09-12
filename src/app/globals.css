@@ -13,7 +13,7 @@
 
   --text-primary: #f2f4f8;
   --text-secondary: #9ba3b4;
-  --text-muted: #646c7e;
+  --text-muted: #7a8294;
 
   /* Primary — cyan hextech. Interactive elements only: links, active tab,
      focus, selection. Never a large fill. */
@@ -144,6 +144,12 @@
   --text-micro: 0.6875rem;
   --text-micro--line-height: 1.4;
 
+  /* Radius scale — see docs/design-audit-plan.md §1.2. Three steps, by role,
+     so a card and a badge never share a radius by accident. */
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+
   --animate-prism-shimmer: prism-shimmer 7s ease-in-out infinite alternate;
 }
 
@@ -162,8 +168,26 @@
 html {
   /* Safety net against any element that overflows its container on narrow
      screens — real fixes belong on the element itself, this just stops a
-     stray one from adding a page-wide horizontal scrollbar. */
+     stray one from adding a page-wide horizontal scrollbar.
+
+     NOTE for anyone auditing responsiveness: this makes
+     `document.scrollWidth` useless as an overflow probe (it can never exceed
+     clientWidth). Measure elements individually instead — see
+     docs/design-audit-plan.md "Comment vérifier". */
   overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Rows/cards are linked to by id from search results; the sticky header is
+   65px tall, so without this an anchor lands underneath it. */
+[id^="entity-"] {
+  scroll-margin-top: 80px;
 }
 
 body {
@@ -175,4 +199,13 @@ body {
 ::selection {
   background: var(--accent);
   color: #05131a;
+}
+
+/* One designed focus ring for the whole site. `:where()` keeps specificity at
+   0 so any component can still override it. Never replace this with
+   `outline: none` on a control — the two inputs that used to do that left
+   keyboard users with a 1px border change as their only focus cue. */
+:where(a, button, input, [role="tab"], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

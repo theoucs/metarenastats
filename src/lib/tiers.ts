@@ -291,10 +291,10 @@ export const TIER_STYLES: Record<
     hex: "#8792A8",
   },
   D: {
-    text: "text-[#5A6172]",
-    bg: "bg-[#5A6172]/[0.06]",
-    border: "border-[#5A6172]/[0.16]",
+    text: "text-[#70798C]",
+    bg: "bg-[#70798C]/[0.06]",
+    border: "border-[#70798C]/[0.16]",
     glow: "",
-    hex: "#5A6172",
+    hex: "#70798C",
   },
 };

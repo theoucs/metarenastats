@@ -90,7 +90,7 @@ export function NavSearch({
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             placeholder="Search player, champion..."
-            className="w-full rounded-lg border border-subtle bg-inset py-1.5 pl-8 text-small text-primary outline-none placeholder:text-muted focus:border-accent"
+            className="w-full rounded-lg border border-subtle bg-inset py-1.5 pl-8 text-small text-primary placeholder:text-muted focus:border-accent"
             style={{ paddingRight: showShortcut && isMac !== null && !focused ? "3.25rem" : "0.75rem" }}
           />
           {showShortcut && isMac !== null && !focused && (
