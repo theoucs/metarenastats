@@ -17,18 +17,23 @@ correctifs à appliquer, dans un ordre où chaque phase est livrable seule.
 
 ## Décision actée par Théo le 2026-09-12
 
-> Sur la page champion, la métrique la plus importante des 5 pilules est
-> **Avg Placement**, pas % Top 3.
+> **Dès qu'il faut désigner une métrique comme plus importante qu'une autre,
+> c'est Avg Placement.** Partout, sans exception.
 
 C'est cohérent avec `lib/tiers.ts` qui pondère l'avg placement à 60% du score de
-tier contre 20/20 pour %Top1/%Top3. Toute la hiérarchie du §3 en découle.
-Même règle sur la page joueur (4 pilules, `players/[riotId]/page.tsx:129`).
+tier contre 20/20 pour %Top1/%Top3 : mettre autre chose en avant contredirait le
+propre scoring du site.
 
-> **Question laissée ouverte, ne pas trancher sans Théo :** les cartes mobiles de
-> `StatsTable` et les cartes de `StatsGrid` mettent `% Top 3` en gros
-> (`text-h1`). Si l'avg placement prime, la même logique voudrait qu'on
-> l'inverse là aussi — mais ça touche 7 pages de listes et c'est un changement
-> visible partout. À décider séparément, pas dans ce plan.
+La règle s'applique aux pilules de stats (§3.1) **et** à tous les endroits où un
+seul chiffre est mis en vedette : cartes de grille, cartes mobiles, cartes du
+podium de l'accueil, ordre des colonnes du tableau (§3.6).
+
+**Seule exception, et elle n'est pas visuelle :** le tri par défaut du
+Leaderboard (`StatsTable.tsx:464`, `variant === "ranked"` → `top3Rate`). Ce
+tri *est* le classement lui-même — le changer change qui est n°1, ce qui relève
+des données, hors périmètre de ce plan, et contredirait la copie de la page
+(« Ranked by % Top 3 ») et `/info`. À traiter séparément si Théo veut revoir la
+méthodologie du classement.
 
 ---
 
@@ -93,7 +98,7 @@ Et retirer `outline-none` de `HomeSearch.tsx:65` et `NavSearch.tsx:93` (garder
 
 ### 1.4 Ancres sous le header sticky
 
-Il y a des `id={entity-${row.key}}` (`StatsTable.tsx:293`, `StatsGrid.tsx:49`) et
+Il y a des `id={entity-${row.key}}` (`StatsTable.tsx:274`, `StatsGrid.tsx:48`) et
 un header sticky de 65px sans compensation : une ancre atterrit sous le header.
 
 ```css
@@ -148,7 +153,7 @@ Ils sont empilés à 12px d'écart sur `/items`, `/augments`, `/comps`, `/combos
 n'ont pas la même métrique :
 
 - `TieredStatsTabs.tsx:81` (et :70 pour le variant « Soon ») : `px-4 py-1.5 text-sm`
-- `StatsTable.tsx:213` (`SortControl`) : `px-3 py-1 text-small`
+- `StatsTable.tsx:199` (`SortControl`) : `px-3 py-1 text-small`
 
 → Aligner les deux sur **`px-3 py-1.5 text-small`**.
 
@@ -204,28 +209,28 @@ Grille, pour que la principale porte visuellement :
 
 ### 3.2 La colonne TIER répète le badge sous sa propre bande
 
-`StatsTable.tsx:305` : sur `/champions`, le badge `S` est affiché 24 fois
+`StatsTable.tsx:286` : sur `/champions`, le badge `S` est affiché 24 fois
 d'affilée juste sous la bande « S TIER ». 56px de largeur pour zéro information,
 et ça dilue le signal doré.
 
 → Rendre la colonne conditionnelle à `!showBands` (donc elle réapparaît dès qu'on
 trie par autre chose que Tier, où elle est vraiment utile) :
-- `<th>` ligne 441 et `<td>` ligne 305 : `{variant === "tiers" && !showBands && …}`
-- `colCount` ligne 414 : `variant === "tiers" ? (showBands ? 7 : 8) : 5`
-- `showBands` est calculé ligne 415, **après** son premier usage utile — le
+- `<th>` ligne 581 et `<td>` ligne 286 : `{variant === "tiers" && !showBands && …}`
+- `colCount` ligne 514 : `variant === "tiers" ? (showBands ? 7 : 8) : 5`
+- `showBands` est calculé ligne 515, **après** son premier usage utile — le
   remonter avant le `return`.
 
-Même logique sur `StatsGrid.tsx:97` (`<TierBadge>` dans la carte) : le masquer
+Même logique sur `StatsGrid.tsx:96` (`<TierBadge>` dans la carte) : le masquer
 quand `showBands` est vrai.
 
 ### 3.3 Page champion : trois traitements pour un même niveau de section
 
-`champions/[slug]/page.tsx` — `Best Augments` (:372) est un `h2` nu,
-`Item Build` (:385) un `h2` **dans** une carte, `Top Combos` (:427) un `h2` nu.
+`champions/[slug]/page.tsx` — `Best Augments` (:383) est un `h2` nu,
+`Item Build` (:395) un `h2` **dans** une carte, `Top Combos` (:436) un `h2` nu.
 Les trois sont pairs logiquement mais ne se lisent pas comme tels.
 
 → Sortir `Item Build` et `Anvil Run` de leurs `rounded-lg border bg-raised/40`
-(`:384` et `AnvilRunPanel` ligne 140) : les titres remontent au niveau des deux
+(`:394` et `AnvilRunPanel` ligne 140) : les titres remontent au niveau des deux
 autres, et le contenu reste dans des cartes internes. Séparer les 3 sections par
 `border-t border-subtle pt-8` au lieu du `mt-10` actuel.
 
@@ -236,10 +241,10 @@ autres, et le contenu reste dans des cartes internes. Séparer les 3 sections pa
 écrits 75 fois, pendant que les valeurs sont coincées à 12px (`text-xs`).
 
 → Écrire les labels **une seule fois** en en-tête de `AugmentColumn`
-(`champions/[slug]/page.tsx:68`) dans une ligne `grid grid-cols-5 gap-1
+(`champions/[slug]/page.tsx:70`) dans une ligne `grid grid-cols-5 gap-1
 text-center text-micro uppercase text-muted`, et ne garder que les valeurs dans
 les cartes. Ça libère la place pour passer les valeurs de `text-xs` à
-`text-small` (13px). Même traitement pour `PrismaticItemCard` (:110) et
+`text-small` (13px). Même traitement pour `PrismaticItemCard` (:109) et
 `AnvilRunPanel` (:148).
 
 ### 3.5 Accueil : une seule section
@@ -251,6 +256,76 @@ d'entrée vers Items / Augments / Combos / Comps, soit la moitié du nav.
 ligne de contexte type « 312 augments classés »), `grid-cols-2 lg:grid-cols-4`,
 même matériau que `ChampionChip` (`rounded-lg border-subtle bg-raised/40`).
 Pas de nouveau fetch : réutiliser les compteurs déjà chargés par `getSiteStats()`.
+
+### 3.6 Appliquer la règle « AVG prime » partout
+
+Aujourd'hui c'est `% Top 3` qui est en vedette dans **quatre** composants, en
+`font-display text-h1` avec une barre de meter sous lui. Il faut inverser :
+Avg Placement devient le grand chiffre, % Top 3 redescend dans la ligne de
+stats secondaires, à la place qu'occupe l'avg aujourd'hui.
+
+| Fichier | Ligne | Chiffre en vedette actuel |
+|---|---|---|
+| `StatsGrid.tsx` (`GridCard`) | 100 | `top3Rate` en `text-h1` + meter :108 |
+| `StatsTable.tsx` (`MobileCard`) | 413 | `top3Rate` en `text-h1` + meter :421 |
+| `app/page.tsx` (`ChampionSpotlight`) | 62 | `top3Rate` coloré, avg en gris derrière |
+| `app/page.tsx` (`ChampionChip`) | 89 | `top3Rate` seul, avg absent |
+
+Deux helpers manquent pour que ce soit faisable proprement — les deux sont du
+**rendu**, pas du calcul, et vont dans `lib/statsDisplay.tsx` à côté de
+`top3Color` / `top1Color` :
+
+**a) Une couleur de qualité pour l'avg placement.** Le mode est à 6 équipes,
+donc la moyenne attendue est **3.5**. Par analogie avec `top3Color` (±5pp autour
+de son baseline de 50% pour le vert, −10pp pour le rouge) :
+
+```ts
+// Avg placement over 6 teams — baseline 3.5, and lower is better, so the
+// comparisons are inverted relative to top3Color/top1Color.
+export function avgPlacementColor(avg: number) {
+  if (avg <= 3.2) return "text-stat-good";
+  if (avg <= 3.7) return "text-secondary";
+  return "text-stat-bad";
+}
+```
+
+Les seuils sont un point de départ dérivé du baseline, **à valider à l'œil sur
+`/champions`** : si trop de lignes ressortent en rouge ou en vert, resserrer,
+et documenter le raisonnement en commentaire comme le fait déjà `top1Color`.
+Vert/rouge sur ce chiffre reste conforme à `design-refresh-plan.md` §2 (vert et
+rouge = qualité d'une stat, et l'avg placement en est une).
+
+**b) Une largeur de meter pour une métrique où le petit est bon.**
+`meterWidth(value, max)` (`StatsTable.tsx:245`) suppose « plus grand = mieux » ;
+l'appliquer tel quel à l'avg donnerait une barre pleine pour le pire champion.
+
+```ts
+// Sibling of meterWidth for metrics where lower is better. Normalized against
+// the batch's own best/worst rather than the theoretical 1..6, so the bars
+// actually spread out instead of all sitting near the middle.
+export function placementMeterWidth(avg: number, best: number, worst: number) {
+  if (worst - best < 1e-9) return 50;
+  return Math.max(3, Math.min(92, ((worst - avg) / (worst - best)) * 92));
+}
+```
+
+`best` / `worst` se calculent comme `maxTop3` l'est déjà (`StatsTable.tsx:474`,
+`StatsGrid.tsx:164`) : un `useMemo` sur les `rows`, min et max de `avgPlacement`.
+
+**Contenu de la ligne secondaire après inversion**, dans les deux cartes
+(`GridCard` :112 et `MobileCard` :425) : `Top 3` · `Top 1` · `Games` ·
+`% Played`, avec `top3Color` / `top1Color` conservés sur leurs valeurs. On ne
+perd aucun chiffre, ils changent juste de rang.
+
+**Ordre des colonnes du tableau desktop** (`StatsTable.tsx:301-326` pour les
+`<td>`, `:583-589` pour les `<th>`) : aujourd'hui
+`Games · % Top 3 · % Top 1 · Avg Placement · % Played`, l'avg est en 4ᵉ.
+→ `Avg Placement · % Top 3 · % Top 1 · Games · % Played`. La colonne la plus
+importante arrive en premier après le nom, et c'est elle qui porte la barre de
+heat map (les deux autres la gardent aussi, cf. §5.1).
+
+Après ce changement, `maxTop3` reste nécessaire pour la barre de `% Top 3` —
+ne pas le supprimer.
 
 ---
 
@@ -288,13 +363,13 @@ Capture de référence : `w1279-champions.png`.
 ### 4.2 La table déborde de sa colonne sur la page joueur
 
 `players/[riotId]/page.tsx:144` (`grid lg:grid-cols-[1fr_minmax(0,380px)]`) +
-`StatsTable.tsx:434` (`min-w-[640px]`). « Top Champions » est une table à
+`StatsTable.tsx:575` (`min-w-[640px]`). « Top Champions » est une table à
 `min-w-[640px]` dans une colonne de 380px : la colonne `% Top 3` est **coupée en
 plein milieu des cellules**, avec un scroll horizontal sans aucune affordance.
 Visible sur `d-player2.png`.
 
 → Ajouter une prop `compact?: boolean` à `StatsTable` qui :
-- retire `min-w-[640px]` de la `<table>` (`:434`),
+- retire `min-w-[640px]` de la `<table>` (`:575`),
 - masque les colonnes `Games` et `% Played` (`<th>` et `<td>`),
 - réduit le padding des cellules à `px-2`.
 
@@ -323,7 +398,7 @@ pourquoi le paysage est le bon choix sur mobile ; il s'agit juste d'aller au bou
 
 ### 5.1 Les barres de heat map se détachent des chiffres
 
-`StatsTable.tsx:330` et `:340`. Le span est `absolute inset-y-[7px] left-0` avec
+`StatsTable.tsx:305` et `:314`. Le span est `absolute inset-y-[7px] left-0` avec
 une largeur en % de la cellule, alors que le nombre est aligné **à droite**. Dès
 que la valeur est basse, le rectangle teinté s'arrête avant le chiffre : on lit
 un bloc vide flottant et un nombre orphelin. Très visible sur `/anvil` (colonne
@@ -337,14 +412,19 @@ Si le rendu manque de lisibilité en comparaison ligne à ligne, repli : vraie
 piste — un fond `absolute inset-y-[7px] inset-x-0 rounded-[3px] bg-inset` + un
 remplissage `absolute right-0` par-dessus, chiffre en `relative` au-dessus des deux.
 
+**Ordre avec le §3.6 :** faire ce §5.1 d'abord (2 spans à corriger), puis §3.6,
+qui ajoute une **3ᵉ** barre sur la colonne Avg Placement devenue première — elle
+utilise `placementMeterWidth` et non `meterWidth`, mais copie le même markup
+déjà corrigé ici. Dans l'autre sens on corrigerait trois spans au lieu de deux.
+
 ### 5.2 Densité du tableau
 
-`StatsTable.tsx:296-350` : 57px/ligne (icône `h-9 w-9` + `py-2.5`) dans un
+`StatsTable.tsx:274-326` : 57px/ligne (icône `h-9 w-9` + `py-2.5`) dans un
 `max-h-[75vh]` → sur un 1440×900 on voit **11 champions sur 173** avant de
 scroller, dans un scroll imbriqué. Référence u.gg : ~44px.
 
 → `py-2.5` → `py-1.5` sur les `<td>`, `sizeClass="h-9 w-9"` → `h-8 w-8`
-(`NameCellContent`, :226 et :234), `inset-y-[7px]` → `inset-y-[5px]` sur les
+(`NameCellContent`, :216, :220 et :228), `inset-y-[7px]` → `inset-y-[5px]` sur les
 barres pour suivre. Résultat ~46px : 4 lignes gagnées par écran.
 
 Vérifier au passage que `/leaderboard` (42px, sans icône) et `/champions` se
@@ -352,7 +432,7 @@ retrouvent au même rythme.
 
 ### 5.3 Bandes de tier sous-dimensionnées
 
-`StatsTable.tsx:143` (`TierBandHeading`) : `text-micro` (11px) + un filet à 25%
+`StatsTable.tsx:148` (`TierBandHeading`) : `text-micro` (11px) + un filet à 25%
 d'opacité. C'est le seul repère structurel d'une liste de 173 lignes, et c'est
 plus petit que le texte des cellules.
 
@@ -383,22 +463,22 @@ viewport, shimmer prismatique, bordure du nav au scroll). C'est le socle qui man
 renvoie rien pendant les 250ms d'animation du highlight.
 
 → `active:scale-[0.97] transition-transform duration-75` sur :
-`StatsTable.tsx:213` (SortControl), `:86` (ShowMoreButton),
-`TieredStatsTabs.tsx:81`, `ShowMoreNote.tsx:19`, `Nav.tsx:162` (burger).
+`StatsTable.tsx:199` (SortControl), `:93` (ShowMoreButton),
+`TieredStatsTabs.tsx:81`, `ShowMoreNote.tsx:14`, `Nav.tsx:162` (burger).
 
 ### 6.2 Le hover de ligne détruit l'info de tier
 
-`StatsTable.tsx:299` : `group-hover:border-l-[color:var(--accent)]` remplace le
+`StatsTable.tsx:278` : `group-hover:border-l-[color:var(--accent)]` remplace le
 rail coloré du tier par du cyan. La seule info couleur de la ligne disparaît
 précisément au moment où on la regarde.
 
 → Garder `var(--rail)` et l'épaissir :
 `border-l-2` → `group-hover:border-l-4 group-hover:-ml-0.5`, en retirant
-l'override cyan. Le hover reste porté par `hover:bg-overlay` (:294).
+l'override cyan. Le hover reste porté par `hover:bg-overlay` (:275).
 
 ### 6.3 Cartes de grille statiques
 
-`StatsGrid.tsx:50` : seulement `hover:border-default hover:bg-overlay`.
+`StatsGrid.tsx:49` : seulement `hover:border-default hover:bg-overlay`.
 
 → `transition-[transform,border-color,background-color,box-shadow] duration-150
 hover:-translate-y-0.5 hover:shadow-[var(--elev-2)]`
@@ -473,28 +553,28 @@ before:bg-[radial-gradient(140px_70px_at_10%_0%,color-mix(in_srgb,var(--tier-hex
 ```
 
 avec `--tier-hex` posé en style inline depuis `TIER_STYLES[tier].hex`, comme le
-rail ligne 53 le fait déjà.
+rail ligne 55 le fait déjà.
 
-### 7.4 Bandeau de fraîcheur des données
+### 7.4 États vides
 
-Rien sur le site ne dit que les données sont à jour — seul « Sample size: 733
-matches » en 13px gris. C'est un standard du secteur (u.gg, op.gg l'affichent en
-tête de chaque tier list).
-
-→ Ligne discrète dans `PageHeader`, à côté de `SampleSizeBadge` :
-`Patch 26.18 · mis à jour il y a 12 min`. **Le patch et le timestamp doivent
-venir de données déjà présentes** — ne pas ajouter de fetch pour ça. Si
-l'information n'existe pas encore côté données, reporter ce point : c'est du
-ressort d'une évolution `lib/aggregate.ts`, hors périmètre de ce plan.
-
-### 7.5 États vides
-
-`StatsTable.tsx:255` (`EmptyState`), plus les 4 « No data yet. » de la page
+`StatsTable.tsx:234` (`EmptyState`), plus les 4 « No data yet. » de la page
 champion : une boîte grise, sans icône ni action.
 → Icône en `text-muted` + une ligne d'explication + un lien vers la recherche.
 Faible priorité, à faire en dernier.
 
 ---
+
+## Hors périmètre / reporté
+
+Identifié pendant l'audit, volontairement **pas** dans ce plan :
+
+- **Bandeau de fraîcheur des données** (`Patch 26.18 · mis à jour il y a 12 min`
+  en tête des tier lists, comme u.gg / op.gg). Reporté par Théo le 2026-09-12 —
+  pas pour tout de suite. Nécessiterait de toute façon une donnée de patch et un
+  timestamp côté `lib/aggregate.ts`, donc ce n'est pas un chantier purement
+  visuel.
+- **Tri par défaut du Leaderboard** — cf. la décision actée en tête de document :
+  c'est la méthodologie du classement, pas du rendu.
 
 ## Ordre de bataille
 
@@ -507,6 +587,12 @@ toutes les pages :
 
 Ensuite, par ratio impact/coût : Phase 1 (tokens, tout est mécanique) → Phase 2 →
 Phase 5 → Phase 3 → Phase 6 → Phase 7.
+
+**§3.6 est la plus grosse pièce du plan** (4 composants, 2 helpers, l'ordre des
+colonnes) et la plus visible : c'est elle qui change ce que l'œil lit en premier
+sur les 7 pages de listes. La faire d'un bloc, après le §5.1, et vérifier
+`/champions`, `/items`, `/comps` et l'accueil dans la foulée — pas en fin de
+session.
 
 ## Comment vérifier
 
