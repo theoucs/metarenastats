@@ -40,15 +40,26 @@ jobs:
             exit 1
           fi
 
-          # --fail-with-body : sortir en erreur sur un statut HTTP >= 400 tout en
-          # affichant le corps de la réponse, qui contient le message d'erreur.
-          response=$(curl --fail-with-body --silent --show-error \
+          # Le corps est capturé AVANT de juger du statut : avec `set -e` et
+          # --fail-with-body, curl sortirait en erreur et l'affichage du corps
+          # ne serait jamais atteint — on perdrait le message d'erreur, qui est
+          # précisément ce qu'on veut lire dans les logs.
+          http_code=$(curl --silent --show-error \
             --max-time 300 \
             --request POST \
             --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${SITE_URL%/}/api/cron/refresh-stats")
+            --output /tmp/refresh-response.json \
+            --write-out "%{http_code}" \
+            "${SITE_URL%/}/api/cron/refresh-stats") || true
 
+          response=$(cat /tmp/refresh-response.json 2>/dev/null || true)
+          echo "HTTP ${http_code}"
           echo "$response"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Le recalcul a échoué (HTTP ${http_code}) : ${response}"
+            exit 1
+          fi
 
           # Le job doit échouer visiblement si l'agrégation a tourné sur une
           # lecture tronquée : les stats publiées seraient partielles sans que
