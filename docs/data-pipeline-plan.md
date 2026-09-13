@@ -179,7 +179,53 @@ que redéclarée : une constante en double serait oubliée au prochain patch.
 
 ---
 
-## Phase 1 — Le crawler (écriture maintenant, mise à l'échelle plus tard)
+## Phase 1 — ✅ Le crawler (fait le 2026-09-13)
+
+Livré et vérifié en production. `src/lib/crawler.ts` + `/api/cron/crawl` +
+`.github/workflows/crawl.yml`.
+
+### Résultats de la première mise en service
+
+| | Avant | Après 2 passes |
+|---|---|---|
+| Matchs exploitables | 752 | **889** |
+| Lignes participants | 13 521 | 16 002 |
+| Matchs incomplets | 162 | 42 (en cours de résorption) |
+| Joueurs en file | 0 | **9 652** |
+
+Une passe de 244 s : 100 matchs réparés, 16 ingérés, **1 064 joueurs
+découverts**, 126 appels Riot. Le débit est borné par la clé (100 appels /
+2 min), pas par le code — le limiteur cadence exactement comme prévu.
+
+### La cause des matchs vides, corrigée
+
+161 matchs sur 913 étaient enregistrés sans aucun participant. La clé étrangère
+impose d'écrire la ligne `matches` avant les participants ; un échec entre les
+deux laissait un match vide, et `persistMatches(...).catch(console.error)`
+avalait l'erreur. L'ancienne version « fire-and-forget » explique le volume :
+la promesse était tuée à l'envoi de la réponse HTTP.
+
+`ingested_at` n'est désormais posé qu'**après** l'écriture des participants. Un
+match à NULL est incomplet par définition, et la passe de réparation le reprend
+en priorité — c'est le meilleur rapport qualité/prix du budget d'appels : un
+appel comble un trou déjà identifié.
+
+### Arbitrage à connaître : le crawler et les visiteurs partagent la clé
+
+Même budget de débit. Une passe gourmande fait échouer les recherches des
+visiteurs pendant qu'elle tourne. Le workflow est donc **délibérément bridé** :
+~60 appels/heure sur les ~3 000 disponibles, soit ~1 400 matchs/jour tout en
+laissant le site réactif. À relâcher avec la clé de production.
+
+### Dette assumée
+
+Le crawler tourne dans une route Next pour partager `fetchMatchDetail` et
+`persistMatches` avec la recherche joueur — une seule logique d'ingestion. Sans
+conséquence aujourd'hui (le débit de la clé de dev borne bien avant les 300 s
+d'une fonction serverless), mais à migrer vers un worker autonome avec la clé de
+production.
+
+### Conception d'origine (conservée pour référence)
 
 ### Principe
 
@@ -388,9 +434,9 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 ```
 0.1  ✅ snapshots pré-calculés (fait 2026-09-13)
 0.2  ✅ ISR sur les pages de stats (fait 2026-09-13)
-0.3  rate limiter côté recherche joueur
-0.4  icône d'invocateur
-1    crawler + schéma à deux modes
+0.3  ✅ rate limiter côté recherche joueur (fait 2026-09-13)
+0.4  ✅ icône d'invocateur (fait 2026-09-13)
+1    ✅ crawler + schéma à deux modes (fait 2026-09-13)
 2    ordre d'achat des items (passe séparée)
 3    ─ clé de prod ─ mise à l'échelle, Supabase Pro quand la base le réclame
 4    timelines complets, classement Arena
