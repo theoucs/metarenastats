@@ -1,0 +1,73 @@
+# Crawler Arena (voir docs/data-pipeline-plan.md, phase 1).
+#
+# ⚠️ Volontairement bridé tant qu'on est sur une clé de développement.
+#
+# Le crawler et les visiteurs du site partagent le MÊME budget de débit Riot
+# (100 appels / 2 min, attaché à la clé). Un crawler gourmand ferait donc
+# échouer les recherches des visiteurs pendant qu'il tourne. Les réglages
+# ci-dessous consomment ~60 appels par heure sur les ~3 000 disponibles, ce qui
+# laisse tout l'espace nécessaire au site tout en ingérant ~1 400 matchs/jour.
+#
+# À l'arrivée de la clé de production : monter maxMatches, raccourcir
+# l'intervalle, et migrer vers un worker autonome (le plafond de 300 s d'une
+# fonction serverless deviendra alors le facteur limitant).
+name: Crawl Arena matches
+
+on:
+  schedule:
+    - cron: "43 * * * *"
+  workflow_dispatch:
+    inputs:
+      maxMatches:
+        description: "Plafond de matchs pour cette passe"
+        required: false
+        default: "60"
+
+# Deux passes simultanées se disputeraient le budget de débit et liraient la
+# même tête de file.
+concurrency:
+  group: crawl-arena
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Lancer une passe de crawl
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MAX_MATCHES: ${{ inputs.maxMatches || '60' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Secrets SITE_URL et CRON_SECRET requis."
+            exit 1
+          fi
+
+          # Le corps est capturé avant de juger du statut, sinon `set -e` couperait
+          # avant l'affichage et on perdrait le message d'erreur.
+          http_code=$(curl --silent --show-error \
+            --max-time 290 \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --output /tmp/crawl-response.json \
+            --write-out "%{http_code}" \
+            "${SITE_URL%/}/api/cron/crawl?maxMatches=${MAX_MATCHES}&maxDurationMs=120000") || true
+
+          response=$(cat /tmp/crawl-response.json 2>/dev/null || true)
+          echo "HTTP ${http_code}"
+          echo "$response"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::La passe de crawl a échoué (HTTP ${http_code}) : ${response}"
+            exit 1
+          fi
+
+          # Zéro appel Riot abouti = clé expirée (elle ne dure que 24 h) ou API
+          # indisponible. Ce n'est pas une erreur du job, mais ça doit se voir :
+          # sinon le crawler peut rester muet des jours sans que rien n'alerte.
+          if echo "$response" | grep -q '"riotCalls":0'; then
+            echo "::warning::Aucun appel Riot abouti — la clé de dev est probablement expirée."
+          fi

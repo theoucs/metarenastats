@@ -4,7 +4,7 @@ import type { MatchCardData } from "@/components/MatchCard";
 
 // Current Arena queue since patch 26.10 (May 2026, "Three by Six" 3v3 format, 6 teams of 3).
 // 1700 is the legacy 2v2 Arena queue, obsolete.
-const ARENA_QUEUE_ID = 1750;
+export const ARENA_QUEUE_ID = 1750;
 const MATCH_COUNT = 30;
 // Le cadencement des appels est géré par riotClient (fenêtres 20/s ET 100/2min,
 // réessai sur 429). Il ne reste ici qu'un plafond de requêtes simultanées, pour
@@ -49,7 +49,7 @@ type ParticipantDetail = {
   items: number[];
 };
 
-type MatchResult = {
+export type MatchResult = {
   matchId: string;
   gameCreation: number;
   // All 18 players in the match (6 teams of 3) — the Riot API returns them
@@ -65,7 +65,7 @@ export type SearchPlayerResult =
     }
   | { ok: false; status: number; error: string };
 
-function apiKey() {
+export function apiKey() {
   return process.env.RIOT_API_KEY ?? "";
 }
 
@@ -121,6 +121,38 @@ function toParticipantDetail(p: RiotParticipant): ParticipantDetail {
 }
 
 /**
+ * Récupère le détail d'un match Arena et le met en forme.
+ *
+ * Partagée par la recherche joueur et le crawler : c'est le seul endroit qui
+ * sait traduire la réponse de Riot en `MatchResult`, pour que les deux chemins
+ * d'ingestion écrivent exactement la même chose.
+ *
+ * @param maxWaitMs combien de temps accepter d'attendre un créneau de débit.
+ *   La recherche veut échouer vite (défaut), le crawler veut attendre.
+ */
+export async function fetchMatchDetail(
+  matchId: string,
+  maxWaitMs?: number
+): Promise<MatchResult | null> {
+  const res = await riotFetch(
+    `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}`,
+    apiKey(),
+    maxWaitMs === undefined ? undefined : { maxWaitMs }
+  );
+  if (!res.ok) {
+    console.error(`[riot] match ${matchId} ignoré : HTTP ${res.status}`);
+    return null;
+  }
+  const data = await res.json();
+  const raw: RiotParticipant[] = data.info.participants;
+  return {
+    matchId,
+    gameCreation: data.info.gameCreation,
+    participants: raw.map(toParticipantDetail),
+  };
+}
+
+/**
  * Resolves a Riot ID, pulls its recent Arena match history from Riot's API,
  * persists every participant (not just the searched player) to Supabase, and
  * returns display-ready match data. Used by both the player page and the
@@ -150,31 +182,18 @@ export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerR
   }
   const matchIds: string[] = await idsRes.json();
 
-  async function fetchMatch(matchId: string): Promise<MatchResult | null> {
-    const res = await riotFetch(
-      `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}`,
-      apiKey()
-    );
-    if (!res.ok) {
-      console.error(`Skipping ${matchId}: Riot API returned ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    const raw: RiotParticipant[] = data.info.participants;
-    if (!raw.some((p) => p.puuid === account.puuid)) return null;
-
-    return {
-      matchId,
-      gameCreation: data.info.gameCreation,
-      participants: raw.map(toParticipantDetail),
-    };
-  }
-
   const fetched: (MatchResult | null)[] = [];
   for (let i = 0; i < matchIds.length; i += CONCURRENCY) {
-    fetched.push(...(await Promise.all(matchIds.slice(i, i + CONCURRENCY).map(fetchMatch))));
+    fetched.push(
+      ...(await Promise.all(
+        matchIds.slice(i, i + CONCURRENCY).map((id) => fetchMatchDetail(id))
+      ))
+    );
   }
-  const matches = fetched.filter((m): m is MatchResult => m !== null);
+  const matches = fetched.filter(
+    (m): m is MatchResult =>
+      m !== null && m.participants.some((p) => p.puuid === account.puuid)
+  );
 
   // Awaited (unlike the old fire-and-forget version) so that the player page's
   // subsequent "overall stats" / "top champions" queries see this match data.
@@ -238,19 +257,37 @@ export async function fetchSummonerProfile(puuid: string): Promise<SummonerProfi
   }
 }
 
-async function persistMatches(matches: MatchResult[]) {
-  if (!supabaseAdmin) return; // Supabase not configured yet, silently skip
+/**
+ * Écrit des matchs et leurs participants, en trois temps.
+ *
+ * L'ordre n'est pas un choix : la clé étrangère de `match_participants` impose
+ * que la ligne `matches` existe d'abord. Le risque, c'est qu'un échec après
+ * cette première écriture laisse un match enregistré *à vide* — 161 matchs sur
+ * 913 étaient dans cet état, hérités d'une version « fire-and-forget » dont la
+ * promesse était tuée à l'envoi de la réponse.
+ *
+ * D'où le troisième temps : `ingested_at` n'est posé qu'une fois les
+ * participants écrits. Un match resté à NULL est incomplet par définition, et
+ * le crawler le reprend au passage suivant. L'incomplétude devient visible et
+ * réparable au lieu d'être silencieuse.
+ */
+export async function persistMatches(matches: MatchResult[]) {
+  if (!supabaseAdmin || matches.length === 0) return;
 
-  const matchRows = matches.map((m) => ({
-    match_id: m.matchId,
-    game_creation: new Date(m.gameCreation).toISOString(),
-    queue_id: ARENA_QUEUE_ID,
-  }));
-  const { error: matchesError } = await supabaseAdmin.from("matches").upsert(matchRows, {
-    onConflict: "match_id",
-  });
+  // 1. Les matchs. `ingested_at` n'est volontairement pas dans la charge utile :
+  //    en cas de conflit PostgREST ne met à jour que les colonnes fournies, donc
+  //    re-ingérer un match déjà complet ne réinitialise pas son marqueur.
+  const { error: matchesError } = await supabaseAdmin.from("matches").upsert(
+    matches.map((m) => ({
+      match_id: m.matchId,
+      game_creation: new Date(m.gameCreation).toISOString(),
+      queue_id: ARENA_QUEUE_ID,
+    })),
+    { onConflict: "match_id" }
+  );
   if (matchesError) throw matchesError;
 
+  // 2. Les participants.
   const participantRows = matches.flatMap((m) =>
     m.participants.map((p) => ({
       match_id: m.matchId,
@@ -270,6 +307,16 @@ async function persistMatches(matches: MatchResult[]) {
     .from("match_participants")
     .upsert(participantRows, { onConflict: "match_id,puuid" });
   if (participantsError) throw participantsError;
+
+  // 3. Marquer complets — jamais atteint si l'étape 2 a échoué.
+  const { error: markError } = await supabaseAdmin
+    .from("matches")
+    .update({ ingested_at: new Date().toISOString() })
+    .in(
+      "match_id",
+      matches.map((m) => m.matchId)
+    );
+  if (markError) throw markError;
 }
 
 /** Best-effort lookup of a previously-seen player by their exact Riot ID, used
