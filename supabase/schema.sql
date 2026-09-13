@@ -37,3 +37,27 @@ create index if not exists match_participants_champion_idx on match_participants
 grant usage on schema public to service_role;
 grant select, insert, update, delete on matches to service_role;
 grant select, insert, update, delete on match_participants to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Snapshots de stats pré-calculées (2026-09-13, plan docs/data-pipeline-plan.md)
+--
+-- Avant : chaque page chargeait TOUTE la base en mémoire JS pour agréger à la
+-- volée (3,7 Mo d'egress Supabase par vue de page à 900 matchs, et une
+-- troncature muette au-delà de 30 000 lignes).
+-- Après : un job périodique calcule chaque agrégat une fois et le stocke ici ;
+-- les pages lisent une seule ligne de quelques Ko.
+--
+-- `key` identifie l'agrégat ("champions", "items", "champion:ahri", …).
+-- `payload` est la sortie exacte de l'agrégateur correspondant, en JSON.
+create table if not exists stats_snapshots (
+  key text primary key,
+  payload jsonb not null,
+  computed_at timestamptz not null default now(),
+  -- Volume de données ayant servi au calcul : permet d'afficher la fraîcheur
+  -- et de détecter un snapshot calculé sur une base tronquée.
+  source_matches integer not null default 0,
+  source_participants integer not null default 0,
+  truncated boolean not null default false
+);
+
+grant select, insert, update, delete on stats_snapshots to service_role;

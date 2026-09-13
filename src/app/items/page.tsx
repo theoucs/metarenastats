@@ -1,10 +1,14 @@
 import { getItemStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { resolveItem, itemCategory } from "@/lib/gameData";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 const TABS = [
   { key: "legendary", label: "Legendary" },
@@ -12,7 +16,7 @@ const TABS = [
 ] as const;
 
 export default async function ItemsPage() {
-  const { totalMatches, items } = await getItemStats(itemCategory);
+  const { totalMatches, items } = await readSnapshot("items", () => getItemStats(itemCategory));
 
   const rowsByTier: Record<string, StatsRow[]> = { legendary: [], prismatic: [] };
   for (const entry of items) {

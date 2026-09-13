@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import {
-  getChampionDetail,
   getChampionStats,
   SHARDBLADE_ITEM_ID,
   type ChampionAugmentStat,
@@ -8,7 +7,8 @@ import {
   type ChampionItemSlotStat,
   type Stat,
 } from "@/lib/aggregate";
-import { resolveChampion, resolveItem, resolveAugment, itemCategory, heroSplashUrl } from "@/lib/gameData";
+import { resolveChampion, resolveItem, resolveAugment, heroSplashUrl } from "@/lib/gameData";
+import { readChampionDetailSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import {
   EntityIcon,
   top1Color,
@@ -30,7 +30,9 @@ const COMBO_TABS = [
   { key: "augment-augment", label: "Augment + Augment" },
 ] as const;
 
-export const dynamic = "force-dynamic";
+// Une page par champion, servie depuis son propre snapshot (clé `champion:<id>`)
+// écrit par le job de rafraîchissement — voir lib/statsSnapshot.ts.
+export const revalidate = 1800;
 
 function StatTooltipContent({ name, stat }: { name: string; stat: Stat }) {
   return (
@@ -233,12 +235,8 @@ export default async function ChampionDetailPage({
   // where this champion actually sits — a tier badge and "#7 of 173" is the
   // one thing a build page header can tell you that the numbers below can't.
   const [detail, { champions }] = await Promise.all([
-    getChampionDetail(
-      slug.toLowerCase(),
-      (id) => resolveAugment(id)?.tier as "silver" | "gold" | "prismatic" | undefined,
-      itemCategory
-    ),
-    getChampionStats(),
+    readChampionDetailSnapshot(slug.toLowerCase()),
+    readSnapshot("champions", getChampionStats),
   ]);
 
   const rank = (() => {

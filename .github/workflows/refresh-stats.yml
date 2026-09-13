@@ -1,0 +1,59 @@
+# Recalcule les snapshots de stats (voir docs/data-pipeline-plan.md, phase 0).
+#
+# Pourquoi ici et pas dans un cron Vercel : le plan Hobby limite les crons à
+# **une fois par jour**, ce qui est trop peu. GitHub Actions est gratuit et
+# illimité en minutes sur un repo public (2 000 min/mois en privé, et ce job
+# consomme quelques secondes). C'est aussi là que tournera le crawler en
+# phase 1 — autant n'avoir qu'un seul endroit qui déclenche les jobs.
+#
+# ⚠️ Sur un repo public, GitHub désactive les workflows planifiés après
+# 60 jours sans activité sur le repo ; il faut alors les réactiver à la main.
+name: Refresh stats snapshots
+
+on:
+  schedule:
+    # Toutes les heures. L'intervalle minimum autorisé par GitHub est 5 min, et
+    # la planification peut être retardée en période de charge — sans gravité
+    # ici, les stats n'ont pas besoin d'être à la minute.
+    - cron: "17 * * * *"
+  workflow_dispatch: # déclenchement manuel depuis l'onglet Actions
+
+# Un seul rafraîchissement à la fois : deux jobs concurrents feraient le même
+# calcul et se marcheraient dessus à l'écriture.
+concurrency:
+  group: refresh-stats
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Déclencher le recalcul
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Secrets SITE_URL et CRON_SECRET requis (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+          # --fail-with-body : sortir en erreur sur un statut HTTP >= 400 tout en
+          # affichant le corps de la réponse, qui contient le message d'erreur.
+          response=$(curl --fail-with-body --silent --show-error \
+            --max-time 300 \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${SITE_URL%/}/api/cron/refresh-stats")
+
+          echo "$response"
+
+          # Le job doit échouer visiblement si l'agrégation a tourné sur une
+          # lecture tronquée : les stats publiées seraient partielles sans que
+          # rien ne le signale (c'est exactement le bug qu'on vient de corriger).
+          if echo "$response" | grep -q '"truncated":true'; then
+            echo "::error::Snapshots calculés sur une lecture tronquée — l'agrégation doit passer en SQL (phase 3 du plan)."
+            exit 1
+          fi

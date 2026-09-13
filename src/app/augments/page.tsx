@@ -1,11 +1,15 @@
 import { getAugmentStats, getAugmentTimingStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { resolveAugment } from "@/lib/gameData";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 const TABS = [
   { key: "prismatic", label: "Prismatic" },
@@ -15,8 +19,8 @@ const TABS = [
 
 export default async function AugmentsPage() {
   const [{ totalMatches, augments }, timing] = await Promise.all([
-    getAugmentStats(),
-    getAugmentTimingStats(),
+    readSnapshot("augments", getAugmentStats),
+    readSnapshot("augmentTiming", getAugmentTimingStats),
   ]);
 
   const timingById = new Map(

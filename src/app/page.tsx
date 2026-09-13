@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSiteStats, getChampionStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { computeTiers, type Tier } from "@/lib/tiers";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
 import { EntityIcon, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
@@ -7,7 +8,10 @@ import { TierBadge } from "@/components/StatsTable";
 import { HomeSearch } from "@/components/HomeSearch";
 import { Wordmark } from "@/components/Wordmark";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 const EXPLORE = [
   { href: "/items", title: "Items", blurb: "Legendary and prismatic, split by rarity." },
@@ -112,8 +116,8 @@ export default async function Home() {
   // add getComboStats() here, it's ~2.4s (builds every participant pairing)
   // and would make the homepage the slow page on the site.
   const [{ totalMatches, totalChampions, totalPlayers }, { champions }] = await Promise.all([
-    getSiteStats(),
-    getChampionStats(),
+    readSnapshot("site", getSiteStats),
+    readSnapshot("champions", getChampionStats),
   ]);
 
   const rows = champions.map((c) => {

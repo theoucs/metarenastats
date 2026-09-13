@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { getComboStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { itemCategory } from "@/lib/gameData";
 import { comboToRow } from "@/lib/comboDisplay";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 const TABS = [
   { key: "item-item", label: "Item + Item" },
@@ -15,7 +19,9 @@ const TABS = [
 ] as const;
 
 export default async function CombosPage() {
-  const { totalMatches, byCategory } = await getComboStats(itemCategory);
+  const { totalMatches, byCategory } = await readSnapshot("combos", () =>
+    getComboStats(itemCategory),
+  );
 
   const rowsByTier: Record<string, StatsRow[]> = {
     "item-item": [],

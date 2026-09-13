@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { getLeaderboardStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 export default async function LeaderboardPage() {
-  const { totalMatches, players } = await getLeaderboardStats();
+  const { totalMatches, players } = await readSnapshot("leaderboard", getLeaderboardStats);
 
   const rows: StatsRow[] = players.map((p) => ({
     key: p.puuid,

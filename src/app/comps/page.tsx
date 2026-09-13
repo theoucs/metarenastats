@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { getCompStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs, type StatsTab } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { championRole } from "@/lib/gameData";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 // Duos and trios are the same tier list at finer grain, both blocked on sample
 // size rather than on anything technical — listed here so the page says what
@@ -20,7 +24,9 @@ const TABS: StatsTab[] = [
 const n = (value: number) => value.toLocaleString("en-US");
 
 export default async function CompsPage() {
-  const { totalMatches, totalTeams, archetypes, coverage } = await getCompStats(championRole);
+  const { totalMatches, totalTeams, archetypes, coverage } = await readSnapshot("comps", () =>
+    getCompStats(championRole),
+  );
 
   const rows: StatsRow[] = archetypes.map((a) => ({
     key: a.roles.join("-"),

@@ -1,12 +1,18 @@
 import { getAnvilChampionStats } from "@/lib/aggregate";
+import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
 import { resolveChampion, itemCategory } from "@/lib/gameData";
 
-export const dynamic = "force-dynamic";
+// Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
+// est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
+// à chaque visite.
+export const revalidate = 1800;
 
 export default async function AnvilPage() {
-  const { totalMatches, champions } = await getAnvilChampionStats(itemCategory);
+  const { totalMatches, champions } = await readSnapshot("anvil", () =>
+    getAnvilChampionStats(itemCategory),
+  );
 
   const rows: StatsRow[] = champions.map((c) => {
     const info = resolveChampion(c.champion);

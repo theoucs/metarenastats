@@ -18,16 +18,17 @@ production** — c'est du travail utile dès maintenant.
 | `GET /matches/{id}` | 138 Ko | réponse réelle |
 | `GET /matches/{id}/timeline` | **1,48 Mo** (10,7×) | réponse réelle |
 
-### Les deux plafonds actuels, tous les deux proches
+### Les deux plafonds — corrigés le 2026-09-13 (phase 0)
 
 1. **`aggregate.ts` : `MAX_PAGES = 30`** → 30 000 lignes → **~1 660 matchs**. Au-delà,
    les stats deviennent silencieusement fausses (troncature muette, pas d'erreur).
 2. **Egress Supabase gratuit : 5 Go/mois** → **~1 350 pages vues/mois** à la taille
    actuelle, et ça se dégrade linéairement avec la base.
 
-Cause commune : toutes les pages sont en `export const dynamic = "force-dynamic"`
-et `fetchAllParticipants` charge **toute la base en mémoire JS** à chaque requête
-pour agréger en JavaScript. Le commentaire à `aggregate.ts:45` l'anticipait déjà.
+Cause commune : toutes les pages étaient en `export const dynamic = "force-dynamic"`
+et `fetchAllParticipants` chargeait **toute la base en mémoire JS** à chaque
+requête pour agréger en JavaScript. Le commentaire à `aggregate.ts:45`
+l'anticipait déjà. Les deux sont levés depuis la phase 0 ci-dessous.
 
 ## Rate limits Riot — comment on les connaît
 
@@ -56,7 +57,9 @@ plafond réel est le 100/2min de la clé**.
 > du niveau Arena. C'est précisément ce vide que le classement du site viendra
 > combler quand il y aura assez de données.
 
-> **L'ordre d'achat des items est prioritaire** (phase 1), avant le crawler.
+> **L'ordre d'achat des items passe après le crawler.** Décidé le 2026-09-13 :
+> sans volume de parties, une stat d'ordre d'achat n'aurait presque aucune
+> donnée derrière elle. Le crawler d'abord, l'ordre d'achat ensuite.
 
 > **Icône d'invocateur** à la place du champion le plus joué sur la page joueur.
 
@@ -67,27 +70,74 @@ plafond réel est le 100/2min de la clé**.
 Rien ne sert de crawler des millions de matchs dans une architecture qui meurt à
 1 660. **Tout le reste dépend de cette phase.**
 
-### 0.1 — Agrégation en SQL + tables `stats_*`
+### 0.1 — ✅ Snapshots pré-calculés (fait le 2026-09-13)
 
-Remplacer le « charger toute la base et agréger en JS » par des tables
-pré-calculées, rafraîchies par un job, jamais par une requête utilisateur :
+Le plan initial disait « agrégation SQL + tables `stats_*` ». À l'exécution, un
+autre découpage s'est imposé, plus sûr et nettement moins coûteux : **la logique
+d'agrégation n'a pas été réécrite du tout**, elle a seulement changé de moment
+d'exécution.
 
-- `stats_champion`, `stats_augment`, `stats_item`, `stats_combo`, `stats_build_slot`
-- Petites par nature : `stats_champion` = ~60 lignes **quelle que soit la taille de
-  la base derrière**. C'est ce qui rend le nombre de matchs indépendant de la
-  vitesse du site.
-- Les pages lisent **uniquement** ces tables. Jamais `match_participants`.
-- Exception assumée : les pages joueur lisent le brut, mais filtré par `puuid`
-  (index déjà en place) et le trafic y est faible.
+Porter les 12 agrégateurs en SQL demandait de répliquer en base les catégories
+d'items, les raretés d'augments et les rôles de champions, qui vivent
+aujourd'hui dans des JSON côté app (`src/lib/data/`) — beaucoup de travail, et
+surtout un vrai risque de changer les chiffres publiés au passage.
 
-### 0.2 — ISR à la place de `force-dynamic`
+Ce qui a été fait à la place :
 
-Les 10 pages en `force-dynamic` passent en cache avec revalidation (30–60 min).
-Les stats sur des centaines de milliers de parties ne bougent pas à la minute.
-Le CDN sert alors ~99 % des visites, l'egress Supabase tombe à ~zéro.
+- table `stats_snapshots (key, payload jsonb, computed_at, source_matches,
+  source_participants, truncated)` ;
+- `src/lib/statsSnapshot.ts` : `refreshSnapshots()` exécute chaque agrégateur
+  une fois et écrit son résultat ; `readSnapshot()` le relit ;
+- `POST /api/cron/refresh-stats`, protégé par `CRON_SECRET`, déclenché par
+  `.github/workflows/refresh-stats.yml` toutes les heures ;
+- les 9 pages de stats + les 4 routes API lisent un snapshot ; une page de
+  champion a le sien (`champion:<id>`, 173 entrées).
 
-⚠️ Next 16 : lire `node_modules/next/dist/docs/` avant d'écrire (Cache Components,
-`use cache`, `cacheLife`) — les APIs ont changé.
+**Repli assumé** : si un snapshot manque (base fraîche, cron jamais passé), la
+page recalcule en direct. Le comportement est alors exactement l'ancien — jamais
+pire, et seulement jusqu'au premier passage du job.
+
+Deux choses mesurées à l'exécution, qui ne se devinaient pas :
+
+- **Le `cache()` de React ne déduplique pas dans un route handler.** Un premier
+  rafraîchissement complet a déclenché **184 lectures intégrales** de
+  `match_participants` — une par agrégateur et par champion. La mémoïsation de
+  React est liée au rendu d'un composant serveur. Corrigé avec un
+  `AsyncLocalStorage` (`withParticipantSet`) : **1 lecture**. Ne pas revenir en
+  arrière là-dessus.
+- **Le coût réel du calcul est dérisoire** : 155 ms pour les 9 agrégateurs
+  partagés, 410 ms pour les 173 pages de champion, ~600 ms au total à 900
+  matchs. Les 40 s observées au premier essai étaient la compilation du serveur
+  de dev, pas le travail.
+
+`MAX_PAGES` passe de 30 à 500 (≈ 28 000 matchs) et, surtout, **une troncature
+n'est plus muette** : elle est journalisée, stockée dans `stats_snapshots.truncated`
+et fait échouer le job GitHub Actions. C'est ce qui rendait le plafond dangereux.
+
+`getPlayerProfile` ne charge plus toute la base pour un seul joueur : requête
+ciblée sur `puuid`, plus une seconde requête (recouvrement de tableaux Postgres)
+qui ne remonte que les équipes AFK à exclure.
+
+**Ce que ça ne règle pas** : l'agrégation reste en mémoire JS. Le vrai argument
+pour passer en SQL n'est d'ailleurs pas le CPU mais **l'egress** — tant que le
+calcul lit les lignes brutes depuis Supabase, chaque rafraîchissement les fait
+sortir de la base. À l'échelle du crawler (phase 1), il faudra que le calcul
+descende *dans* Postgres, où plus rien ne sort. C'est la phase 3.
+
+### 0.2 — ✅ ISR à la place de `force-dynamic` (fait le 2026-09-13)
+
+Les 9 pages de stats passent de `dynamic = "force-dynamic"` à
+`revalidate = 1800`. Vérifié au build : elles sortent en `○ (Static)`, les pages
+joueur restent en `ƒ (Dynamic)` — elles déclenchent un appel Riot en direct et
+doivent le rester.
+
+Choix de l'API : `export const revalidate` (modèle « précédent ») plutôt que
+Cache Components. La doc embarquée (`03-file-conventions/02-route-segment-config`)
+indique que `dynamic`/`revalidate` sont **supprimés lorsque `cacheComponents` est
+activé** — l'activer aurait été une migration de toute l'app pour le même
+résultat. À reconsidérer plus tard, pas en même temps qu'un changement d'archi.
+Piège noté : la valeur doit être un littéral analysable statiquement
+(`1800` ✅, `30 * 60` ❌).
 
 ### 0.3 — Rate limiter côté recherche joueur
 
@@ -103,7 +153,61 @@ Un appel, sur le host `euw1` donc hors budget matchs.
 
 ---
 
-## Phase 1 — Ordre d'achat réel des items
+## Phase 1 — Le crawler (écriture maintenant, mise à l'échelle plus tard)
+
+### Principe
+
+```
+1. seed : liste de PUUID connus
+2. GET /matches/by-puuid/{puuid}/ids?queue=1750   → 100 IDs
+3. diff avec la base → ne garder que les nouveaux      ← étape clé
+4. GET /matches/{id} → 18 joueurs
+5. stocker, + ajouter les 17 autres PUUID à la file
+6. retour en 2
+```
+
+Chaque partie rapporte **17 nouveaux joueurs**. Boule de neige : jamais de pénurie
+de seeds. L'étape 3 est ce qui rend l'ensemble efficace — la découverte est quasi
+gratuite, on ne dépense des appels que sur du nouveau.
+
+Seed initial si besoin : `euw1/lol/league/v4/challengerleagues/by-queue/RANKED_SOLO_5x5`
+→ **300 PUUID en un appel** (vérifié), sur le host `euw1` donc hors budget matchs.
+
+### Deux modes de crawl — à prévoir dès le schéma
+
+| Mode | But | Couverture |
+|---|---|---|
+| **découverte** | stats de méta (champions, augments, items) | large, peu profonde |
+| **suivi** | re-crawl de joueurs actifs connus | profonde, pour le **classement** |
+
+Le boule de neige seul donne des centaines de milliers de joueurs à 2–3 parties
+chacun : parfait pour la méta, **inutilisable pour un ladder**. D'où
+`crawl_queue.priority`. Pénible à rajouter après coup.
+
+### Où il tourne : GitHub Actions, pas Vercel
+
+Vérifié dans la doc Vercel : **le plan Hobby limite les crons à une fois par jour**.
+GitHub Actions : gratuit et illimité en minutes sur repo public (2 000 min/mois en
+privé), intervalle minimum 5 min, 6 h max par job.
+
+⚠️ Sur repo public, les workflows planifiés sont **désactivés après 60 jours sans
+activité** sur le repo.
+
+### Débit
+
+| | Budget | Matchs/jour | Automatisable |
+|---|---|---|---|
+| Dev key | 100/2min sur `europe` | ~65 000 théoriques | ❌ expire à 24 h |
+| Prod key | ~500/10s | bien au-delà du besoin | ✅ |
+
+La clé de dev n'est pas trop lente — 65k/jour serait déjà énorme. Ce qui la
+disqualifie est **uniquement** l'expiration à 24 h. (Et faire tourner un site
+public sur une clé de dev sort du cadre d'usage Riot, ce qui joue contre la
+demande de prod key en cours.)
+
+---
+
+## Phase 2 — Ordre d'achat réel des items
 
 ### Pourquoi c'est un vrai gain
 
@@ -186,60 +290,6 @@ Non prioritaire mais présent dans la même réponse, donc gratuit à ajouter en
 
 ---
 
-## Phase 2 — Le crawler (écriture maintenant, mise à l'échelle plus tard)
-
-### Principe
-
-```
-1. seed : liste de PUUID connus
-2. GET /matches/by-puuid/{puuid}/ids?queue=1750   → 100 IDs
-3. diff avec la base → ne garder que les nouveaux      ← étape clé
-4. GET /matches/{id} → 18 joueurs
-5. stocker, + ajouter les 17 autres PUUID à la file
-6. retour en 2
-```
-
-Chaque partie rapporte **17 nouveaux joueurs**. Boule de neige : jamais de pénurie
-de seeds. L'étape 3 est ce qui rend l'ensemble efficace — la découverte est quasi
-gratuite, on ne dépense des appels que sur du nouveau.
-
-Seed initial si besoin : `euw1/lol/league/v4/challengerleagues/by-queue/RANKED_SOLO_5x5`
-→ **300 PUUID en un appel** (vérifié), sur le host `euw1` donc hors budget matchs.
-
-### Deux modes de crawl — à prévoir dès le schéma
-
-| Mode | But | Couverture |
-|---|---|---|
-| **découverte** | stats de méta (champions, augments, items) | large, peu profonde |
-| **suivi** | re-crawl de joueurs actifs connus | profonde, pour le **classement** |
-
-Le boule de neige seul donne des centaines de milliers de joueurs à 2–3 parties
-chacun : parfait pour la méta, **inutilisable pour un ladder**. D'où
-`crawl_queue.priority`. Pénible à rajouter après coup.
-
-### Où il tourne : GitHub Actions, pas Vercel
-
-Vérifié dans la doc Vercel : **le plan Hobby limite les crons à une fois par jour**.
-GitHub Actions : gratuit et illimité en minutes sur repo public (2 000 min/mois en
-privé), intervalle minimum 5 min, 6 h max par job.
-
-⚠️ Sur repo public, les workflows planifiés sont **désactivés après 60 jours sans
-activité** sur le repo.
-
-### Débit
-
-| | Budget | Matchs/jour | Automatisable |
-|---|---|---|---|
-| Dev key | 100/2min sur `europe` | ~65 000 théoriques | ❌ expire à 24 h |
-| Prod key | ~500/10s | bien au-delà du besoin | ✅ |
-
-La clé de dev n'est pas trop lente — 65k/jour serait déjà énorme. Ce qui la
-disqualifie est **uniquement** l'expiration à 24 h. (Et faire tourner un site
-public sur une clé de dev sort du cadre d'usage Riot, ce qui joue contre la
-demande de prod key en cours.)
-
----
-
 ## Phase 3 — Mise à l'échelle (à l'arrivée de la clé de prod)
 
 ### Architecture cible
@@ -310,12 +360,12 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 ## Ordre d'exécution recommandé
 
 ```
-0.1  agrégation SQL + tables stats_*     ← bloquant pour tout le reste
-0.2  ISR
-0.3  rate limiter
+0.1  ✅ snapshots pré-calculés (fait 2026-09-13)
+0.2  ✅ ISR sur les pages de stats (fait 2026-09-13)
+0.3  rate limiter côté recherche joueur
 0.4  icône d'invocateur
-1    ordre d'achat des items (passe séparée)
-2    crawler + schéma à deux modes
+1    crawler + schéma à deux modes
+2    ordre d'achat des items (passe séparée)
 3    ─ clé de prod ─ mise à l'échelle, Supabase Pro quand la base le réclame
 4    timelines complets, classement Arena
 ```

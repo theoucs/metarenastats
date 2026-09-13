@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { computeTiers } from "@/lib/tiers";
@@ -43,11 +44,20 @@ const ALTS_PER_SLOT = 3; // 1 primary + 2 alternates
 
 // Supabase/PostgREST caps every response at 1000 rows server-side (the "Max Rows"
 // project setting) regardless of the .limit() a client asks for — paginate with
-// .range() to actually fetch everything. Capped at 30 pages (30k rows) as a safety
-// net; past that, this should become a real SQL aggregation instead of pulling
-// every row into app memory.
+// .range() to actually fetch everything.
 const PAGE_SIZE = 1000;
-const MAX_PAGES = 30;
+
+// Ce chemin ne sert plus une requête utilisateur : depuis 2026-09-13 les pages
+// lisent des snapshots pré-calculés (lib/statsSnapshot.ts) et seul le job de
+// rafraîchissement appelle les agrégateurs. Il n'a pas de pression de latence,
+// d'où un plafond bien plus haut que les 30 pages d'avant (qui tronquaient dès
+// ~1 660 matchs).
+//
+// 500 pages = 500 000 lignes ≈ 28 000 matchs, soit ~100 Mo en mémoire JS. Le
+// plafond reste un garde-fou mémoire, pas une limite de conception : au-delà,
+// l'agrégation doit passer en SQL (phase 3 du plan). La différence essentielle
+// avec l'ancienne version est que la troncature n'est plus muette.
+const MAX_PAGES = 500;
 
 /**
  * Wrapped in React's `cache` so a page that runs two aggregators pays for one
@@ -80,22 +90,69 @@ function fetchParticipantPage(page: number) {
     });
 }
 
-export const fetchAllParticipants = cache(async function fetchAllParticipants(): Promise<
-  ParticipantRow[]
-> {
-  if (!supabaseAdmin) return [];
+export type ParticipantSet = {
+  rows: ParticipantRow[];
+  /** Nombre de lignes réellement présentes en base, avant plafonnement. */
+  totalRows: number;
+  /** true si MAX_PAGES a coupé la lecture : les stats calculées là-dessus sont
+   * partielles. Signalé explicitement pour ne plus jamais être silencieux. */
+  truncated: boolean;
+};
+
+/**
+ * Jeu de participants déjà chargé, propagé à tous les agrégateurs d'un même
+ * calcul.
+ *
+ * Le `cache()` de React ne suffit pas ici : mesuré le 2026-09-13, un
+ * rafraîchissement complet des snapshots relançait **184 lectures intégrales**
+ * de `match_participants` (une par agrégateur et par champion). La mémoïsation
+ * de React est liée au rendu d'un composant serveur et n'opère pas dans un
+ * route handler — d'où ce contexte asynchrone explicite, qui lui fonctionne
+ * partout et ne fuit pas entre requêtes concurrentes.
+ */
+const participantSetStore = new AsyncLocalStorage<ParticipantSet>();
+
+/** Exécute `fn` en réutilisant `set` pour tout appel à `fetchParticipantSet`. */
+export function withParticipantSet<T>(set: ParticipantSet, fn: () => Promise<T>): Promise<T> {
+  return participantSetStore.run(set, fn);
+}
+
+/** Lecture brute paginée, partagée par tous les agrégateurs d'un même calcul. */
+export async function fetchParticipantSet(): Promise<ParticipantSet> {
+  // Le contexte l'emporte quand il est posé (job de snapshot) ; sinon on
+  // retombe sur la mémoïsation React, qui elle fonctionne au rendu d'une page.
+  return participantSetStore.getStore() ?? readParticipantSet();
+}
+
+const readParticipantSet = cache(async function readParticipantSet(): Promise<ParticipantSet> {
+  if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
 
   const { count, error } = await supabaseAdmin
     .from("match_participants")
     .select("*", { count: "exact", head: true });
   if (error) throw error;
 
-  const pageCount = Math.min(Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)), MAX_PAGES);
+  const totalRows = count ?? 0;
+  const neededPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const pageCount = Math.min(neededPages, MAX_PAGES);
+  const truncated = neededPages > MAX_PAGES;
+
+  if (truncated) {
+    console.error(
+      `[aggregate] TRONCATURE : ${totalRows} lignes en base, seules ${MAX_PAGES * PAGE_SIZE} ont été lues. ` +
+        `Les stats calculées sont partielles — il faut passer l'agrégation en SQL (phase 3 du plan).`,
+    );
+  }
+
   const pages = await Promise.all(
     Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page)),
   );
-  return dropExcludedAugments(dropAfkTeams(pages.flat()));
+  return { rows: dropExcludedAugments(dropAfkTeams(pages.flat())), totalRows, truncated };
 });
+
+export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
+  return (await fetchParticipantSet()).rows;
+}
 
 // Strips one-off event augments (see gameData's augmentCategory) out of every
 // row's augment list before any stat sees them — done once here rather than
@@ -280,12 +337,62 @@ export type PlayerProfile = {
   champions: PlayerChampionStat[];
 };
 
+/**
+ * Les lignes d'un seul joueur, lues par une requête ciblée sur son `puuid`
+ * (index `match_participants_puuid_idx`).
+ *
+ * La page joueur est la seule page qui doit rester dynamique — elle déclenche
+ * un appel Riot en direct — donc elle ne peut pas passer par un snapshot. Elle
+ * chargeait pourtant TOUTE la base pour n'en garder qu'un joueur : ~240 000
+ * lignes lues pour en afficher 30. Ici on lit les ~N lignes du joueur.
+ *
+ * Les deux filtres globaux sont reproduits à l'identique pour que les stats
+ * d'une page joueur restent cohérentes avec les tableaux du site :
+ *  - `dropAfkTeams` : besoin de savoir si un *coéquipier* avait un voucher, d'où
+ *    la seconde requête — mais elle ne remonte que les équipes AFK (opérateur
+ *    de recouvrement de tableaux Postgres), pas les matchs entiers.
+ *  - `dropExcludedAugments` : purement local à la ligne.
+ */
+async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
+  if (!supabaseAdmin) return [];
+
+  const rows: ParticipantRow[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabaseAdmin
+      .from("match_participants")
+      .select(PARTICIPANT_COLUMNS)
+      .eq("puuid", puuid)
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as ParticipantRow[]));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  if (rows.length === 0) return [];
+
+  // Équipes du joueur dont au moins un membre a fini avec un voucher (= AFK).
+  const matchIds = Array.from(new Set(rows.map((r) => r.match_id)));
+  const afkTeams = new Set<string>();
+  const CHUNK = 200; // borne la longueur de l'URL PostgREST
+  for (let i = 0; i < matchIds.length; i += CHUNK) {
+    const { data, error } = await supabaseAdmin
+      .from("match_participants")
+      .select("match_id, subteam_id")
+      .in("match_id", matchIds.slice(i, i + CHUNK))
+      .overlaps("items", Array.from(AFK_VOUCHER_ITEM_IDS));
+    if (error) throw error;
+    for (const r of data ?? []) afkTeams.add(`${r.match_id}:${r.subteam_id}`);
+  }
+
+  return dropExcludedAugments(
+    rows.filter((r) => !afkTeams.has(`${r.match_id}:${r.subteam_id}`)),
+  );
+}
+
 /** Everything about one player scoped to their own games (all matches we've
  * ever stored involving this puuid, not just the ones from the most recent
  * search) — powers the player profile page. */
 export async function getPlayerProfile(puuid: string): Promise<PlayerProfile> {
-  const rows = await fetchAllParticipants();
-  const playerRows = rows.filter((r) => r.puuid === puuid);
+  const playerRows = await fetchPlayerRows(puuid);
   const totalGames = playerRows.length;
 
   const overallAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
