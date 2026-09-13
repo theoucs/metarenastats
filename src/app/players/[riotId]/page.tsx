@@ -1,6 +1,10 @@
-import { searchPlayerMatches, findKnownPlayerByRiotId } from "@/lib/riotSearch";
+import {
+  searchPlayerMatches,
+  findKnownPlayerByRiotId,
+  fetchSummonerProfile,
+} from "@/lib/riotSearch";
 import { getPlayerProfile } from "@/lib/aggregate";
-import { resolveChampion } from "@/lib/gameData";
+import { resolveChampion, profileIconUrl } from "@/lib/gameData";
 import { StatPill, top1Color, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { MatchCard } from "@/components/MatchCard";
@@ -47,7 +51,14 @@ export default async function PlayerPage({
     );
   }
 
-  const profile = await getPlayerProfile(puuid);
+  // L'icône d'invocateur identifie le joueur bien mieux que son champion le plus
+  // joué : c'est l'avatar qu'il a lui-même choisi, et il reste stable quand ses
+  // stats bougent. L'appel vit sur le host `euw1`, dont le compteur de débit est
+  // distinct de celui d'`europe` — il ne ralentit donc pas la recherche.
+  const [profile, summoner] = await Promise.all([
+    getPlayerProfile(puuid),
+    fetchSummonerProfile(puuid),
+  ]);
   const topChampion = profile.champions[0];
   const topChampionInfo = topChampion ? resolveChampion(topChampion.champion) : undefined;
 
@@ -86,7 +97,17 @@ export default async function PlayerPage({
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-35% via-[var(--bg-base)]/85 via-65% to-[var(--bg-base)]/45" />
         <div className="relative mx-auto flex h-full max-w-6xl items-end px-4 pb-10 sm:px-6">
           <div className="flex items-center gap-4">
-            {topChampionInfo ? (
+            {/* Icône d'invocateur en priorité ; repli sur le champion le plus
+                joué quand Riot est injoignable (clé expirée) et qu'on affiche
+                des données déjà en base. */}
+            {summoner ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profileIconUrl(summoner.profileIconId)}
+                alt=""
+                className="h-16 w-16 rounded-xl border border-subtle object-cover shadow-[var(--elev-2)]"
+              />
+            ) : topChampionInfo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={topChampionInfo.iconUrl}
@@ -102,7 +123,8 @@ export default async function PlayerPage({
                 <span className="text-secondary">#{tagLine}</span>
               </h1>
               <p className="text-small text-secondary">
-                Arena player{topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
+                {summoner ? `Level ${summoner.summonerLevel}` : "Arena player"}
+                {topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
               </p>
             </div>
           </div>

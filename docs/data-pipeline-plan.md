@@ -139,17 +139,43 @@ résultat. À reconsidérer plus tard, pas en même temps qu'un changement d'arc
 Piège noté : la valeur doit être un littéral analysable statiquement
 (`1800` ✅, `30 * 60` ❌).
 
-### 0.3 — Rate limiter côté recherche joueur
+### 0.3 — ✅ Rate limiter côté recherche joueur (fait le 2026-09-13)
 
-Aujourd'hui `BATCH_SIZE = 5` / `BATCH_DELAY_MS = 300` ne couvre que le 20/s, **pas
-le 100/2min**. Une recherche = ~32 appels → la 4ᵉ recherche enchaînée prend un 429.
-Aucun retry, aucune lecture du `Retry-After`.
+`src/lib/riotClient.ts` : `riotFetch()` remplace les `fetch` directs. Fenêtre
+glissante sur les deux limites (20/s **et** 100/2 min), **un limiteur par host**
+puisque les compteurs d'`europe` et d'`euw1` sont distincts, réessai sur 429 en
+lisant `Retry-After`, et recalage sur l'en-tête `x-app-rate-limit-count` que Riot
+renvoie à chaque réponse.
 
-### 0.4 — Icône d'invocateur
+Mesuré avant/après sur trois recherches enchaînées (~96 appels) :
+
+| | Avant | Après |
+|---|---|---|
+| 429 rencontrés | non réessayés | 2, **tous deux réessayés** |
+| matchs perdus | silencieusement abandonnés | **0** |
+
+Le test a révélé un défaut que le plan n'avait pas prévu : la 3ᵉ recherche a mis
+**117 s**. Le limiteur faisait son travail, mais une page blanche pendant deux
+minutes est pire qu'une erreur franche. D'où `INTERACTIVE_MAX_WAIT_MS` (15 s) :
+au-delà, on renvoie un 429 synthétique traduit en « trop de recherches,
+réessayez dans un instant » — vérifié à **0,18 s** en saturant le limiteur.
+Le paramètre `maxWaitMs` existe pour que le crawler, lui, puisse attendre.
+
+Limite connue et assumée : le limiteur vit en mémoire du processus. Sur Vercel,
+plusieurs instances ne le partagent pas — il protège une instance, pas la
+flotte. Le réessai sur 429 couvre le reste. À revoir (Redis) quand le crawler
+tournera en continu.
+
+### 0.4 — ✅ Icône d'invocateur (fait le 2026-09-13)
 
 `GET euw1/lol/summoner/v4/summoners/by-puuid/{puuid}` → `profileIconId` +
-`summonerLevel`. Image : `ddragon/cdn/{version}/img/profileicon/{id}.png`.
-Un appel, sur le host `euw1` donc hors budget matchs.
+`summonerLevel`, sur le host `euw1` donc hors budget matchs. L'avatar de la page
+joueur est désormais l'icône choisie par le joueur, avec son niveau en
+sous-titre ; repli sur le champion le plus joué si Riot est injoignable.
+
+La version Data Dragon nécessaire à l'URL est **relue depuis les URLs déjà
+présentes dans `champions.json`** (`profileIconUrl` dans `gameData.ts`) plutôt
+que redéclarée : une constante en double serait oubliée au prochain patch.
 
 ---
 

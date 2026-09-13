@@ -1,14 +1,15 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { riotFetch } from "@/lib/riotClient";
 import type { MatchCardData } from "@/components/MatchCard";
 
 // Current Arena queue since patch 26.10 (May 2026, "Three by Six" 3v3 format, 6 teams of 3).
 // 1700 is the legacy 2v2 Arena queue, obsolete.
 const ARENA_QUEUE_ID = 1750;
 const MATCH_COUNT = 30;
-// Personal/dev Riot key allows ~20 req/s — fetch match details in small
-// concurrent batches instead of all at once to avoid tripping the rate limit.
-const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 300;
+// Le cadencement des appels est géré par riotClient (fenêtres 20/s ET 100/2min,
+// réessai sur 429). Il ne reste ici qu'un plafond de requêtes simultanées, pour
+// ne pas ouvrir 30 sockets d'un coup — le limiteur, lui, s'occupe du rythme.
+const CONCURRENCY = 5;
 
 type RiotParticipant = {
   puuid: string;
@@ -64,8 +65,8 @@ export type SearchPlayerResult =
     }
   | { ok: false; status: number; error: string };
 
-function riotHeaders() {
-  return { "X-Riot-Token": process.env.RIOT_API_KEY ?? "" };
+function apiKey() {
+  return process.env.RIOT_API_KEY ?? "";
 }
 
 // A non-404 failure from Riot (expired/invalid key, rate limit, Riot-side
@@ -131,18 +132,18 @@ export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerR
     return { ok: false, status: 400, error: "Expected format: Name#TAG (e.g. Theoucs#EUW)" };
   }
 
-  const accountRes = await fetch(
+  const accountRes = await riotFetch(
     `https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
-    { headers: riotHeaders(), cache: "no-store" }
+    apiKey()
   );
   if (!accountRes.ok) {
     return riotErrorResult(accountRes.status);
   }
   const account: { puuid: string; gameName: string; tagLine: string } = await accountRes.json();
 
-  const idsRes = await fetch(
+  const idsRes = await riotFetch(
     `https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${account.puuid}/ids?queue=${ARENA_QUEUE_ID}&start=0&count=${MATCH_COUNT}`,
-    { headers: riotHeaders(), cache: "no-store" }
+    apiKey()
   );
   if (!idsRes.ok) {
     return riotErrorResult(idsRes.status);
@@ -150,10 +151,10 @@ export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerR
   const matchIds: string[] = await idsRes.json();
 
   async function fetchMatch(matchId: string): Promise<MatchResult | null> {
-    const res = await fetch(`https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}`, {
-      headers: riotHeaders(),
-      cache: "no-store",
-    });
+    const res = await riotFetch(
+      `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}`,
+      apiKey()
+    );
     if (!res.ok) {
       console.error(`Skipping ${matchId}: Riot API returned ${res.status}`);
       return null;
@@ -170,12 +171,8 @@ export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerR
   }
 
   const fetched: (MatchResult | null)[] = [];
-  for (let i = 0; i < matchIds.length; i += BATCH_SIZE) {
-    const batch = matchIds.slice(i, i + BATCH_SIZE);
-    fetched.push(...(await Promise.all(batch.map(fetchMatch))));
-    if (i + BATCH_SIZE < matchIds.length) {
-      await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
-    }
+  for (let i = 0; i < matchIds.length; i += CONCURRENCY) {
+    fetched.push(...(await Promise.all(matchIds.slice(i, i + CONCURRENCY).map(fetchMatch))));
   }
   const matches = fetched.filter((m): m is MatchResult => m !== null);
 
@@ -212,6 +209,33 @@ export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerR
   });
 
   return { ok: true, account, matches: displayMatches };
+}
+
+export type SummonerProfile = { profileIconId: number; summonerLevel: number };
+
+/**
+ * Icône d'invocateur et niveau du compte.
+ *
+ * Sur le host `euw1`, dont le compteur de débit est distinct de celui d'`europe`
+ * (vérifié) : cet appel ne consomme donc rien du budget des recherches de
+ * matchs. Volontairement tolérant à l'échec — c'est un ornement d'en-tête, il ne
+ * doit jamais faire échouer une page joueur.
+ */
+export async function fetchSummonerProfile(puuid: string): Promise<SummonerProfile | null> {
+  try {
+    const res = await riotFetch(
+      `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`,
+      apiKey()
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.profileIconId === "number"
+      ? { profileIconId: data.profileIconId, summonerLevel: data.summonerLevel ?? 0 }
+      : null;
+  } catch (error) {
+    console.error("[riot] icône d'invocateur indisponible :", error);
+    return null;
+  }
 }
 
 async function persistMatches(matches: MatchResult[]) {

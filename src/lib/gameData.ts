@@ -237,6 +237,21 @@ const POPULAR_SKIN_BY_CHAMPION: Record<string, number> = {
  */
 const NO_CENTERED_CROP = new Set(["Fiddlesticks"]);
 
+/**
+ * Version de Data Dragon, relue depuis les URLs déjà générées par
+ * `scripts/fetch-game-data.mjs` plutôt que redéclarée ici : une constante en
+ * double serait oubliée au prochain patch. Les icônes de profil sont le seul
+ * endroit où la version est obligatoire dans l'URL (les splashes de champion
+ * ont un chemin sans version).
+ */
+const DDRAGON_VERSION =
+  championsData[0]?.iconUrl.match(/\/cdn\/([^/]+)\//)?.[1] ?? "latest";
+
+/** Icône d'invocateur, depuis le `profileIconId` renvoyé par SUMMONER-V4. */
+export function profileIconUrl(profileIconId: number): string {
+  return `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/profileicon/${profileIconId}.png`;
+}
+
 /** Splash URL for a champion's most popular skin (see above). */
 export function heroSplashUrl(championKey: string): string {
   const skinNum = POPULAR_SKIN_BY_CHAMPION[championKey] ?? 0;
