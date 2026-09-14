@@ -635,15 +635,35 @@ export async function getChampionDetail(
       accumulate(bySlot[PRISMATIC_SLOT + i], legendaries[i], r.placement);
     }
   }
-  const itemBuild: ChampionItemSlot[] = bySlot
-    .map((slotMap, i) => {
-      const items = Array.from(slotMap.entries())
-        .map(([itemId, s]) => ({ itemId, ...toStat(s, champGames) }))
-        .sort((a, b) => b.games - a.games)
-        .slice(0, ALTS_PER_SLOT);
-      return { slot: i + 1, items };
-    })
-    .filter((s) => s.items.length > 0);
+  // Un item ne peut apparaître que dans UN seul slot, et les slots se servent
+  // dans l'ordre du build.
+  //
+  // Sans cette règle, chaque slot choisissait ses trois items indépendamment des
+  // autres — et comme un même légendaire est acheté en 1er par certains joueurs
+  // et en 2e par d'autres, il ressortait en tête de plusieurs slots d'affilée.
+  // Mesuré avant correction : les **173 champions** étaient concernés, avec par
+  // exemple Death's Dance en tête des slots 3, 4, 5 et 6 chez Fiora.
+  //
+  // Le chiffre n'était pas faux — ces joueurs l'ont bien acheté à ces
+  // positions-là — mais un build affiché quatre fois le même item se lit comme
+  // un bug, pas comme une recommandation. On sert donc les slots de gauche à
+  // droite en retirant ce qui a déjà été montré : le slot 3 prend ses trois
+  // meilleurs, le slot 4 les trois meilleurs de ce qu'il reste, etc.
+  //
+  // Ne concerne en pratique que les slots légendaires : les bottes (slot 1) et
+  // les prismatiques (slot 2) ont leurs propres catégories, exclues des autres.
+  const itemBuild: ChampionItemSlot[] = [];
+  const alreadyShown = new Set<number>();
+  bySlot.forEach((slotMap, i) => {
+    const items = Array.from(slotMap.entries())
+      .filter(([itemId]) => !alreadyShown.has(itemId))
+      .map(([itemId, s]) => ({ itemId, ...toStat(s, champGames) }))
+      .sort((a, b) => b.games - a.games)
+      .slice(0, ALTS_PER_SLOT);
+    if (items.length === 0) return;
+    for (const item of items) alreadyShown.add(item.itemId);
+    itemBuild.push({ slot: i + 1, items });
+  });
 
   // Top 6 Prismatic items across this champion's games overall (any
   // playstyle) — sits under the item build slots.
