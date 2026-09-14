@@ -5,6 +5,9 @@ import {
 } from "@/lib/riotSearch";
 import { getPlayerProfile } from "@/lib/aggregate";
 import { resolveChampion, profileIconUrl } from "@/lib/gameData";
+import { getPlayerRank } from "@/lib/playerRatings";
+import { RATING_MIN_GAMES } from "@/lib/rating";
+import { RankBadge } from "@/components/RankBadge";
 import { StatPill, top1Color, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { MatchCard } from "@/components/MatchCard";
@@ -55,9 +58,10 @@ export default async function PlayerPage({
   // joué : c'est l'avatar qu'il a lui-même choisi, et il reste stable quand ses
   // stats bougent. L'appel vit sur le host `euw1`, dont le compteur de débit est
   // distinct de celui d'`europe` — il ne ralentit donc pas la recherche.
-  const [profile, summoner] = await Promise.all([
+  const [profile, summoner, rank] = await Promise.all([
     getPlayerProfile(puuid),
     fetchSummonerProfile(puuid),
+    getPlayerRank(puuid),
   ]);
   const topChampion = profile.champions[0];
   const topChampionInfo = topChampion ? resolveChampion(topChampion.champion) : undefined;
@@ -126,6 +130,24 @@ export default async function PlayerPage({
                 {summoner ? `Level ${summoner.summonerLevel}` : "Arena player"}
                 {topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
               </p>
+              {/* Le rang, ou la raison précise de son absence : « Unranked »
+                  seul laisserait croire à un niveau, alors que c'est un
+                  manque de parties suivies. */}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-small">
+                {rank ? (
+                  <>
+                    <RankBadge tier={rank.tier} size="lg" />
+                    <span className="text-muted">
+                      #{rank.position} of {rank.outOf} ranked
+                    </span>
+                  </>
+                ) : profile.games > 0 ? (
+                  <span className="text-muted">
+                    Unranked — {RATING_MIN_GAMES - profile.games} more tracked game
+                    {RATING_MIN_GAMES - profile.games === 1 ? "" : "s"} to get a rank
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

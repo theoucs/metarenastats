@@ -11,17 +11,26 @@ export default function InfoPage() {
         <h2 className="font-display text-h2 font-semibold text-primary">
           How is the leaderboard calculated?
         </h2>
-        <div className="mt-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
+        <div className="mt-3 space-y-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
           <p>
-            <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2.5 py-0.5 text-micro text-accent">
-              Coming soon
-            </span>
+            Every player carries an Arena MMR that moves after each game. How much it moves
+            depends on who you were up against and who you had with you: beating the strongest
+            teams in the lobby is worth far more than beating the weakest, and a 1st carried by
+            two strong teammates is worth less than the same 1st carried by you. All six
+            placements move it, not just the top half.
           </p>
-          <p className="mt-3">
-            The exact ranking methodology is still being decided. Right now the leaderboard is
-            sorted by raw win rate (top-3 finish out of 6 teams) among players with at least 5
-            tracked games, which is a placeholder. It will likely account for games played,
-            opponent strength, and recency once we have enough data.
+          <p>
+            The rank is that MMR mapped onto the ranked ladder. Challenger is the top 10 players
+            and Grandmaster the next 15 — fixed, so the title doesn&apos;t dilute as the site
+            grows. Master is the top 1%, and every tier below follows the same distribution as
+            ranked. A rank appears after 5 tracked games; below that the rating hasn&apos;t had
+            enough to go on, and we say so rather than guess.
+          </p>
+          <p>
+            This is our own rating, not Riot&apos;s hidden one — Riot doesn&apos;t expose Arena
+            MMR anywhere. It&apos;s computed only from the games we track, so it ranks you among
+            tracked players, not across EUW. It also sharpens on its own: the more games we have
+            per player, the more the rating reflects skill rather than luck.
           </p>
         </div>
       </section>

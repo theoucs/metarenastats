@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { championRole, itemCategory, resolveAugment } from "@/lib/gameData";
 import { getPatchContext, patchedKey } from "@/lib/patches";
+import { promoteTrackedPlayers, refreshPlayerRatings } from "@/lib/playerRatings";
 import {
   readParticipantSetForPatch,
   withParticipantSet,
@@ -133,6 +134,8 @@ export type RefreshReport = {
   bytes: number;
   /** Ce qui a été publié, patch par patch. */
   patches: { patch: string; matches: number; participants: number }[];
+  /** Le classement recalculé en même temps (voir lib/playerRatings.ts). */
+  rated: number;
 };
 
 /**
@@ -159,6 +162,14 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   if (!db) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
 
   const context = await getPatchContext();
+
+  // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
+  const rating = await refreshPlayerRatings();
+  console.log(
+    `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
+  );
+  const promoted = await promoteTrackedPlayers();
+  if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
 
   // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
   // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
@@ -264,5 +275,6 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     durationMs: Date.now() - startedAt,
     bytes,
     patches: published,
+    rated: rating.rated,
   };
 }

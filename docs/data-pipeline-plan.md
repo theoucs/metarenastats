@@ -784,6 +784,137 @@ Sans rapport avec les patchs, mais révélés par le passage à une vue SQL :
 Preuve de la correction : **deux recalculs consécutifs rendent 182 snapshots sur
 182 identiques**. Ce n'était pas le cas avant.
 
+## Phase 3.6 — ✅ Classement par MMR (fait le 2026-09-14)
+
+Un classement trié par % Top 3 ne dit pas **contre qui** le résultat a été fait.
+Et dans un mode où l'on joue à trois, le placement est celui de l'ÉQUIPE : il
+est porté par les teammates autant que par le joueur. D'où un vrai MMR, et un
+rang Iron → Challenger calculé dessus.
+
+### Riot ne donne pas le MMR Arena — vérifié, pas supposé
+
+Ni `ratedTier` ni `ratedRating` dans la réponse match-v5 d'une partie Arena
+(sondé le 2026-09-14 sur `EUW1_7983412648`). La demande d'exposer ces champs
+côté league-v4 existe — [developer-relations#795][dr795] — et elle est fermée
+« not planned ». Le MMR, on le calcule ou on ne l'a pas.
+
+[dr795]: https://github.com/RiotGames/developer-relations/issues/795
+
+Sondage utile par ailleurs : **Arena n'est plus 8 équipes de 2, mais 6 équipes
+de 3.** Les 2 087 matchs le confirment — 6 261 participations par placement, de
+1 à 6, parfaitement réparties.
+
+### Le modèle : Weng-Lin / Plackett-Luce
+
+Celui d'OpenSkill, successeur libre de TrueSkill, conçu pour le multi-équipes
+multi-joueurs avec un classement complet en sortie. Force d'équipe = somme des
+membres, ce qui donne gratuitement ce qu'on cherchait : le gain dépend des
+adversaires ET des teammates.
+
+L'implémentation est à nous (`lib/rating.ts`, ~60 lignes) plutôt que la lib npm,
+qui traîne Ramda pour ça.
+
+### Ce que ça vaut — mesuré, pas espéré
+
+Validé d'abord sur des matchs **synthétiques à compétence connue** : corrélation
+**0,83** entre la vraie compétence et le `mu` retrouvé.
+
+Ce contrôle a payé immédiatement : la première implémentation avait le
+dénominateur Plackett-Luce à l'envers (somme des équipes déjà arrivées au lieu
+des équipes encore en lice). Symptôme : 3 000 matchs notaient MOINS bien que
+300, et tous les `mu` dérivaient ensemble vers le bas. Sans le contrôle
+synthétique, on concluait « pas de signal dans nos données » sur un bug.
+
+Sur les données réelles, en prédisant chaque match AVANT de l'apprendre :
+
+| Joueurs avec…        | Duel entre deux équipes deviné |
+| -------------------- | ------------------------------ |
+| 1+ partie connue     | **55,3 %** ± 1,9 (2 838 duels) |
+| 3+ parties           | **59,8 %** ± 5,0 (398 duels)   |
+
+50 % = pile ou face. Le signal est réel, et mince — il le restera tant qu'on
+aura 1,6 partie par joueur. Le même algorithme sur 135 parties par joueur
+retrouve 0,83. **Le classement s'améliore tout seul à mesure que le crawler
+approfondit**, sans rien changer au code.
+
+Deux propriétés mesurées qui ont décidé de la conception :
+
+- **Un joueur vu une fois reste collé à la moyenne.** Écart-type du `mu` : ±1,6
+  à 1-2 parties, ±3,4 à 5-9, ±7,1 à 20-49. Personne ne squatte le haut du
+  classement avec une bonne partie unique — il n'y a rien à exclure, le modèle
+  s'en charge. C'est ce qui permet de faire tourner le calcul sur les 22 000
+  joueurs sans filtre.
+- **Corrélation `mu` / placement moyen : 0,86.** Ce n'est pas une révolution,
+  c'est une correction — et les 14 % restants sont exactement l'ajustement
+  adversaires/teammates qu'on voulait.
+
+### Les paliers
+
+Aux pourcentages de la ranked (Iron 3,4 % → Challenger 0,023 %), Grandmaster et
+Challenger seraient **vides** jusqu'à ~5 000 joueurs classés. D'où des effectifs
+fixes en haut : Challenger = top 10, Grandmaster = 15 suivants, Master = 1 % du
+pool, le reste aux pourcentages de la ranked. Un titre qui se dilue quand la
+population grandit ne veut plus rien dire.
+
+Seuil d'affichage : **5 parties suivies**. En dessous, la page joueur dit
+combien il en manque plutôt que d'afficher « Unranked », qui se lirait comme un
+niveau alors que c'est un manque de données.
+
+### Ce qui ne se voit pas mais qu'il faut savoir
+
+- **Les premades sont indissociables.** `MorgenmuffL`, `Wavever` et `lumbix` ont
+  exactement le même `mu` : leurs 32 parties sont les mêmes 32 parties. Aucun
+  système ne pourrait les départager.
+- **Un rang bouge sans jouer.** Le crawler découvre de vieilles parties qui
+  s'insèrent avant des parties déjà notées, donc tout est recalculé dans
+  l'ordre de jeu à chaque passe. Conséquence assumée : un calcul incrémental
+  donnerait un classement dépendant de l'ordre de DÉCOUVERTE, c'est-à-dire
+  irreproductible.
+
+### L'egress, encore
+
+Rejouer toute l'histoire = relire 37 000 participations par passe. Avec leur
+`puuid` (78 caractères, incompressibles), ~2 Mo par passe, soit ~1,4 Go par mois
+pour un job horaire — un tiers du quota gratuit pour un seul job. La vue
+`rating_input` attribue un **entier par joueur** et `rating_matches()` rend une
+ligne par match (trois tableaux de 18 entiers) : ~100 Ko.
+
+Deux pièges refermés au passage :
+
+- **Pagination d'un RPC sans tri explicite.** Ici l'ordre EST le calcul. La
+  fonction rend un `ord` et le client trie dessus, plutôt que de faire confiance
+  au tri interne à travers un en-tête `Range`. Même classe de bug que la
+  pagination des participants (§3.1).
+- **`delete().not("puuid","in",…)` avec 969 puuid**, soit une URL de 80 Ko :
+  PostgREST refuse **sans message d'erreur**. Le ménage se fait sur une
+  estampille commune à la passe.
+
+### Le crawler bascule en moitié-moitié
+
+La découverte large sert les tier lists, qui comptent des participations sans se
+soucier de qui les fait. Le classement, lui, veut de la profondeur — et à 1,6
+partie par joueur, découvrir un joueur de plus ne lui apporte rien.
+
+`promote_tracked_players()` passe en `priority = 1` tout joueur dont on connaît
+3 parties (2 265 au premier passage), et `pickPlayers` sert désormais les deux
+files à parts égales, chaque moitié reprenant les places que l'autre n'utilise
+pas. Servir la priorité la plus haute d'abord — le comportement d'origine —
+aurait affamé la découverte dès qu'un millier de joueurs suivis occupent la
+file.
+
+Re-crawler un joueur connu est bon marché : un appel pour lister ses matchs, et
+`keepNewMatchIds` élimine tout ce qu'on a déjà.
+
+### Pas fait, délibérément
+
+- **Pas de LP ni de divisions.** 40 crans pour un millier de joueurs, ce serait
+  une précision que les données n'ont pas.
+- **Pas de décroissance d'inactivité.** À ce volume, elle retirerait du monde du
+  classement sans rien mesurer de plus.
+- **Pas de découpe par patch.** Le MMR est une propriété du joueur, pas du
+  patch — comme l'historique et le classement, il garde toute l'histoire.
+
+
 ## Phase 4 — Plus tard
 
 - Timelines : le reste des événements (skill order, courbes de puissance)
@@ -834,7 +965,8 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 3.2  ✅ seuil de parties au classement (fait 2026-09-14)
 3.3  fenêtre glissante, Supabase Pro quand la base le réclame
 3.5  ✅ découpe par patch + sélecteur (fait 2026-09-14)
-4    timelines complets, classement Arena
+3.6  ✅ classement par MMR + crawl en profondeur (fait 2026-09-14)
+4    timelines complets
 ```
 
 Les phases 0 et 1 sont aussi ce qui aide à **obtenir** la clé de prod : Riot veut

@@ -128,19 +128,47 @@ async function pendingMatchIds(limit: number): Promise<string[]> {
   });
 }
 
-/** Prochains joueurs à explorer : priorité décroissante, jamais-crawlés d'abord. */
-async function pickPlayers(limit: number): Promise<string[]> {
+/** Un bout de file, dans un seul mode. */
+async function pickFrom(priority: number, limit: number): Promise<string[]> {
+  if (limit <= 0) return [];
   return retryDb("lecture de la file", async () => {
     const { data, error } = await db()
       .from("crawl_queue")
       .select("puuid")
       .lt("error_count", 5)
-      .order("priority", { ascending: false })
+      .eq("priority", priority)
       .order("last_crawled_at", { ascending: true, nullsFirst: true })
       .limit(limit);
     if (error) throw error;
     return (data ?? []).map((r) => r.puuid as string);
   });
+}
+
+/**
+ * Prochains joueurs à explorer, moitié en profondeur, moitié en découverte.
+ *
+ * Les deux modes ne servent pas la même chose. La DÉCOUVERTE (priority 0)
+ * alimente les tier lists, qui comptent des participations : peu importe de
+ * qui elles viennent. Le SUIVI (priority 1, posé par promote_tracked_players)
+ * alimente le classement, qui a besoin de beaucoup de parties d'un MÊME joueur
+ * — et à 1,6 partie par joueur en moyenne, découvrir un joueur de plus ne lui
+ * apporte rien.
+ *
+ * Servir la priorité la plus haute d'abord, comme avant, aurait affamé la
+ * découverte dès qu'un millier de joueurs suivis se partagent la file. D'où le
+ * partage à parts égales — chaque moitié reprenant les places que l'autre
+ * n'utilise pas.
+ */
+async function pickPlayers(limit: number): Promise<string[]> {
+  const tracked = await pickFrom(1, Math.floor(limit / 2));
+  const discovery = await pickFrom(0, limit - tracked.length);
+  const picked = [...tracked, ...discovery];
+  // Une découverte qui ne remplit pas sa moitié rend la main au suivi.
+  if (picked.length < limit) {
+    const extra = await pickFrom(1, limit - picked.length);
+    for (const puuid of extra) if (!picked.includes(puuid)) picked.push(puuid);
+  }
+  return picked;
 }
 
 /** Historique Arena d'un joueur (100 = maximum autorisé par Riot en un appel). */

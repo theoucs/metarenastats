@@ -295,3 +295,129 @@ as $$
 $$;
 
 grant execute on function leaderboard_stats(integer) to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Classement des joueurs par MMR (2026-09-14)
+--
+-- Le calcul lui-même est en TypeScript (lib/rating.ts) : le MMR se construit
+-- partie après partie, dans l'ordre chronologique, ce qu'une requête
+-- d'agrégation ne sait pas faire. Le SQL ne fait donc que préparer l'entrée et
+-- ranger la sortie.
+
+-- Chaque participation, avec un index entier par joueur.
+--
+-- L'index existe pour l'egress. Rejouer toute l'histoire, c'est relire 37 000
+-- participations à chaque passe. Les sortir avec leur puuid (78 caractères,
+-- incompressibles) coûterait ~2 Mo par passe, soit ~1,4 Go par mois pour un job
+-- horaire. Un entier par joueur ramène la même information à ~100 Ko.
+create or replace view rating_input as
+select
+  p.match_id,
+  p.puuid,
+  p.riot_id,
+  p.subteam_id,
+  p.placement,
+  m.game_creation,
+  dense_rank() over (order by p.puuid) as player_idx
+from participants_clean p
+join matches m on m.match_id = p.match_id;
+
+grant select on rating_input to service_role;
+
+-- Une ligne par match, dans l'ordre chronologique strict.
+--
+-- `ord` rend cet ordre explicite dans la réponse. PostgREST pagine par en-tête
+-- Range, et rien ne garantit qu'il conserve le tri interne d'une fonction d'une
+-- page à l'autre. Or ici l'ordre N'EST PAS un confort d'affichage : deux pages
+-- mal recollées donnent un classement faux, sans rien signaler.
+create or replace function rating_matches()
+returns table (ord bigint, players integer[], subteams smallint[], placements smallint[])
+language sql
+stable
+as $$
+  select
+    row_number() over (order by game_creation, match_id) as ord,
+    array_agg(player_idx order by player_idx),
+    array_agg(subteam_id::smallint order by player_idx),
+    array_agg(placement::smallint order by player_idx)
+  from rating_input
+  group by match_id, game_creation
+  order by ord
+$$;
+
+grant execute on function rating_matches() to service_role;
+
+-- L'identité des seuls joueurs qu'on classera : inutile de rapatrier 22 000
+-- puuid pour en afficher un millier.
+create or replace function rating_players(min_games integer)
+returns table (player_idx integer, puuid text, riot_id text, games bigint)
+language sql
+stable
+as $$
+  select
+    player_idx,
+    puuid,
+    (array_agg(riot_id order by game_creation desc))[1] as riot_id,
+    count(*) as games
+  from rating_input
+  group by player_idx, puuid
+  having count(*) >= min_games
+$$;
+
+grant execute on function rating_players(integer) to service_role;
+
+-- Le classement publié. Réécrit en entier à chaque passe : le crawler découvre
+-- en permanence de vieilles parties, qui s'insèrent AVANT des parties déjà
+-- notées. Un calcul incrémental donnerait un classement qui dépend de l'ordre
+-- de découverte au lieu de l'ordre de jeu.
+create table if not exists player_ratings (
+  puuid text primary key,
+  riot_id text not null,
+  games integer not null,
+  mu double precision not null,
+  sigma double precision not null,
+  rank_position integer not null,
+  tier text not null,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists player_ratings_position_idx on player_ratings (rank_position);
+
+alter table player_ratings enable row level security;
+grant select, insert, update, delete on table player_ratings to service_role;
+
+-- Fait passer en « suivi » (priority 1) les joueurs dont on connaît déjà
+-- plusieurs parties.
+--
+-- Le crawler découvrait jusqu'ici en largeur uniquement, et c'est ce qu'il
+-- fallait pour les tier lists : elles comptent des participations, peu importe
+-- de qui. Le classement, lui, a besoin de PROFONDEUR — un MMR se construit sur
+-- les parties d'un même joueur. À 1,6 partie par joueur en moyenne, élargir
+-- encore n'améliore plus le classement d'un pouce.
+--
+-- La file sert donc les deux à parts égales (voir pickPlayers dans
+-- lib/crawler.ts). Re-crawler un joueur connu est bon marché : un appel pour
+-- lister ses matchs, et `keepNewMatchIds` élimine tout ce qu'on a déjà.
+create or replace function promote_tracked_players(min_games integer)
+returns integer
+language plpgsql
+as $$
+declare
+  promoted integer;
+begin
+  with deep as (
+    select puuid
+    from participants_clean
+    group by puuid
+    having count(*) >= min_games
+  )
+  update crawl_queue q
+  set priority = 1
+  from deep
+  where q.puuid = deep.puuid and q.priority = 0;
+  get diagnostics promoted = row_count;
+  return promoted;
+end;
+$$;
+
+grant execute on function promote_tracked_players(integer) to service_role;

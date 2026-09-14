@@ -15,6 +15,7 @@ export default async function LeaderboardPage() {
   const rows: StatsRow[] = players.map((p) => ({
     key: p.puuid,
     name: p.riotId,
+    rankTier: (p.tier as StatsRow["rankTier"]) ?? undefined,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
@@ -30,10 +31,10 @@ export default async function LeaderboardPage() {
         totalMatches={totalMatches}
         description={
           <>
-            Ranked by % Top 3 among tracked EUW players. This is a provisional ranking — the
-            methodology will evolve as we track more games (see{" "}
+            Ranked by Arena MMR — a rating that moves with every game, weighing who you were up
+            against and who you had with you. Iron to Challenger, like ranked (
             <Link href="/info" className="text-accent hover:underline">
-              Info &amp; Tips
+              how it works
             </Link>
             ).
           </>

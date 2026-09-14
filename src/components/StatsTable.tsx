@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
+import { RankBadge } from "@/components/RankBadge";
+import type { Tier as RankTier } from "@/lib/rating";
 import {
   top1Color,
   top3Color,
@@ -24,6 +26,9 @@ export type StatsRow = {
   playRate: number;
   /** Augment rarity (silver/gold/prismatic) — colors the icon frame like in-game. */
   rarity?: EntityRarity;
+  /** Le rang Arena du joueur (leaderboard uniquement). Son absence est une
+   *  information : le joueur n'a pas encore assez de parties suivies. */
+  rankTier?: RankTier;
   /** Item ou augment que représente la ligne : fait apparaître sa description
    *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
    *  ont pas — l'infobulle se réduit alors au nom. */
@@ -71,6 +76,8 @@ export function RoleChips({ roles }: { roles: string[] }) {
 
 export type SortKey =
   | "tier"
+  /** Leaderboard : l'ordre du classement MMR, tel que la page l'a fourni. */
+  | "rank"
   | "top3Rate"
   | "top1Rate"
   | "avgPlacement"
@@ -343,6 +350,7 @@ function DataRow({
   bestPlacement,
   worstPlacement,
   hideTierColumn,
+  showRankColumn,
   compact,
 }: {
   row: StatsRow;
@@ -358,6 +366,8 @@ function DataRow({
   /** Suppressed while tier bands are shown — the band right above already says
    *  the tier, so the badge is the same letter repeated down the whole band. */
   hideTierColumn: boolean;
+  /** Colonne du rang Arena : présente dès qu'au moins un joueur est classé. */
+  showRankColumn: boolean;
   /** See StatsTable's `compact` — must drop the same columns as the header. */
   compact: boolean;
 }) {
@@ -381,6 +391,11 @@ function DataRow({
       {variant === "tiers" && !hideTierColumn && (
         <td className={`${cellX} py-1.5`}>
           <TierBadge tier={tierMap.get(row.key)!.tier} />
+        </td>
+      )}
+      {showRankColumn && (
+        <td className={`${cellX} py-1.5`}>
+          {row.rankTier ? <RankBadge tier={row.rankTier} /> : null}
         </td>
       )}
       <td className={`${cellX} py-1.5`}>
@@ -524,6 +539,7 @@ function MobileCard({
           heading
         )}
         {tierInfo && !hideTierBadge && <TierBadge tier={tierInfo.tier} />}
+        {row.rankTier && <RankBadge tier={row.rankTier} />}
       </div>
 
       {/* Avg Placement is the headline number everywhere on this site — see
@@ -590,7 +606,9 @@ export function StatsTable({
    *  rather than clipping the table mid-cell behind a scrollbar nobody sees. */
   compact?: boolean;
 }) {
-  const [sortBy, setSortBy] = useState<SortKey>(variant === "tiers" ? "tier" : "top3Rate");
+  const [sortBy, setSortBy] = useState<SortKey>(
+    variant === "tiers" ? "tier" : rows.some((r) => r.rankTier) ? "rank" : "top3Rate",
+  );
   // Mobile-only: see CARD_PAGE_SIZE. Reset from the sort handler rather than an
   // effect — re-sorting reshuffles which rows are "the first 40", so keeping an
   // expanded count would silently change what the button means.
@@ -611,6 +629,10 @@ export function StatsTable({
     [rows]
   );
 
+  // La colonne n'apparaît que s'il y a un rang à montrer : sur un classement
+  // tout neuf, une colonne vide poserait une question sans y répondre.
+  const showRankColumn = variant === "ranked" && rows.some((r) => r.rankTier);
+
   const sorted = useMemo(() => {
     const copy = [...rows];
     if (sortBy === "top3Rate") {
@@ -619,6 +641,11 @@ export function StatsTable({
       copy.sort((a, b) => b.top1Rate - a.top1Rate);
     } else if (sortBy === "avgPlacement") {
       copy.sort((a, b) => a.avgPlacement - b.avgPlacement);
+    } else if (sortBy === "rank") {
+      // Les lignes arrivent déjà dans l'ordre du classement : le MMR n'est pas
+      // dans la ligne, et n'a pas à y être — on ne l'affiche jamais.
+      const order = new Map(rows.map((r, i) => [r.key, i]));
+      copy.sort((a, b) => order.get(a.key)! - order.get(b.key)!);
     } else if (sortBy === "playRate") {
       copy.sort((a, b) => b.playRate - a.playRate);
     } else {
@@ -639,6 +666,7 @@ export function StatsTable({
           { key: "playRate", label: playRateLabel },
         ]
       : [
+          ...(showRankColumn ? [{ key: "rank" as SortKey, label: "Rank" }] : []),
           { key: "top3Rate", label: "% Top 3" },
           { key: "avgPlacement", label: "Avg Placement" },
         ];
@@ -655,7 +683,8 @@ export function StatsTable({
   const tableClass = needsWideTable ? "hidden lg:block" : "hidden md:block";
 
   const showBands = variant === "tiers" && sortBy === "tier";
-  const colCount = variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5;
+  const colCount =
+    (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) + (showRankColumn ? 1 : 0);
   const cellX = compact ? "px-2" : "px-4";
 
   let lastTier: Tier | null = null;
@@ -731,6 +760,7 @@ export function StatsTable({
               {variant === "tiers" && !showBands && (
                 <th className={`${stickyHeadCell} w-14 px-4`}>Tier</th>
               )}
+              {showRankColumn && <th className={`${stickyHeadCell} w-28 px-4`}>Rank</th>}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
               <th className={`${stickyHeadCell} ${cellX} text-right`}>
                 {compact ? "Avg" : "Avg Placement"}
@@ -767,6 +797,7 @@ export function StatsTable({
                     bestPlacement={bestPlacement}
                     worstPlacement={worstPlacement}
                     hideTierColumn={showBands}
+                    showRankColumn={showRankColumn}
                     compact={compact}
                   />
                 </Fragment>

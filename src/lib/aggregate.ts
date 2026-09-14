@@ -402,27 +402,52 @@ type LeaderboardRpcRow = {
 export async function getLeaderboardStats() {
   if (!supabaseAdmin) return { totalMatches: 0, players: [] };
 
-  const [{ totalMatches }, { data, error }] = await Promise.all([
+  // Le classement (rang + palier) est calculé à part, dans lib/playerRatings.ts,
+  // et lu ici : il demande de rejouer toute l'histoire dans l'ordre, ce qu'une
+  // fonction SQL d'agrégation ne sait pas faire.
+  const [{ totalMatches }, { data, error }, { data: ranks, error: rankError }] = await Promise.all([
     getSiteStats(),
     supabaseAdmin.rpc("leaderboard_stats", { min_games: LEADERBOARD_MIN_GAMES }),
+    supabaseAdmin.from("player_ratings").select("puuid, tier, rank_position"),
   ]);
   if (error) throw error;
+  if (rankError) throw rankError;
+
+  const rankByPuuid = new Map(
+    ((ranks ?? []) as { puuid: string; tier: string; rank_position: number }[]).map((r) => [
+      r.puuid,
+      r,
+    ]),
+  );
 
   const players = ((data ?? []) as LeaderboardRpcRow[])
-    .map((r) => ({
-      puuid: r.puuid,
-      riotId: r.riot_id,
-      ...toStat(
-        {
-          games: Number(r.games),
-          top3Wins: Number(r.top3_wins),
-          top1Wins: Number(r.top1_wins),
-          placementSum: Number(r.placement_sum),
-        },
-        totalMatches,
-      ),
-    }))
-    .sort((a, b) => b.top3Rate - a.top3Rate || b.games - a.games);
+    .map((r) => {
+      const rank = rankByPuuid.get(r.puuid);
+      return {
+        puuid: r.puuid,
+        riotId: r.riot_id,
+        tier: rank?.tier ?? null,
+        position: rank?.rank_position ?? null,
+        ...toStat(
+          {
+            games: Number(r.games),
+            top3Wins: Number(r.top3_wins),
+            top1Wins: Number(r.top1_wins),
+            placementSum: Number(r.placement_sum),
+          },
+          totalMatches,
+        ),
+      };
+    })
+    // Le rang d'abord. Un joueur sans rang ne devrait pas exister ici (même
+    // seuil, même source), mais s'il en apparaît un, il passe en fin de liste
+    // plutôt qu'en tête d'un classement où il n'a rien à faire.
+    .sort(
+      (a, b) =>
+        (a.position ?? Infinity) - (b.position ?? Infinity) ||
+        b.top3Rate - a.top3Rate ||
+        b.games - a.games,
+    );
 
   return { totalMatches, players };
 }
