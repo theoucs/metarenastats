@@ -49,13 +49,45 @@ alter table matches add column if not exists patch text
     nullif(split_part(game_version, '.', 1) || '.' || split_part(game_version, '.', 2), '.')
   ) stored;
 
-create index if not exists matches_patch_idx on matches (patch, game_creation desc);
+-- Patch DÉDUIT par comparaison de date, pour les matchs antérieurs au
+-- 2026-09-14 qui n'ont pas de `game_version`. On ne fabrique jamais une fausse
+-- version : l'observé et le déduit restent deux colonnes distinctes.
+alter table matches add column if not exists patch_deduced text;
 
--- Index partiel pour la déduction du patch des matchs antérieurs au 14/09 :
--- minuscule une fois le rattrapage fait.
+-- `patch` dérive des DEUX sources, l'observé l'emportant sur le déduit. Une
+-- colonne générée ne peut pas en référencer une autre, d'où le découpage répété.
+alter table matches drop column if exists patch;
+alter table matches add column patch text
+  generated always as (
+    coalesce(
+      nullif(split_part(game_version, '.', 1) || '.' || split_part(game_version, '.', 2), '.'),
+      patch_deduced
+    )
+  ) stored;
+
+-- Savoir si un match porte le patch que Riot a écrit ou celui qu'on a déduit :
+-- le jour où un chiffre surprend, on peut répondre « c'est une déduction ».
+alter table matches add column if not exists patch_exact boolean
+  generated always as (game_version is not null) stored;
+
+create index if not exists matches_patch_idx on matches (patch, game_creation desc);
 create index if not exists matches_patch_missing_idx
   on matches (game_creation)
-  where patch is null;
+  where game_version is null and patch_deduced is null;
+
+-- Frontières de patch, trouvées par dichotomie (scripts/find-patch-boundaries.mjs,
+-- `npm run patches`). 22 appels Riot ont suffi à dater les deux bascules, là où
+-- redemander la version de chaque match en aurait coûté 2 077.
+create table if not exists patch_windows (
+  patch text primary key,
+  starts_at timestamptz not null,
+  -- Écart entre les deux matchs qui encadrent la bascule : au-delà, une partie
+  -- jouée dans cette fenêtre pourrait être rangée dans le patch précédent.
+  precision_minutes integer,
+  found_at timestamptz not null default now()
+);
+
+grant select, insert, update, delete on patch_windows to service_role;
 
 create index if not exists match_participants_champion_idx on match_participants (champion);
 
