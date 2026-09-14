@@ -18,16 +18,6 @@ export type ParticipantRow = {
   item_order: number[] | null;
 };
 
-// The "Anvil Voucher" family (early-game stat-anvil choice screens) get
-// consumed into a real Prismatic/Legendary/Excluded item within a minute or
-// two of normal play — a voucher still sitting in a *final* inventory means
-// that player never played the game (AFK/disconnected). Riot still records a
-// placement for their team in that case, but it's not a real result: the
-// team is essentially playing 2v3 (or worse) and the placement reflects that
-// handicap, not genuine performance — so the whole team is dropped from
-// every stat for that one match (see fetchAllParticipants).
-const AFK_VOUCHER_ITEM_IDS = new Set([220008, 220009, 220010, 220011]);
-
 // Arena is 6 teams of 3 — top half (placement <= 3) is what we surface as
 // "% Top 3", matching what Riot's own `win` boolean reflected in the old
 // 2v2 format.
@@ -109,17 +99,46 @@ const PARTICIPANT_COLUMNS =
   "match_id, subteam_id, champion, placement, augments, items, item_order";
 
 /**
+ * La vue `participants_clean` plutôt que la table brute.
+ *
+ * Elle applique déjà l'exclusion des équipes AFK. Le « Anvil Voucher »
+ * (220008-220011) est l'écran de choix d'une enclume : il se consomme en une
+ * minute de jeu normal, donc en trouver un dans un inventaire FINAL signifie
+ * que le joueur n'a jamais joué. Riot enregistre quand même un placement pour
+ * son équipe, mais ce placement reflète un 2v3, pas une performance — toute
+ * l'équipe sort donc des stats pour ce match.
+ *
+ * La vue porte aussi le patch de la partie, ce qui permet de filtrer par patch
+ * DANS Postgres au lieu de tout lire pour trier ensuite.
+ *
+ * Conséquence : `dropAfkTeams()` a disparu du chemin JS. La règle n'est pas
+ * dupliquée, elle a changé d'endroit, et elle s'applique désormais aussi aux
+ * fonctions SQL (classement, compteurs), qui la contournaient auparavant.
+ */
+const PARTICIPANT_SOURCE = "participants_clean";
+
+/**
  * Fetches one page. Split out from fetchAllParticipants so pages can be
  * requested with Promise.all instead of a sequential loop — at ~13k rows/14
  * pages, one-at-a-time round trips added up to several seconds per page load
  * and occasionally tipped over the platform's request timeout.
+ *
+ * ⚠️ `.order("id")` n'est PAS cosmétique. Un `.range()` sans tri laisse
+ * Postgres libre de renvoyer les lignes dans l'ordre qu'il veut, et ces pages
+ * partent en parallèle : rien ne garantit que deux requêtes voient le même
+ * ordre. Des pages se recouvrent, d'autres lignes ne sont jamais lues.
+ *
+ * Le défaut existait déjà sur la table brute, où l'ordre du disque le masquait.
+ * Le passage à une vue avec jointure l'a révélé immédiatement : 2 051 matchs
+ * agrégés au lieu de 2 087, et des chiffres faux sur 172 champions sur 173.
  */
 function fetchParticipantPage(page: number) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
   const from = page * PAGE_SIZE;
   return supabaseAdmin
-    .from("match_participants")
+    .from(PARTICIPANT_SOURCE)
     .select(PARTICIPANT_COLUMNS)
+    .order("id", { ascending: true })
     .range(from, from + PAGE_SIZE - 1)
     .then(({ data, error }) => {
       if (error) throw error;
@@ -165,7 +184,7 @@ const readParticipantSet = cache(async function readParticipantSet(): Promise<Pa
   if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
 
   const { count, error } = await supabaseAdmin
-    .from("match_participants")
+    .from(PARTICIPANT_SOURCE)
     .select("*", { count: "exact", head: true });
   if (error) throw error;
 
@@ -184,7 +203,7 @@ const readParticipantSet = cache(async function readParticipantSet(): Promise<Pa
   const pages = await Promise.all(
     Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page)),
   );
-  return { rows: dropExcludedAugments(dropAfkTeams(pages.flat())), totalRows, truncated };
+  return { rows: dropExcludedAugments(pages.flat()), totalRows, truncated };
 });
 
 export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
@@ -200,20 +219,6 @@ function dropExcludedAugments(rows: ParticipantRow[]): ParticipantRow[] {
       ? { ...r, augments: r.augments.filter((id) => augmentCategory(id) !== "excluded") }
       : r,
   );
-}
-
-// Drops every row belonging to a (match, subteam) where at least one
-// teammate still had an Anvil/Bravery Voucher at game end — see
-// AFK_VOUCHER_ITEM_IDS.
-function dropAfkTeams(rows: ParticipantRow[]): ParticipantRow[] {
-  const afkTeams = new Set<string>();
-  for (const r of rows) {
-    if (r.items.some((id) => AFK_VOUCHER_ITEM_IDS.has(id))) {
-      afkTeams.add(`${r.match_id}:${r.subteam_id}`);
-    }
-  }
-  if (afkTeams.size === 0) return rows;
-  return rows.filter((r) => !afkTeams.has(`${r.match_id}:${r.subteam_id}`));
 }
 
 // Rows are per-participant (18 per match, since we save all 6 teams) — the
@@ -427,12 +432,15 @@ export type PlayerProfile = {
  * chargeait pourtant TOUTE la base pour n'en garder qu'un joueur : ~240 000
  * lignes lues pour en afficher 30. Ici on lit les ~N lignes du joueur.
  *
- * Les deux filtres globaux sont reproduits à l'identique pour que les stats
- * d'une page joueur restent cohérentes avec les tableaux du site :
- *  - `dropAfkTeams` : besoin de savoir si un *coéquipier* avait un voucher, d'où
- *    la seconde requête — mais elle ne remonte que les équipes AFK (opérateur
- *    de recouvrement de tableaux Postgres), pas les matchs entiers.
- *  - `dropExcludedAugments` : purement local à la ligne.
+ * L'exclusion des équipes AFK vient de la vue `participants_clean`, comme pour
+ * les tableaux du site. Elle demandait auparavant une seconde requête ici —
+ * savoir si un *coéquipier* avait fini avec un voucher n'est pas une propriété
+ * de la ligne du joueur — et donc une deuxième écriture de la même règle, qui
+ * pouvait diverger de celle des tier lists. Une seule définition désormais,
+ * en SQL.
+ *
+ * `dropExcludedAugments` reste ici : il dépend des catégories d'augments, qui
+ * vivent dans les JSON côté app.
  */
 async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
   if (!supabaseAdmin) return [];
@@ -440,33 +448,17 @@ async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
   const rows: ParticipantRow[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error } = await supabaseAdmin
-      .from("match_participants")
+      .from(PARTICIPANT_SOURCE)
       .select(PARTICIPANT_COLUMNS)
       .eq("puuid", puuid)
+      .order("id", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (error) throw error;
     rows.push(...((data ?? []) as ParticipantRow[]));
     if (!data || data.length < PAGE_SIZE) break;
   }
-  if (rows.length === 0) return [];
 
-  // Équipes du joueur dont au moins un membre a fini avec un voucher (= AFK).
-  const matchIds = Array.from(new Set(rows.map((r) => r.match_id)));
-  const afkTeams = new Set<string>();
-  const CHUNK = 200; // borne la longueur de l'URL PostgREST
-  for (let i = 0; i < matchIds.length; i += CHUNK) {
-    const { data, error } = await supabaseAdmin
-      .from("match_participants")
-      .select("match_id, subteam_id")
-      .in("match_id", matchIds.slice(i, i + CHUNK))
-      .overlaps("items", Array.from(AFK_VOUCHER_ITEM_IDS));
-    if (error) throw error;
-    for (const r of data ?? []) afkTeams.add(`${r.match_id}:${r.subteam_id}`);
-  }
-
-  return dropExcludedAugments(
-    rows.filter((r) => !afkTeams.has(`${r.match_id}:${r.subteam_id}`)),
-  );
+  return dropExcludedAugments(rows);
 }
 
 /** Everything about one player scoped to their own games (all matches we've
@@ -658,7 +650,13 @@ export async function getChampionDetail(
     const items = Array.from(slotMap.entries())
       .filter(([itemId]) => !alreadyShown.has(itemId))
       .map(([itemId, s]) => ({ itemId, ...toStat(s, champGames) }))
-      .sort((a, b) => b.games - a.games)
+      // Départage explicite des ex æquo. Sans lui, deux items à égalité de
+      // parties étaient classés dans l'ordre où les lignes étaient arrivées de
+      // la base — et comme chaque slot retire ce qu'il a pris, un ex æquo
+      // tranché autrement au slot 3 change toute la suite du build. Mesuré :
+      // 96 champions sur 173 voyaient leur build changer quand l'ordre de
+      // lecture changeait, à chiffres pourtant identiques.
+      .sort((a, b) => b.games - a.games || a.itemId - b.itemId)
       .slice(0, ALTS_PER_SLOT);
     if (items.length === 0) return;
     for (const item of items) alreadyShown.add(item.itemId);
