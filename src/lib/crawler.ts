@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { riotFetch } from "@/lib/riotClient";
 import { ARENA_QUEUE_ID, apiKey, fetchMatchDetail, persistMatches } from "@/lib/riotSearch";
+import { fetchItemOrder } from "@/lib/timeline";
 
 /**
  * Crawler Arena (phase 1 de docs/data-pipeline-plan.md).
@@ -348,6 +349,139 @@ export async function runCrawl({
     alreadyKnown,
     riotCalls,
     riotOk,
+    durationMs: Date.now() - startedAt,
+    stoppedBy,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Passe timeline : l'ordre d'achat des items (phase 2 du plan)
+
+export type TimelineReport = {
+  ok: boolean;
+  matchesDone: number;
+  participantsUpdated: number;
+  riotCalls: number;
+  riotOk: number;
+  remaining: number;
+  durationMs: number;
+  stoppedBy: "deadline" | "maxMatches" | "exhausted" | "apiUnavailable";
+};
+
+/** Matchs complets dont le timeline reste à récupérer, les plus récents d'abord. */
+async function pendingTimelineIds(limit: number): Promise<string[]> {
+  return retryDb("lecture des timelines à récupérer", async () => {
+    const { data, error } = await db()
+      .from("matches")
+      .select("match_id")
+      .is("timeline_fetched_at", null)
+      .not("ingested_at", "is", null)
+      .order("game_creation", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.match_id as string);
+  });
+}
+
+/**
+ * Récupère l'ordre d'achat de quelques matchs.
+ *
+ * Passe **séparée** de l'ingestion, et c'est le point de conception central :
+ * un timeline pèse 1,48 Mo contre 138 Ko pour un match, et coûte un appel de
+ * plus. Le récupérer en même temps que le match diviserait par deux la
+ * couverture en matchs — or la couverture prime, l'ordre d'achat converge vite.
+ *
+ * Cette passe consomme donc le budget *restant* après le crawl principal, et
+ * traite les matchs les plus récents d'abord (ce sont eux qui comptent pour la
+ * méta du patch courant).
+ */
+export async function runTimelineCrawl({
+  maxDurationMs = 240_000,
+  maxMatches = 60,
+}: { maxDurationMs?: number; maxMatches?: number } = {}): Promise<TimelineReport> {
+  const startedAt = Date.now();
+  const deadline = startedAt + maxDurationMs;
+
+  if (!(await isApiReachable())) {
+    return {
+      ok: false,
+      matchesDone: 0,
+      participantsUpdated: 0,
+      riotCalls: 1,
+      riotOk: 0,
+      remaining: -1,
+      durationMs: Date.now() - startedAt,
+      stoppedBy: "apiUnavailable",
+    };
+  }
+
+  let riotCalls = 1;
+  let riotOk = 1;
+  let matchesDone = 0;
+  let participantsUpdated = 0;
+  let stoppedBy: TimelineReport["stoppedBy"] = "exhausted";
+
+  const ids = await pendingTimelineIds(maxMatches);
+
+  for (const matchId of ids) {
+    if (Date.now() > deadline) {
+      stoppedBy = "deadline";
+      break;
+    }
+
+    const order = await fetchItemOrder(matchId, CRAWLER_MAX_WAIT_MS);
+    riotCalls++;
+    if (order === null) continue;
+    riotOk++;
+
+    try {
+      // Une mise à jour par participant : `item_order` dépend du couple
+      // (match, joueur), il n'y a pas d'écriture groupée possible sans réécrire
+      // des lignes entières — et un upsert complet risquerait d'écraser des
+      // colonnes avec des valeurs périmées.
+      for (const [puuid, items] of order) {
+        const { error } = await db()
+          .from("match_participants")
+          .update({ item_order: items })
+          .eq("match_id", matchId)
+          .eq("puuid", puuid);
+        if (error) throw error;
+        participantsUpdated++;
+      }
+
+      await retryDb("marquage du timeline", async () => {
+        const { error } = await db()
+          .from("matches")
+          .update({ timeline_fetched_at: new Date().toISOString() })
+          .eq("match_id", matchId);
+        if (error) throw error;
+      });
+      matchesDone++;
+    } catch (error) {
+      // Le match reste à `timeline_fetched_at` NULL et sera repris.
+      console.error(`[timeline] écriture de ${matchId} échouée, sera reprise :`, error);
+    }
+  }
+
+  if (matchesDone >= maxMatches) stoppedBy = "maxMatches";
+
+  const remaining = await retryDb("comptage des timelines restants", async () => {
+    const { count, error } = await db()
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .is("timeline_fetched_at", null)
+      .not("ingested_at", "is", null);
+    if (error) throw error;
+    return count ?? 0;
+  });
+
+  return {
+    ok: true,
+    matchesDone,
+    participantsUpdated,
+    riotCalls,
+    riotOk,
+    remaining,
     durationMs: Date.now() - startedAt,
     stoppedBy,
   };

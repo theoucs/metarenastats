@@ -13,6 +13,11 @@ export type ParticipantRow = {
   placement: number;
   augments: number[];
   items: number[];
+  /** Ordre d'achat réel, depuis le Match Timeline (voir lib/timeline.ts).
+   *  `null` tant que la passe timeline n'a pas traité ce match — l'agrégation
+   *  retombe alors sur `items`, comme avant. Ne contient que les achats en
+   *  boutique : les prismatiques n'y figurent jamais. */
+  item_order: number[] | null;
 };
 
 // The "Anvil Voucher" family (early-game stat-anvil choice screens) get
@@ -36,10 +41,30 @@ export const TOP3_PLACEMENT_THRESHOLD = 3;
 // pick-rate denominator is matches × 18, not matches).
 const PARTICIPANTS_PER_MATCH = 18;
 
-// Build-order slots we track per champion (see getChampionDetail) — `items`
-// preserves Riot's item0..item6 order with empty slots compacted out, which
-// approximates purchase order well enough without the Match Timeline API.
+// Nombre de slots de build suivis par champion (voir getChampionDetail).
+//
+// Depuis le 2026-09-14 ces slots s'appuient sur l'ordre d'achat réel
+// (`item_order`, extrait du Match Timeline) et non plus sur `items`, qui
+// conserve l'ordre des slots d'inventaire de Riot — un ordre qui n'a rien à
+// voir avec celui des achats, contrairement à ce que disait ce commentaire.
 const BUILD_SLOT_COUNT = 6;
+
+/** Slot 1 : les bottes. Mesuré sur 108 participants, 87 % des joueurs les
+ *  achètent en premier — c'est le seul slot dont la position reflète un vrai
+ *  ordre de début de partie. */
+const BOOTS_SLOT = 1;
+
+/** Slot 2 : le prismatique.
+ *
+ *  ⚠️ Position de présentation, pas un ordre mesuré. Les prismatiques ne sont
+ *  jamais achetés en boutique et n'apparaissent donc pas dans le timeline (20
+ *  visibles contre 183 possédés) ; impossible de savoir lequel est arrivé en
+ *  premier quand un joueur en a plusieurs, ce qui est le cas de 51 % d'entre
+ *  eux. La piste de l'enclume `220007` pour les dater a été vérifiée et écartée
+ *  (61 joueurs sur 108 n'en reçoivent aucune tout en ayant des prismatiques).
+ *  Ce slot agrège donc TOUS les prismatiques possédés, et fait ressortir le
+ *  plus fréquent sur ce champion. Décision prise avec Théo le 2026-09-14. */
+const PRISMATIC_SLOT = 2;
 const ALTS_PER_SLOT = 3; // 1 primary + 2 alternates
 
 // Supabase/PostgREST caps every response at 1000 rows server-side (the "Max Rows"
@@ -69,7 +94,8 @@ const MAX_PAGES = 500;
  * Per-request only: the cache lives for one render pass, so pages still see
  * fresh data on every request.
  */
-const PARTICIPANT_COLUMNS = "match_id, puuid, riot_id, subteam_id, champion, placement, augments, items";
+const PARTICIPANT_COLUMNS =
+  "match_id, puuid, riot_id, subteam_id, champion, placement, augments, items, item_order";
 
 /**
  * Fetches one page. Split out from fetchAllParticipants so pages can be
@@ -525,11 +551,33 @@ export async function getChampionDetail(
   // often, most-frequent first. "excluded" items (Shardblade, Arcane Sweeper,
   // ...) are skipped — they're never a real build choice, so recommending
   // them would be noise.
+  // Les 6 slots de build, alimentés différemment selon ce que la donnée permet
+  // réellement de dire — voir BOOTS_SLOT et PRISMATIC_SLOT.
   const bySlot: Map<number, Accumulator>[] = Array.from({ length: BUILD_SLOT_COUNT }, () => new Map());
   for (const r of champRows) {
-    const buildableItems = r.items.filter((id) => itemCategoryOf(id) !== "excluded");
-    for (let slot = 0; slot < Math.min(BUILD_SLOT_COUNT, buildableItems.length); slot++) {
-      accumulate(bySlot[slot], buildableItems[slot], r.placement);
+    // L'ordre d'achat quand on l'a, l'inventaire final sinon : un match dont le
+    // timeline n'a pas encore été récupéré doit continuer à compter, avec la
+    // précision d'avant, plutôt que de disparaître des stats.
+    const source = r.item_order && r.item_order.length > 0 ? r.item_order : r.items;
+    const usable = source.filter((id) => itemCategoryOf(id) !== "excluded");
+
+    // Slot 1 — les bottes.
+    const boots = usable.find((id) => itemCategoryOf(id) === "boots");
+    if (boots !== undefined) accumulate(bySlot[BOOTS_SLOT - 1], boots, r.placement);
+
+    // Slot 2 — les prismatiques, toujours depuis l'inventaire final puisqu'ils
+    // sont absents du timeline. Chacun compte : un joueur qui en a deux
+    // contribue deux fois, si bien que le slot fait ressortir le plus fréquent.
+    for (const id of r.items) {
+      if (itemCategoryOf(id) === "prismatic") accumulate(bySlot[PRISMATIC_SLOT - 1], id, r.placement);
+    }
+
+    // Slots 3+ — les légendaires, dans l'ordre d'achat réel quand il est connu.
+    const legendaries = usable.filter(
+      (id) => itemCategoryOf(id) !== "boots" && itemCategoryOf(id) !== "prismatic",
+    );
+    for (let i = 0; i < legendaries.length && PRISMATIC_SLOT + i < BUILD_SLOT_COUNT; i++) {
+      accumulate(bySlot[PRISMATIC_SLOT + i], legendaries[i], r.placement);
     }
   }
   const itemBuild: ChampionItemSlot[] = bySlot

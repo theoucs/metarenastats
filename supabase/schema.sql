@@ -121,3 +121,33 @@ where m.ingested_at is null
 insert into crawl_queue (puuid)
 select distinct puuid from match_participants
 on conflict (puuid) do nothing;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Ordre d'achat des items (2026-09-14, phase 2 de docs/data-pipeline-plan.md)
+--
+-- `items` conserve l'ordre des SLOTS D'INVENTAIRE de Riot (item0..item6), qui
+-- n'a rien à voir avec l'ordre d'achat — vérifié sur EUW1_7982040680 où Xayah
+-- achète Boots → Collector → Infinity Edge mais où l'inventaire final les range
+-- Boots, Reaper's Toll, Collector, IE.
+--
+-- Le vrai ordre ne vit que dans le Match Timeline, une requête distincte et
+-- 10,7× plus lourde (1,48 Mo contre 138 Ko) — d'où une passe séparée plutôt
+-- qu'un appel supplémentaire à chaque match ingéré, ce qui diviserait par deux
+-- la couverture en matchs.
+--
+-- Ce que le timeline ne donne PAS : les items prismatiques, jamais achetés en
+-- boutique (mesuré : 20 visibles dans le timeline contre 183 réellement
+-- possédés). `item_order` liste donc les achats en boutique uniquement — bottes
+-- et légendaires — et complète `items`, il ne le remplace pas.
+alter table match_participants add column if not exists item_order integer[];
+
+-- Marqueur de récupération du timeline, sur le même principe que `ingested_at` :
+-- NULL = à faire. Un match dont le timeline est illisible reste à NULL et sera
+-- retenté, ce qui est sans gravité (la passe est bornée et priorise le récent).
+alter table matches add column if not exists timeline_fetched_at timestamptz;
+
+-- Index partiel : ne contient que les matchs dont le timeline reste à récupérer,
+-- donc minuscule une fois le rattrapage terminé.
+create index if not exists matches_timeline_pending_idx
+  on matches (game_creation desc)
+  where timeline_fetched_at is null and ingested_at is not null;
