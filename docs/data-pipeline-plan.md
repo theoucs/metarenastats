@@ -667,6 +667,123 @@ jour où on ajoute une dimension. L'archive compressée couvre le second cas.
 
 ---
 
+---
+
+## Phase 3.5 — ✅ Découpe par patch (fait le 2026-09-14)
+
+Une tier list de patch périmé ne vaut rien : un augment nerfé de 20 % garde ses
+anciens chiffres, et rien à l'écran ne disait lequel on regardait.
+
+### La source : Riot la donne, on ne la devine pas
+
+`gameVersion` est écrit dans **chaque match** (« 16.18.817.5716 »). C'est décisif,
+car le crawler découvre en permanence des joueurs dont il récupère tout
+l'historique : une partie ingérée aujourd'hui peut dater de mai. Certains joueurs
+font dix parties par jour, d'autres dix par an — **la date d'ingestion ne dit
+rien de la date de jeu**, et la date de jeu seule ne suffit pas aux frontières.
+
+Vérifié au passage : le **timeline ne contient pas** `gameVersion`, donc aucun
+rattrapage gratuit par ce chemin. Et Riot n'expose **aucune API de notes de
+patch** — on a le numéro, jamais le contenu. Ça suffit : si le patch a changé,
+les stats d'avant ne valent plus, quel que soit le détail des modifications.
+
+Le patch court est une **colonne générée** par Postgres à partir de la version
+brute. Deux builds d'un même patch (`16.18.817` et `16.18.816`, tous deux
+observés) se regroupent donc correctement — stocker la version brute telle quelle
+aurait découpé les tier lists en tranches inutilisables.
+
+### Rattraper 2 077 matchs pour 22 appels
+
+Les matchs antérieurs au 14/09 n'ont pas leur version. Les redemander coûtait
+2 077 appels, soit des heures prises au crawler.
+
+Or il suffit de savoir **à quelle minute chaque patch commence** : le patch croît
+avec le temps, donc la frontière se trouve par **dichotomie** — onze sondes par
+frontière au lieu de 2 077.
+
+| | Appels Riot |
+|---|---|
+| Interroger chaque match | 2 077 |
+| **Dichotomie** (`npm run patches`) | **22** |
+
+Résultat : 16.18 commence le 10/09 à 05:18, 16.17 le 27/08 à 03:31. **Quatorze
+jours d'écart exactement**, soit la cadence de Riot — c'est ce qui valide les
+frontières. 1 461 matchs rangés.
+
+L'observé (`game_version`) et le déduit (`patch_deduced`) restent deux colonnes
+distinctes, `patch` dérivant des deux avec priorité à l'observé. On ne fabrique
+jamais une fausse version : `patch_exact` répond le jour où un chiffre surprend.
+Le script est idempotent — ses sondes écrivent la vraie version du match
+interrogé, donc le relancer ne coûte rien.
+
+### Deux périmètres, délibérément
+
+| Par patch | Sur tout l'historique |
+|---|---|
+| tier lists, combos, compos, pages de champion | classement, historique joueur, compteurs du site |
+
+Le palmarès d'un joueur ne se remet pas à zéro à chaque patch, et « 2 087 matchs
+suivis » parle de ce que le site connaît.
+
+Le patch courant se lit **dans les données**, pas dans une liste externe : Riot
+déploie par région et en décalé, alors que nos matchs portent la version que le
+serveur avait pendant la partie. Un plancher de 5 matchs écarte les patchs
+fantômes.
+
+### Le seuil de bascule, et pourquoi il existe
+
+`PATCH_MIN_MATCHES = 300`. En dessous, le site affiche le patch **précédent** et
+le dit. Le cas s'est présenté le jour même : 16.18 sorti depuis quatre jours,
+296 matchs, donc le site montre 16.17 et ses 1 193 matchs.
+
+> Décision de Théo : 300 assumé comme plancher, « de toute façon on peut basculer
+> sur le patch d'avant si on n'est pas satisfait ». Le sélecteur rattrape une
+> erreur de seuil ; l'inverse n'est pas vrai.
+
+### Le filtre coûte moins cher que pas de filtre
+
+Il part en SQL, sur la vue qui porte déjà le patch : on lit **21 438 lignes au
+lieu de 37 494**. Découper par patch a *réduit* l'egress.
+
+### Le sélecteur sans perdre le cache CDN
+
+Lire un paramètre d'URL aurait rendu les tier lists **dynamiques** — rendues à
+chaque visite, y compris pour l'immense majorité qui ne basculera jamais — et
+aurait défait la statisation de la phase 0.2. Les deux vues sont donc rendues
+côté serveur et passées en props au composant client, qui n'en affiche qu'une.
+Aucune requête à la bascule, pages toujours `○ (Static)` au build.
+
+Le prix, mesuré en production — et nettement plus faible que prévu, puisque le
+patch récent a moins de données donc une vue plus légère :
+
+| Page | Avant | Après |
+|---|---|---|
+| /combos | 63 Ko | **91 Ko** (prévision : 126) |
+| /augments | 30 Ko | 44 Ko |
+| /champions | 33 Ko | 38 Ko |
+| /comps | 12 Ko | 13 Ko |
+
+La page de champion, elle, est **déjà dynamique** : y lire `?patch=` ne coûte
+rien. Les liens des tier lists emmènent donc le patch sélectionné.
+
+### Deux bugs d'exactitude trouvés en chemin
+
+Sans rapport avec les patchs, mais révélés par le passage à une vue SQL :
+
+1. **Pagination sans tri.** Les pages étaient lues avec `.range()` sans `ORDER BY`
+   et partaient en parallèle : rien n'oblige Postgres à renvoyer le même ordre
+   d'une requête à l'autre, donc des pages se recouvraient pendant que d'autres
+   lignes n'étaient jamais lues. L'ordre du disque le masquait sur la table brute.
+   Mesuré à la révélation : **2 051 matchs agrégés au lieu de 2 087, chiffres faux
+   sur 172 champions sur 173.**
+2. **Slots de build dépendants de l'ordre de lecture.** Le tri ne départageait pas
+   les ex æquo ; comme chaque slot retire ce qu'il a pris, un ex æquo tranché
+   autrement au slot 3 changeait tout le build — **96 champions sur 173**, à
+   chiffres pourtant identiques.
+
+Preuve de la correction : **deux recalculs consécutifs rendent 182 snapshots sur
+182 identiques**. Ce n'était pas le cas avant.
+
 ## Phase 4 — Plus tard
 
 - Timelines : le reste des événements (skill order, courbes de puissance)
@@ -716,6 +833,7 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 3.1  ✅ dégraisser la lecture partagée (fait 2026-09-14)
 3.2  ✅ seuil de parties au classement (fait 2026-09-14)
 3.3  fenêtre glissante, Supabase Pro quand la base le réclame
+3.5  ✅ découpe par patch + sélecteur (fait 2026-09-14)
 4    timelines complets, classement Arena
 ```
 
