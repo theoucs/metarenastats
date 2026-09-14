@@ -57,10 +57,38 @@ export type CrawlReport = {
   playersDiscovered: number;
   /** Identifiants vus mais déjà en base — la mesure de la saturation du crawl. */
   alreadyKnown: number;
+  /** Appels tentés. */
   riotCalls: number;
+  /** Appels ayant réellement rapporté des données. Distinct de `riotCalls` :
+   *  avec une clé expirée les deux divergent, et c'est le seul signal fiable
+   *  pour dire qu'une passe n'a rien produit malgré son activité. */
+  riotOk: number;
   durationMs: number;
-  stoppedBy: "deadline" | "maxMatches" | "exhausted";
+  stoppedBy: "deadline" | "maxMatches" | "exhausted" | "apiUnavailable";
 };
+
+/**
+ * Vérifie que la clé répond avant de dépenser le budget.
+ *
+ * Une clé de développement expire toutes les 24 h. Sans ce contrôle, une passe
+ * lancée avec une clé morte brûlait **57 appels** en 401 avant de s'arrêter, et
+ * recommençait à chaque cron — constaté sur une nuit entière.
+ *
+ * L'appel se fait sur `euw1`, dont le compteur de débit est distinct de celui
+ * d'`europe` : il ne coûte donc rien au budget de crawl.
+ */
+async function isApiReachable(): Promise<boolean> {
+  const res = await riotFetch(
+    "https://euw1.api.riotgames.com/lol/status/v4/platform-data",
+    apiKey(),
+    { maxWaitMs: 5_000 },
+  );
+  if (res.status === 401 || res.status === 403) {
+    console.error("[crawl] clé Riot refusée (HTTP " + res.status + ") — probablement expirée.");
+    return false;
+  }
+  return res.ok;
+}
 
 function db() {
   if (!supabaseAdmin) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
@@ -182,10 +210,29 @@ export async function runCrawl({
   const startedAt = Date.now();
   const deadline = startedAt + maxDurationMs;
   let riotCalls = 0;
+  let riotOk = 0;
   let ingested = 0;
   let repaired = 0;
   let alreadyKnown = 0;
   let stoppedBy: CrawlReport["stoppedBy"] = "exhausted";
+
+  // ── 0. La clé répond-elle ? ──────────────────────────────────────────────
+  if (!(await isApiReachable())) {
+    return {
+      ok: false,
+      repaired: 0,
+      ingested: 0,
+      playersCrawled: 0,
+      playersDiscovered: 0,
+      alreadyKnown: 0,
+      riotCalls: 1,
+      riotOk: 0,
+      durationMs: Date.now() - startedAt,
+      stoppedBy: "apiUnavailable",
+    };
+  }
+  riotCalls++;
+  riotOk++;
 
   // ── 1. Réparer avant de découvrir ────────────────────────────────────────
   // Un match connu mais incomplet ne coûte qu'un appel et comble un trou dans
@@ -205,6 +252,7 @@ export async function runCrawl({
     const ids = await fetchPlayerMatchIds(puuid);
     riotCalls++;
     if (ids === null) continue;
+    riotOk++;
     discoveredIds.push(...ids);
     crawled.push({ puuid, matchesFound: ids.length });
   }
@@ -248,8 +296,10 @@ export async function runCrawl({
       stoppedBy = "maxMatches";
       break;
     }
-    batch.push(await fetchMatchDetail(matchId, CRAWLER_MAX_WAIT_MS));
+    const detail = await fetchMatchDetail(matchId, CRAWLER_MAX_WAIT_MS);
     riotCalls++;
+    if (detail !== null) riotOk++;
+    batch.push(detail);
     if (batch.length >= PERSIST_BATCH) await flush();
   }
   await flush();
@@ -266,6 +316,7 @@ export async function runCrawl({
     playersDiscovered,
     alreadyKnown,
     riotCalls,
+    riotOk,
     durationMs: Date.now() - startedAt,
     stoppedBy,
   };

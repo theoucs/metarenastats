@@ -65,9 +65,14 @@ jobs:
             exit 1
           fi
 
-          # Zéro appel Riot abouti = clé expirée (elle ne dure que 24 h) ou API
-          # indisponible. Ce n'est pas une erreur du job, mais ça doit se voir :
-          # sinon le crawler peut rester muet des jours sans que rien n'alerte.
-          if echo "$response" | grep -q '"riotCalls":0'; then
-            echo "::warning::Aucun appel Riot abouti — la clé de dev est probablement expirée."
+          # Clé expirée (elle ne dure que 24 h) ou API indisponible : la passe
+          # s'arrête d'entrée sans rien dépenser. Ce n'est pas une erreur du job
+          # — rien à corriger côté code — mais ça doit se voir, sinon le crawler
+          # reste muet des jours sans que rien n'alerte.
+          #
+          # Le test portait auparavant sur `"riotCalls":0`, ce qui ne marchait
+          # pas : `riotCalls` compte les appels *tentés*. Avec une clé morte il
+          # valait 57 et l'avertissement ne partait jamais.
+          if echo "$response" | grep -q '"stoppedBy":"apiUnavailable"'; then
+            echo "::warning::Clé Riot refusée — régénérer la clé de dev (expire toutes les 24 h), la mettre sur Vercel et redéployer."
           fi

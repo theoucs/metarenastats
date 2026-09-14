@@ -55,7 +55,8 @@ async function handle(request: Request) {
     console.log(
       `[crawl] +${report.ingested} matchs, ${report.repaired} réparés, ` +
         `${report.playersCrawled} joueurs lus, ${report.playersDiscovered} découverts, ` +
-        `${report.riotCalls} appels Riot en ${report.durationMs} ms (arrêt : ${report.stoppedBy})`,
+        `${report.riotOk}/${report.riotCalls} appels Riot aboutis en ${report.durationMs} ms ` +
+        `(arrêt : ${report.stoppedBy})`,
     );
     return NextResponse.json(report);
   } catch (error) {
