@@ -264,8 +264,26 @@ et était donc fausse (~360/jour en réalité).
 
 Correction : **un job enchaîne plusieurs passes espacées** plutôt que de compter
 sur la fréquence du cron. Un job GitHub peut durer 6 h et les minutes sont
-illimitées sur un repo public — c'est le levier gratuit. À 3 passes par job et
-~6 jobs/jour, on retrouve l'ordre de grandeur visé.
+illimitées sur un repo public — c'est le levier gratuit.
+
+**Porté de 3 à 10 passes le 2026-09-14**, après une matinée à cinq créneaux
+sautés d'affilée (rien ingéré entre 07:07 et 11:35). On ne peut pas rendre le
+réveil fiable ; on rend chaque réveil rentable. À 10 passes, **trois
+déclenchements par jour valent les trente que le cron promettait**. Une journée
+entière sans aucun déclenchement reste possible — c'est le prix d'un
+planificateur gratuit, et la seule vraie parade serait un pinger externe.
+
+Mesuré sur un job de 3 passes le 2026-09-14 : **360 matchs ingérés en 10 min,
+408 appels Riot sur 408 aboutis**, 3 746 joueurs découverts. Les trois passes se
+sont arrêtées sur `maxMatches`, jamais sur la limite de débit.
+
+> **`MAX_MATCHES` reste à 120, et c'est une décision de Théo (2026-09-14), pas un
+> réglage à optimiser.** Puisque les passes butent sur ce plafond avant la limite
+> de débit, il reste du budget libre dans chaque fenêtre — et cette marge
+> appartient aux visiteurs qui cherchent leur pseudo, qui partagent la même clé.
+> C'est le seul paramètre du crawler qui se paie directement sur l'expérience du
+> site. Augmenter le nombre de passes ne coûte que du temps de runner ; augmenter
+> ce plafond coûte des recherches ratées.
 
 ### Dette assumée
 
