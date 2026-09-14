@@ -1,0 +1,212 @@
+# Moteur Arena — remplace crawl.yml et timelines.yml (voir docs/data-pipeline-plan.md).
+#
+# ─── POURQUOI UN JOB LONG ET LENT ────────────────────────────────────────────
+#
+# Diagnostic du 2026-09-14, mesuré et non supposé. Sur 23 h, 12 runs planifiés
+# seulement, et surtout : les deux workflows partaient PAR PAIRES (14:26/15:03,
+# 18:14/18:20, 20:56/21:07, 23:11/23:31, 01:10/01:40, 06:22/07:07) alors que
+# leurs crons étaient à 26 min d'écart. GitHub n'évalue donc pas nos crons un par
+# un — il évalue le dépôt, toutes les 2 à 6 h. Éliminés au passage : minutes
+# épuisées (dépôt public, illimité), panne GitHub (Actions opérationnel),
+# workflows désactivés (les trois `active`), mauvaise branche, et la bascule vers
+# les crons Vercel (Hobby = 1×/jour, le déploiement échoue au-delà).
+#
+# Rien de tout ça ne se règle depuis le dépôt. Donc on ne dépend plus de la
+# fréquence des déclenchements : UN déclenchement fait des heures de travail.
+#
+# Et ce changement de forme corrige une erreur de conception plus ancienne. On
+# avait construit à l'envers : des passes courtes et violentes (clé Riot saturée
+# à ~50 %), déclenchées rarement. Or le temps de runner est GRATUIT et illimité
+# sur un dépôt public, tandis que la clé Riot (100 appels / 2 min, partagée avec
+# les visiteurs qui cherchent leur pseudo) est la seule ressource rare.
+#
+# La bonne forme est donc l'inverse : tourner longtemps, doucement.
+#
+#   Par cycle : 1 passe de crawl (136 appels) + 2 passes de timeline (2 × 81)
+#               = 298 appels, étalés sur ~20 min de cycle
+#   Soit ~0,25 appel/s contre 0,83 autorisé → ON UTILISE UN QUART DE LA CLÉ.
+#
+# Les trois quarts restants appartiennent en permanence aux visiteurs. C'est
+# strictement mieux qu'avant sur les DEUX tableaux : plus de matchs par jour, et
+# davantage de marge à chaque instant.
+#
+# ─── POURQUOI LES DEUX TÂCHES DANS LE MÊME JOB ───────────────────────────────
+#
+# Elles puisent dans la même clé. Séparées, soit elles se chevauchent et se
+# volent du budget sans le savoir (le limiteur vit en mémoire de chaque instance
+# Vercel, aucune des deux ne voit ce que l'autre dépense), soit un groupe de
+# concurrence commun fait attendre l'une pendant des heures. Alternées dans un
+# même cycle, le problème n'existe plus.
+#
+# Le ratio 1 crawl / 2 timelines n'est pas un goût, c'est une soustraction : une
+# passe de crawl CRÉE 120 matchs à timeliner, une passe de timeline en absorbe
+# 80. À 1 pour 1 le retard se creuse — constaté le 2026-09-14, où il est monté de
+# 1 007 à 1 367 en une matinée. À 1 pour 2 il se résorbe de 40 par cycle, et le
+# jour où il atteint zéro les passes de timeline reviennent vides en une seconde.
+# Auto-régulé, sans rien à régler.
+name: Arena engine
+
+on:
+  schedule:
+    # Deux tentatives par heure plutôt qu'une. Puisque GitHub échantillonne le
+    # dépôt à intervalles irréguliers, doubler les entrées double les chances
+    # qu'une tombe dans une fenêtre servie. Ça ne coûte rien : le groupe de
+    # concurrence garantit qu'un seul moteur tourne à la fois.
+    - cron: "9,39 * * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Durée du moteur en minutes (max 330)"
+        required: false
+        default: "170"
+      crawlMatches:
+        description: "Matchs par passe de crawl"
+        required: false
+        default: "120"
+      timelineMatches:
+        description: "Matchs par passe de timeline"
+        required: false
+        default: "80"
+      timelinePasses:
+        description: "Passes de timeline par cycle (0 = crawl seul)"
+        required: false
+        default: "2"
+      crawlPasses:
+        description: "Passes de crawl par cycle (0 = timelines seules)"
+        required: false
+        default: "1"
+
+# Un seul moteur à la fois. `cancel-in-progress: false` : un déclenchement qui
+# tombe pendant un moteur en cours attend son tour au lieu de le tuer — c'est ce
+# qui donne la couverture continue quand GitHub sert deux créneaux rapprochés.
+concurrency:
+  group: riot-api
+  cancel-in-progress: false
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    # La limite dure de GitHub est de 360 min par job. On s'arrête nettement
+    # avant : la boucle se termine d'elle-même sur MINUTES, ce garde-fou ne sert
+    # que si une passe reste bloquée.
+    timeout-minutes: 345
+    steps:
+      - name: Faire tourner le moteur
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MINUTES: ${{ inputs.minutes || '170' }}
+          CRAWL_MATCHES: ${{ inputs.crawlMatches || '120' }}
+          TIMELINE_MATCHES: ${{ inputs.timelineMatches || '80' }}
+          CRAWL_PASSES: ${{ inputs.crawlPasses || '1' }}
+          TIMELINE_PASSES: ${{ inputs.timelinePasses || '2' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Secrets SITE_URL et CRON_SECRET requis."
+            exit 1
+          fi
+
+          # Pause après une passe, et pause de fin de cycle. Ensemble elles
+          # fixent la part de la clé Riot qu'on s'autorise (voir l'en-tête) :
+          # les allonger rend la main au site, les raccourcir accélère le crawl.
+          # C'est LE réglage à toucher, pas les plafonds par passe.
+          PAUSE_AFTER_PASS=120
+          PAUSE_AFTER_CYCLE=540
+
+          deadline=$(( $(date +%s) + MINUTES * 60 ))
+          cycle=0
+          total_ingested=0
+          total_repaired=0
+          total_timelines=0
+          remaining="?"
+          failures=0
+
+          # Une passe = un appel à une route de cron du site. Renvoie le corps
+          # de la réponse sur stdout, et 1 si la passe n'a pas abouti.
+          run_pass() {
+            local route="$1" query="$2" code body
+            code=$(curl --silent --show-error \
+              --max-time 290 \
+              --request POST \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --output /tmp/pass.json \
+              --write-out "%{http_code}" \
+              "${SITE_URL%/}/api/cron/${route}?${query}&maxDurationMs=230000") || true
+            body=$(cat /tmp/pass.json 2>/dev/null || true)
+            echo "$body"
+            [ "$code" = "200" ] || return 1
+            return 0
+          }
+
+          # Attend `$1` secondes, mais jamais au-delà de la fin prévue du moteur.
+          nap() {
+            local want=$1 left=$(( deadline - $(date +%s) ))
+            [ "$left" -le 0 ] && return 0
+            [ "$want" -gt "$left" ] && want=$left
+            sleep "$want"
+          }
+
+          echo "::notice::Moteur lancé pour ${MINUTES} min."
+
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            cycle=$(( cycle + 1 ))
+            echo "── cycle ${cycle} — reste $(( (deadline - $(date +%s)) / 60 )) min ──"
+
+            for _ in $(seq 1 "${CRAWL_PASSES}"); do
+              [ "${CRAWL_PASSES}" -eq 0 ] && break
+              echo "· crawl"
+              if body=$(run_pass "crawl" "maxMatches=${CRAWL_MATCHES}"); then
+                echo "  ${body}"
+                # Clé de dev expirée (elle ne vit que 24 h) ou API HS : inutile
+                # d'insister des heures, chaque passe échouerait à l'identique.
+                if echo "$body" | grep -q '"stoppedBy":"apiUnavailable"'; then
+                  echo "::warning::Clé Riot refusée — la régénérer (elle expire toutes les 24 h), la mettre sur Vercel et redéployer. Moteur arrêté."
+                  exit 0
+                fi
+                n=$(echo "$body" | sed -n 's/.*"ingested":\([0-9]*\).*/\1/p')
+                r=$(echo "$body" | sed -n 's/.*"repaired":\([0-9]*\).*/\1/p')
+                total_ingested=$(( total_ingested + ${n:-0} ))
+                total_repaired=$(( total_repaired + ${r:-0} ))
+              else
+                # Un hoquet de Supabase ou de Vercel ne tue pas le moteur :
+                # l'état vit en base (crawl_queue, matches.ingested_at), le
+                # cycle suivant reprend exactement où on en est.
+                echo "::warning::Passe de crawl échouée : ${body}"
+                failures=$(( failures + 1 ))
+              fi
+              nap "${PAUSE_AFTER_PASS}"
+            done
+
+            for _ in $(seq 1 "${TIMELINE_PASSES}"); do
+              [ "${TIMELINE_PASSES}" -eq 0 ] && break
+              [ "$(date +%s)" -ge "$deadline" ] && break
+              echo "· timeline"
+              if body=$(run_pass "timelines" "maxMatches=${TIMELINE_MATCHES}"); then
+                echo "  ${body}"
+                if echo "$body" | grep -q '"stoppedBy":"apiUnavailable"'; then
+                  echo "::warning::Clé Riot refusée — la régénérer, la mettre sur Vercel et redéployer. Moteur arrêté."
+                  exit 0
+                fi
+                d=$(echo "$body" | sed -n 's/.*"matchesDone":\([0-9]*\).*/\1/p')
+                total_timelines=$(( total_timelines + ${d:-0} ))
+                remaining=$(echo "$body" | sed -n 's/.*"remaining":\([0-9-]*\).*/\1/p')
+              else
+                echo "::warning::Passe de timeline échouée : ${body}"
+                failures=$(( failures + 1 ))
+              fi
+              nap "${PAUSE_AFTER_PASS}"
+            done
+
+            nap "${PAUSE_AFTER_CYCLE}"
+          done
+
+          echo "::notice::${cycle} cycles — ${total_ingested} matchs ingérés, ${total_repaired} réparés, ${total_timelines} timelines (${remaining} restants), ${failures} passe(s) en échec."
+
+          # Le moteur n'échoue que s'il n'a RIEN produit : sinon un incident
+          # passager ferait passer pour rouge un job qui a travaillé des heures.
+          if [ "$total_ingested" -eq 0 ] && [ "$total_timelines" -eq 0 ]; then
+            echo "::error::Aucun match ni timeline sur ${cycle} cycles."
+            exit 1
+          fi
