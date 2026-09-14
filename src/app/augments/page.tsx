@@ -36,6 +36,7 @@ export default async function AugmentsPage() {
     const tier = info?.tier ?? "gold";
     const row: StatsRow = {
       key: String(entry.augmentId),
+      entity: { type: "augment", id: entry.augmentId },
       name: info?.name ?? `Augment ${entry.augmentId}`,
       iconUrl: info?.iconUrl,
       rarity: tier as StatsRow["rarity"],

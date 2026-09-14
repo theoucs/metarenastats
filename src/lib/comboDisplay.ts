@@ -12,6 +12,8 @@ export function comboToRow(combo: ComboStat): StatsRow {
     name: a.name,
     iconUrl: a.iconUrl,
     rarity: a.rarity as StatsRow["rarity"],
+    entity: { type: combo.a.type, id: combo.a.id },
+    secondaryEntity: { type: combo.b.type, id: combo.b.id },
     secondaryName: b.name,
     secondaryIconUrl: b.iconUrl,
     secondaryRarity: b.rarity as StatsRow["rarity"],

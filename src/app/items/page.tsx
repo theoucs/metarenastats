@@ -26,6 +26,7 @@ export default async function ItemsPage() {
     const isPrismatic = itemCategory(entry.itemId) === "prismatic";
     const row: StatsRow = {
       key: String(entry.itemId),
+      entity: { type: "item", id: entry.itemId },
       name: info?.name ?? `Item ${entry.itemId}`,
       iconUrl: info?.iconUrl,
       rarity: isPrismatic ? "prismatic" : undefined,

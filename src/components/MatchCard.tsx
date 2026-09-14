@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { resolveChampion, resolveItem, resolveAugment } from "@/lib/gameData";
-import { Tooltip } from "@/components/Tooltip";
+import { EntityTooltip } from "@/components/EntityTooltip";
 
 export type MatchPlayer = {
   puuid: string;
@@ -101,14 +101,14 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
           const item = resolveItem(id);
           if (!item) return null;
           return (
-            <Tooltip key={`item-${id}-${i}`} content={item.name}>
+            <EntityTooltip key={`item-${id}-${i}`} entity={{ type: "item", id }} name={item.name}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={item.iconUrl}
                 alt=""
                 className="h-[22px] w-[22px] rounded border border-subtle object-cover"
               />
-            </Tooltip>
+            </EntityTooltip>
           );
         })}
         {player.augments.length > 0 && <span className="mx-0.5 h-4 w-px shrink-0 bg-subtle" />}
@@ -116,14 +116,14 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
           const aug = resolveAugment(id);
           if (!aug) return null;
           return (
-            <Tooltip key={`aug-${id}-${i}`} content={aug.name}>
+            <EntityTooltip key={`aug-${id}-${i}`} entity={{ type: "augment", id }} name={aug.name}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={aug.iconUrl}
                 alt=""
                 className={`h-5 w-5 rounded-full object-cover ${RARITY_RING[aug.tier] ?? ""}`}
               />
-            </Tooltip>
+            </EntityTooltip>
           );
         })}
       </div>

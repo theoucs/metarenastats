@@ -20,7 +20,12 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
     const el = tipRef.current;
     if (!el) return;
     el.style.setProperty("--tip-shift", "0px");
+    // Mesurer la hauteur réelle suppose de repartir de la position par défaut :
+    // une bulle laissée retournée d'un survol précédent fausserait le calcul.
+    el.dataset.flip = "false";
+
     const rect = el.getBoundingClientRect();
+
     let shift = 0;
     if (rect.left < VIEWPORT_MARGIN) {
       shift = VIEWPORT_MARGIN - rect.left;
@@ -28,6 +33,16 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       shift = window.innerWidth - VIEWPORT_MARGIN - rect.right;
     }
     el.style.setProperty("--tip-shift", `${shift}px`);
+
+    // La bulle s'affiche au-dessus par défaut. Depuis qu'elle peut contenir une
+    // description (~104 px de haut en médiane, contre ~20 px quand elle ne
+    // portait qu'un nom), celles des premières lignes d'un tableau sortaient
+    // par le haut de la fenêtre. On la bascule alors en dessous — sauf si la
+    // place y est encore plus comptée, auquel cas mieux vaut garder le défaut.
+    const spaceBelow = window.innerHeight - VIEWPORT_MARGIN - rect.bottom;
+    if (rect.top < VIEWPORT_MARGIN && spaceBelow > rect.height) {
+      el.dataset.flip = "true";
+    }
   }
 
   return (
@@ -40,7 +55,8 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       <span
         ref={tipRef}
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-max max-w-[calc(100vw-2rem)] rounded-md border border-default bg-inset px-2.5 py-1.5 text-micro text-primary opacity-0 shadow-[var(--elev-3)] transition-opacity duration-100 group-hover/tip:opacity-100"
+        data-flip="false"
+        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-max max-w-[calc(100vw-2rem)] rounded-md border border-default bg-inset px-2.5 py-1.5 text-micro text-primary opacity-0 shadow-[var(--elev-3)] transition-opacity duration-100 group-hover/tip:opacity-100 data-[flip=true]:bottom-auto data-[flip=true]:top-full data-[flip=true]:mb-0 data-[flip=true]:mt-1.5"
         style={{ transform: "translateX(calc(-50% + var(--tip-shift, 0px)))" }}
       >
         {content}

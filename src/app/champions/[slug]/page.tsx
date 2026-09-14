@@ -18,7 +18,7 @@ import {
   MiniStat,
   MiniStatHeader,
 } from "@/lib/statsDisplay";
-import { Tooltip } from "@/components/Tooltip";
+import { EntityTooltip } from "@/components/EntityTooltip";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { TierBadge, type StatsRow } from "@/components/StatsTable";
 import { computeTiers } from "@/lib/tiers";
@@ -34,11 +34,12 @@ const COMBO_TABS = [
 // écrit par le job de rafraîchissement — voir lib/statsSnapshot.ts.
 export const revalidate = 1800;
 
-function StatTooltipContent({ name, stat }: { name: string; stat: Stat }) {
+/** Les chiffres d'une entité, sous son nom et sa description dans l'infobulle —
+ *  le nom est rendu par EntityTooltip, il ne doit pas être répété ici. */
+function StatTooltipContent({ stat }: { stat: Stat }) {
   return (
     <div className="text-left">
-      <div className="font-semibold text-primary">{name}</div>
-      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-micro text-secondary">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-micro text-secondary">
         <span>Avg: {stat.avgPlacement.toFixed(2)}</span>
         <span>Games: {stat.games}</span>
         <span>Top 1: {(stat.top1Rate * 100).toFixed(0)}%</span>
@@ -55,7 +56,9 @@ function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
   return (
     <div className="rounded-lg border border-subtle bg-raised/40 p-3">
       <div className="flex items-center gap-2.5">
-        <EntityIcon iconUrl={info.iconUrl} rarity={info.tier as "silver" | "gold" | "prismatic"} />
+        <EntityTooltip entity={{ type: "augment", id: stat.augmentId }} name={info.name}>
+          <EntityIcon iconUrl={info.iconUrl} rarity={info.tier as "silver" | "gold" | "prismatic"} />
+        </EntityTooltip>
         <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
@@ -115,7 +118,9 @@ function PrismaticItemCard({ stat }: { stat: ChampionItemSlotStat }) {
   return (
     <div className="rounded-lg border border-subtle bg-raised/40 p-3">
       <div className="flex items-center gap-2.5">
-        <EntityIcon iconUrl={info.iconUrl} rarity="prismatic" />
+        <EntityTooltip entity={{ type: "item", id: stat.itemId }} name={info.name}>
+          <EntityIcon iconUrl={info.iconUrl} rarity="prismatic" />
+        </EntityTooltip>
         <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
@@ -188,14 +193,18 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
 
       {primaryInfo && primary && (
         <>
-          <Tooltip content={<StatTooltipContent name={primaryInfo.name} stat={primary} />}>
+          <EntityTooltip
+            entity={{ type: "item", id: primary.itemId }}
+            name={primaryInfo.name}
+            extra={<StatTooltipContent stat={primary} />}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={primaryInfo.iconUrl}
               alt=""
               className="h-16 w-16 rounded-lg border border-subtle object-cover"
             />
-          </Tooltip>
+          </EntityTooltip>
           <div className="font-mono text-micro text-secondary">{(primary.playRate * 100).toFixed(0)}%</div>
         </>
       )}
@@ -206,14 +215,19 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
             const info = resolveItem(alt.itemId);
             if (!info) return null;
             return (
-              <Tooltip key={alt.itemId} content={<StatTooltipContent name={info.name} stat={alt} />}>
+              <EntityTooltip
+                key={alt.itemId}
+                entity={{ type: "item", id: alt.itemId }}
+                name={info.name}
+                extra={<StatTooltipContent stat={alt} />}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={info.iconUrl}
                   alt=""
                   className="h-[30px] w-[30px] rounded border border-subtle object-cover"
                 />
-              </Tooltip>
+              </EntityTooltip>
             );
           })}
         </div>

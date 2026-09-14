@@ -11,6 +11,7 @@ import {
   type EntityRarity,
 } from "@/lib/statsDisplay";
 import { SlidingHighlight, useSlidingHighlight } from "@/components/SlidingHighlight";
+import { EntityTooltip, type EntityRef } from "@/components/EntityTooltip";
 
 export type StatsRow = {
   key: string;
@@ -23,6 +24,11 @@ export type StatsRow = {
   playRate: number;
   /** Augment rarity (silver/gold/prismatic) — colors the icon frame like in-game. */
   rarity?: EntityRarity;
+  /** Item ou augment que représente la ligne : fait apparaître sa description
+   *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
+   *  ont pas — l'infobulle se réduit alors au nom. */
+  entity?: EntityRef;
+  secondaryEntity?: EntityRef;
   /** When set, the name cell renders as a "name + secondaryName" pair — used
    * for the Combos tier list (two items/augments picked together). */
   secondaryName?: string;
@@ -217,16 +223,46 @@ export function SortControl<K extends string>({
   );
 }
 
+/** L'icône d'une entité, rendue avec son infobulle quand on sait ce qu'elle
+ *  représente. Sans `entity`, l'icône reste telle quelle : pas d'infobulle
+ *  vide sur les lignes de champion ou de joueur. */
+function TooltipIcon({
+  entity,
+  name,
+  iconUrl,
+  rarity,
+}: {
+  entity?: EntityRef;
+  name: string;
+  iconUrl: string;
+  rarity?: EntityRarity;
+}) {
+  const icon = <EntityIcon iconUrl={iconUrl} rarity={rarity} sizeClass="h-8 w-8" />;
+  if (!entity) return icon;
+  return (
+    <EntityTooltip entity={entity} name={name}>
+      {icon}
+    </EntityTooltip>
+  );
+}
+
 function NameCellContent({ row }: { row: StatsRow }) {
   if (row.roles) return <RoleChips roles={row.roles} />;
   if (row.secondaryName) {
     return (
       <>
-        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
+        {row.iconUrl && (
+          <TooltipIcon entity={row.entity} name={row.name} iconUrl={row.iconUrl} rarity={row.rarity} />
+        )}
         <span className="font-medium text-primary">{row.name}</span>
         <span className="text-muted">+</span>
         {row.secondaryIconUrl && (
-          <EntityIcon iconUrl={row.secondaryIconUrl} rarity={row.secondaryRarity} sizeClass="h-8 w-8" />
+          <TooltipIcon
+            entity={row.secondaryEntity}
+            name={row.secondaryName}
+            iconUrl={row.secondaryIconUrl}
+            rarity={row.secondaryRarity}
+          />
         )}
         <span className="font-medium text-primary">{row.secondaryName}</span>
       </>
@@ -234,7 +270,9 @@ function NameCellContent({ row }: { row: StatsRow }) {
   }
   return (
     <>
-      {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
+      {row.iconUrl && (
+        <TooltipIcon entity={row.entity} name={row.name} iconUrl={row.iconUrl} rarity={row.rarity} />
+      )}
       <span className="font-medium text-primary">{row.name}</span>
     </>
   );
@@ -438,7 +476,9 @@ function MobileCard({
   ) : (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
       <span className="flex min-w-0 items-center gap-2">
-        {row.iconUrl && <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-8 w-8" />}
+        {row.iconUrl && (
+          <TooltipIcon entity={row.entity} name={row.name} iconUrl={row.iconUrl} rarity={row.rarity} />
+        )}
         <span className="min-w-0 break-words font-medium text-primary">{row.name}</span>
       </span>
       {row.secondaryName && (
@@ -446,10 +486,11 @@ function MobileCard({
           <span className="text-muted">+</span>
           <span className="flex min-w-0 items-center gap-2">
             {row.secondaryIconUrl && (
-              <EntityIcon
+              <TooltipIcon
+                entity={row.secondaryEntity}
+                name={row.secondaryName}
                 iconUrl={row.secondaryIconUrl}
                 rarity={row.secondaryRarity}
-                sizeClass="h-8 w-8"
               />
             )}
             <span className="min-w-0 break-words font-medium text-primary">

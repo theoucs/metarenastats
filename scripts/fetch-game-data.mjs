@@ -6,6 +6,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const OUT_DIR = new URL("../src/lib/data/", import.meta.url);
+// Les descriptions sont servies en statique, pas importées : voir plus bas.
+const PUBLIC_DIR = new URL("../public/", import.meta.url);
 
 async function fetchJson(url) {
   const res = await fetch(url);
@@ -74,6 +76,13 @@ const RARITY_TO_TIER = {
   kBronze: "silver", // lower tier, not part of normal rotation — closest bucket
   kEventChoice: "prismatic", // special event-only augments — closest bucket
 };
+// Les catégories d'augments sont curées à la main (voir `augmentCategory` dans
+// gameData) et n'existent dans aucune source amont — il faut donc les relire
+// avant d'écraser le fichier, exactement comme pour les items. Sans cette
+// ligne, relancer ce script effaçait silencieusement les 11 augments marqués
+// "excluded", qui revenaient alors polluer toutes les stats.
+const curatedAugmentCategories = await loadCurated("augments.json", "category");
+
 const augments = cherryAugments
   .filter((a) => a.nameTRA) // skip disabled/placeholder entries with no display name
   .filter((a) => {
@@ -85,17 +94,123 @@ const augments = cherryAugments
     const path = a.augmentSmallIconPath || "";
     return /\/(Cherry|Kiwi)\//i.test(path) && !/strawberry/i.test(path);
   })
-  .map((a) => ({
-    id: a.id,
-    name: a.nameTRA,
-    tier: RARITY_TO_TIER[a.rarity] ?? "gold",
-    iconUrl: `https://raw.communitydragon.org/latest/game/${a.augmentSmallIconPath
-      .replace(/^\/lol-game-data\/assets\//i, "")
-      .toLowerCase()}`,
-  }));
+  .map((a) => {
+    const category = curatedAugmentCategories.get(a.id);
+    return {
+      id: a.id,
+      name: a.nameTRA,
+      tier: RARITY_TO_TIER[a.rarity] ?? "gold",
+      iconUrl: `https://raw.communitydragon.org/latest/game/${a.augmentSmallIconPath
+        .replace(/^\/lol-game-data\/assets\//i, "")
+        .toLowerCase()}`,
+      ...(category !== undefined ? { category } : {}),
+    };
+  });
+
+
+// --- Descriptions (pour les infobulles au survol) ---------------------------
+//
+// Servies depuis `public/`, pas depuis `src/lib/data/` : trois composants
+// client (MatchCard, StatsGrid, StatsTable) importent gameData, si bien que
+// tout ce qu'on y ajoute part dans le bundle de CHAQUE page. Les descriptions
+// pèsent plus que le reste des données réunies et ne servent qu'au survol —
+// elles sont donc chargées à la demande, une seule fois, puis mises en cache
+// par le navigateur.
+
+/** Convertit le pseudo-HTML de Riot en texte lisible. */
+function toPlainText(html) {
+  if (!html) return "";
+  return (
+    html
+      // Les sauts de ligne portent du sens (une ligne par effet) — les garder.
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(li|p|div|rules|mainText)>/gi, "\n")
+      .replace(/<li>/gi, "• ")
+      // Tout le reste du balisage est purement décoratif ici.
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      // Marqueurs d'icônes du client de jeu (%i:cooldown%) : sans les images
+      // correspondantes, ce sont des jetons illisibles.
+      .replace(/%i:[a-z0-9_]+%/gi, "")
+      .replace(/[ \t]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
+/**
+ * Remplace les @Variables@ des descriptions d'augments par leur valeur.
+ *
+ * `dataValues` donne un tableau par variable (une entrée par niveau d'augment) ;
+ * la première valeur est celle du niveau de base. La forme `@Nom*100@` sert à
+ * afficher un ratio en pourcentage.
+ */
+function resolvePlaceholders(text, dataValues) {
+  if (!text) return "";
+  const lookup = new Map(Object.entries(dataValues ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+  return text.replace(/@([A-Za-z0-9_]+)(?:\*([0-9.]+))?@/g, (whole, name, mult) => {
+    const values = lookup.get(name.toLowerCase());
+    if (!Array.isArray(values) || values.length === 0) return whole;
+    const value = values[0] * (mult ? Number(mult) : 1);
+    // Les valeurs viennent en flottants ("0.009999999776482582") — arrondir,
+    // sinon la description affiche une bouillie de décimales.
+    return String(Math.round(value * 100) / 100);
+  });
+}
+
+// Les augments non résolus gardent leur @Variable@ : plutôt que de l'afficher,
+// on coupe la description à cet endroit — une phrase tronquée est moins
+// déroutante qu'un jeton technique au milieu du texte.
+function dropUnresolved(text) {
+  return text
+    .split("\n")
+    .filter((line) => !/@[^@]+@/.test(line))
+    .join("\n")
+    .trim();
+}
+
+const arenaFeed = await fetchJson("https://raw.communitydragon.org/latest/cdragon/arena/en_us.json");
+const augmentDescById = new Map(
+  (arenaFeed.augments ?? []).map((a) => [
+    a.id,
+    dropUnresolved(toPlainText(resolvePlaceholders(a.desc, a.dataValues))),
+  ])
+);
+
+// Écarte ce qui n'apprend rien : entrées vides, placeholders internes ("Null"),
+// et textes trop courts pour valoir une infobulle.
+function isUsefulDescription(text) {
+  return text.length >= 12 && text.toLowerCase() !== "null";
+}
+
+const descriptions = { items: {}, augments: {} };
+for (const item of items) {
+  const raw = itemData.data[String(item.id)];
+  // `description` porte les stats chiffrées ; `plaintext` n'est qu'un résumé
+  // d'une ligne, gardé en repli quand la première est vide.
+  const text = toPlainText(raw?.description) || toPlainText(raw?.plaintext);
+  if (isUsefulDescription(text)) descriptions.items[item.id] = text;
+}
+for (const augment of augments) {
+  const text = augmentDescById.get(augment.id) ?? "";
+  if (isUsefulDescription(text)) descriptions.augments[augment.id] = text;
+}
+
+await writeFile(
+  new URL("entity-descriptions.json", PUBLIC_DIR),
+  JSON.stringify(descriptions)
+);
 
 await writeFile(new URL("champions.json", OUT_DIR), JSON.stringify(champions, null, 2));
 await writeFile(new URL("items.json", OUT_DIR), JSON.stringify(items, null, 2));
 await writeFile(new URL("augments.json", OUT_DIR), JSON.stringify(augments, null, 2));
 
 console.log(`Saved ${champions.length} champions, ${items.length} items, ${augments.length} augments to ${path.relative(process.cwd(), new URL(".", OUT_DIR).pathname)}`);
+console.log(
+  `Descriptions: ${Object.keys(descriptions.items).length} items, ` +
+    `${Object.keys(descriptions.augments).length} augments -> public/entity-descriptions.json`
+);

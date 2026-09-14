@@ -3,7 +3,13 @@
 import { Fragment, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier } from "@/lib/tiers";
 
-import { top1Color, top3Color, avgPlacementColor, EntityIcon } from "@/lib/statsDisplay";
+import {
+  top1Color,
+  top3Color,
+  avgPlacementColor,
+  EntityIcon,
+  type EntityRarity,
+} from "@/lib/statsDisplay";
 import {
   CARD_PAGE_SIZE,
   RoleChips,
@@ -16,6 +22,7 @@ import {
   type SortKey,
   type StatsRow,
 } from "@/components/StatsTable";
+import { EntityTooltip, type EntityRef } from "@/components/EntityTooltip";
 
 /**
  * Card-grid counterpart to StatsTable, for pages whose rows are *things you
@@ -27,6 +34,33 @@ import {
  * as a template. Champions / Combos / Anvil / Leaderboard stay tables because
  * they genuinely are rankings; these two don't.
  */
+
+/** Icône de carte, avec l'infobulle de description quand la ligne représente un
+ *  item ou un augment. Sans `entity` (champions, joueurs, archétypes), l'icône
+ *  est rendue telle quelle plutôt que d'ouvrir une bulle qui n'aurait rien à
+ *  dire de plus que le nom déjà visible à côté. */
+function GridTooltipIcon({
+  entity,
+  name,
+  iconUrl,
+  rarity,
+  sizeClass,
+}: {
+  entity?: EntityRef;
+  name: string;
+  iconUrl: string;
+  rarity?: EntityRarity;
+  sizeClass: string;
+}) {
+  const icon = <EntityIcon iconUrl={iconUrl} rarity={rarity} sizeClass={sizeClass} />;
+  if (!entity) return icon;
+  return (
+    <EntityTooltip entity={entity} name={name}>
+      {icon}
+    </EntityTooltip>
+  );
+}
+
 function GridCard({
   row,
   rank,
@@ -66,7 +100,13 @@ function GridCard({
 
       <div className="flex items-start gap-2.5">
         {!row.roles && !row.secondaryName && row.iconUrl && (
-          <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-11 w-11" />
+          <GridTooltipIcon
+            entity={row.entity}
+            name={row.name}
+            iconUrl={row.iconUrl}
+            rarity={row.rarity}
+            sizeClass="h-11 w-11"
+          />
         )}
         <div className="min-w-0 flex-1">
           {row.roles ? (
@@ -78,14 +118,22 @@ function GridCard({
             <h3 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-body font-medium leading-snug text-primary">
               <span className="flex min-w-0 items-center gap-1.5">
                 {row.iconUrl && (
-                  <EntityIcon iconUrl={row.iconUrl} rarity={row.rarity} sizeClass="h-7 w-7" />
+                  <GridTooltipIcon
+                    entity={row.entity}
+                    name={row.name}
+                    iconUrl={row.iconUrl}
+                    rarity={row.rarity}
+                    sizeClass="h-7 w-7"
+                  />
                 )}
                 {row.name}
               </span>
               <span className="text-muted">+</span>
               <span className="flex min-w-0 items-center gap-1.5">
                 {row.secondaryIconUrl && (
-                  <EntityIcon
+                  <GridTooltipIcon
+                    entity={row.secondaryEntity}
+                    name={row.secondaryName ?? ""}
                     iconUrl={row.secondaryIconUrl}
                     rarity={row.secondaryRarity}
                     sizeClass="h-7 w-7"
