@@ -160,12 +160,24 @@ export default async function Home() {
               alt=""
               width={1280}
               height={720}
-              className="absolute inset-y-0 right-0 hidden h-full w-[58%] object-cover object-[center_25%] md:block"
+              className="absolute inset-y-0 right-0 hidden h-full w-[58%] object-cover object-[center_25%] [-webkit-mask-image:linear-gradient(to_bottom,#000_0%,#000_38%,transparent_94%)] [mask-image:linear-gradient(to_bottom,#000_0%,#000_38%,transparent_94%)] md:block"
             />
-            {/* Left-to-right scrim over the art, then a bottom fade so it
-                doesn't end on a hard horizontal line above the fold. */}
+            {/* Left-to-right scrim over the art, pour que le texte reste
+                lisible par-dessus. */}
             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base)] from-30% via-[var(--bg-base)]/85 via-55% to-[var(--bg-base)]/45" />
-            <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[var(--bg-base)] to-transparent" />
+            {/* Le bas se dissout par un MASQUE sur l'image, pas par un aplat
+                noir posé dessus.
+                Un aplat doit atteindre 100 % d'opacité pour rejoindre le fond,
+                donc son efficacité dépend de la luminosité du splash : les
+                112 px d'avant effaçaient un splash sombre (Fiora) mais pas un
+                splash clair (Yunara, ciel pâle), où les nuages restaient nets
+                puis disparaissaient d'un coup — la « cassure » signalée. Et le
+                héros suit le n°1 de la tier list : le problème apparaissait ou
+                non selon le champion du moment.
+                Un masque efface l'image elle-même : l'alpha tombe à zéro, donc
+                le résultat est exactement le fond de page, quelle que soit
+                l'image. Reste un court dégradé pour fondre dans la bordure. */}
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[var(--bg-base)] to-transparent" />
           </>
         )}
 
