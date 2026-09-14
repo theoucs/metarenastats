@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { refreshSnapshots } from "@/lib/statsSnapshot";
+import { refreshSiteCounters, refreshSnapshots } from "@/lib/statsSnapshot";
 
 /**
  * Recalcule tous les snapshots de stats (voir lib/statsSnapshot.ts).
@@ -30,6 +30,15 @@ function isAuthorized(request: Request): boolean {
 async function handle(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // `?only=counters` ne rafraîchit que les compteurs de l'accueil : une seule
+  // fonction SQL, donc assez bon marché pour tourner à chaque cycle du moteur.
+  // Le recalcul complet, lui, relit tous les participants et reste horaire.
+  if (new URL(request.url).searchParams.get("only") === "counters") {
+    const { totalMatches } = await refreshSiteCounters();
+    console.log(`[cron] compteurs rafraîchis — ${totalMatches} matchs`);
+    return NextResponse.json({ ok: true, only: "counters", totalMatches });
   }
 
   try {

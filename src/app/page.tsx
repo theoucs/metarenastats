@@ -12,7 +12,15 @@ import { Wordmark } from "@/components/Wordmark";
 // Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
 // est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
 // à chaque visite.
-export const revalidate = 1800;
+//
+// 10 min ici, contre 30 sur les tier lists : c'est la seule page qui affiche le
+// compteur de matchs, donc la seule où la fraîcheur se VOIT. Deux délais
+// s'additionnent avant qu'un nouveau match y apparaisse — la publication du
+// snapshot puis cette fenêtre de cache — et à 30 min de chaque côté le chiffre
+// pouvait avoir une heure et demie de retard, ce qui se lit comme une panne du
+// crawler. Le snapshot `site` est désormais republié à chaque cycle du moteur
+// (voir refreshSiteCounters), donc c'était ce cache qui dominait.
+export const revalidate = 600;
 
 const EXPLORE = [
   { href: "/items", title: "Items", blurb: "Legendary and prismatic, split by rarity." },

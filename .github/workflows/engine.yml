@@ -207,6 +207,26 @@ jobs:
             fi
           }
 
+          # Les seuls compteurs de l'accueil : une fonction SQL, donc assez bon
+          # marché pour tourner à CHAQUE cycle. C'est le chiffre le plus visible
+          # du site et celui qui dit s'il est vivant — le laisser vieillir d'une
+          # heure pendant que la base grossit donne l'impression d'une panne.
+          publish_counters() {
+            local code
+            code=$(curl --silent --show-error \
+              --max-time 60 \
+              --request POST \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --output /tmp/counters.json \
+              --write-out "%{http_code}" \
+              "${SITE_URL%/}/api/cron/refresh-stats?only=counters") || true
+            if [ "$code" = "200" ]; then
+              echo "· compteurs à jour — $(sed -n 's/.*"totalMatches":\([0-9]*\).*/\1/p' /tmp/counters.json) matchs"
+            else
+              echo "::warning::Compteurs non rafraîchis (HTTP ${code})"
+            fi
+          }
+
           # Attend `$1` secondes, mais jamais au-delà de la fin prévue du moteur.
           nap() {
             local want=$1 left=$(( deadline - $(date +%s) ))
@@ -268,6 +288,7 @@ jobs:
 
             # En fin de cycle, pas entre les passes : publier au milieu d'un
             # cycle donnerait un snapshot calculé sur un crawl à moitié fait.
+            publish_counters
             if [ $(( $(date +%s) - last_refresh )) -ge "$REFRESH_EVERY" ]; then
               publish
             fi

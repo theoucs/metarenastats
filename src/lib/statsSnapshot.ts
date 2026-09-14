@@ -156,6 +156,42 @@ export type RefreshReport = {
  * s'applique pas dans un route handler, et sans le contexte explicite un
  * rafraîchissement relit la base 184 fois par patch (mesuré).
  */
+/**
+ * Rafraîchit UNIQUEMENT les compteurs de l'accueil.
+ *
+ * Le recalcul complet est cher (il relit tous les participants, patch par
+ * patch) : on ne peut pas le lancer toutes les dix minutes sans y laisser le
+ * quota d'egress. Mais les trois compteurs de l'accueil, eux, sortent d'une
+ * seule fonction SQL qui rend trois entiers — c'est gratuit.
+ *
+ * Or c'est le chiffre le plus visible du site, et celui qui dit s'il est
+ * vivant. Le laisser vieillir d'une heure pendant que la base grossit donne
+ * l'impression que le crawler est en panne, ce qui est arrivé deux fois dans
+ * la même soirée.
+ *
+ * Ne touche pas aux autres snapshots et ne fait AUCUN ménage : une passe
+ * partielle qui élaguerait ce qu'elle n'a pas écrit effacerait tout le site.
+ */
+export async function refreshSiteCounters(): Promise<{ totalMatches: number }> {
+  const db = supabaseAdmin;
+  if (!db) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
+
+  const site = await getSiteStats();
+  const { error } = await db.from("stats_snapshots").upsert(
+    {
+      key: SNAPSHOT_KEYS.site,
+      payload: site,
+      computed_at: new Date().toISOString(),
+      source_matches: site.totalMatches,
+      source_participants: 0,
+      truncated: false,
+    },
+    { onConflict: "key" },
+  );
+  if (error) throw error;
+  return { totalMatches: site.totalMatches };
+}
+
 export async function refreshSnapshots(): Promise<RefreshReport> {
   const startedAt = Date.now();
   const db = supabaseAdmin;
