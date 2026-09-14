@@ -11,11 +11,23 @@
 # enchaîne PASSES passes espacées. Un job GitHub peut durer 6 h et les minutes
 # sont illimitées sur un repo public, donc c'est le levier gratuit.
 #
+# Porté à 10 passes le 2026-09-14, après une matinée à 5 créneaux sautés
+# d'affilée. Le raisonnement : on ne peut pas rendre le réveil fiable, donc on
+# rend chaque réveil rentable. À 10 passes, TROIS déclenchements par jour valent
+# les trente que le cron promettait — et une journée entière sans le moindre
+# déclenchement reste possible, c'est le prix d'un planificateur gratuit.
+#
 # Le frein réel reste le débit Riot : le crawler et les visiteurs partagent la
 # MÊME clé (100 appels / 2 min). Pendant une passe le budget est saturé et une
-# recherche de visiteur échoue — d'où la pause entre deux passes, qui rend la
-# fenêtre au site. À ~3 passes par job et ~6 jobs/jour : de l'ordre de 2 000
-# matchs/jour pour ~15 min de saturation cumulée.
+# recherche de visiteur est dégradée — d'où la pause entre deux passes, qui rend
+# la fenêtre au site.
+#
+# ⚠️ MAX_MATCHES reste à 120 DÉLIBÉRÉMENT. Les passes s'arrêtent sur ce plafond
+# et non sur la limite de débit : il reste donc du budget dans chaque fenêtre,
+# et c'est exactement ce qu'on veut. Décidé avec Théo le 2026-09-14 — la marge
+# sur la clé appartient aux visiteurs qui cherchent leur pseudo, pas au crawler.
+# Monter ce chiffre est le premier réflexe à ne PAS avoir : c'est le seul
+# réglage qui se paie directement sur l'expérience du site.
 #
 # À l'arrivée de la clé de production : monter les plafonds et migrer vers un
 # worker autonome (les 300 s d'une fonction serverless deviendront la limite).
@@ -33,7 +45,7 @@ on:
       passes:
         description: "Nombre de passes enchaînées dans ce job"
         required: false
-        default: "3"
+        default: "10"
 
 # Deux jobs simultanés se disputeraient le budget de débit et liraient la même
 # tête de file.
@@ -44,14 +56,16 @@ concurrency:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 10 passes × (~150 s de travail + 90 s de pause) ≈ 40 min. La marge couvre
+    # les passes lentes ; la limite dure de GitHub est de 6 h.
+    timeout-minutes: 90
     steps:
       - name: Lancer les passes de crawl
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           MAX_MATCHES: ${{ inputs.maxMatches || '120' }}
-          PASSES: ${{ inputs.passes || '3' }}
+          PASSES: ${{ inputs.passes || '10' }}
         run: |
           set -euo pipefail
           if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
