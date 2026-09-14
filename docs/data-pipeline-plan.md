@@ -21,6 +21,33 @@ production** — c'est du travail utile dès maintenant.
 Au 2026-09-14 le crawler a porté la base à **1 531 matchs / 27 558 participants**
 (17 551 joueurs en file). Les poids unitaires ci-dessus ne bougent pas ; le volume, si.
 
+### Correction du 2026-09-14 : l'egress se compte compressé
+
+Les 277 o/ligne mesurés le 13 étaient la taille **non compressée**. Supabase gzipe
+ses réponses quand on les demande, et le `fetch` de Node envoie `accept-encoding`
+tout seul — donc c'est déjà le cas en production, sans rien changer. Vérifié sur
+les colonnes exactes de l'agrégateur, `item_order` compris :
+
+| | Par ligne | Lecture complète (27 558 lignes) |
+|---|---|---|
+| Non compressé | 294 o | 7,7 Mo |
+| **Sur le fil (gzip)** | **110 o** | **3,0 Mo** |
+
+Le plafond gratuit de 5 Go/mois est donc **2,7× plus loin** qu'écrit plus haut.
+Ce qui le consomme n'est plus l'affichage des pages (elles lisent un snapshot de
+quelques Ko depuis la phase 0) mais **le rafraîchissement lui-même**, qui relit
+toute la table à chaque passage :
+
+> À rythme strictement horaire, 5 Go/mois autorisent ~7 Mo par rafraîchissement,
+> soit **~64 000 lignes ≈ 3 600 matchs**. En pratique les crons GitHub ne partent
+> que 4 à 6 fois par jour, ce qui repousse le seuil autour de **14 000 matchs** —
+> quelques semaines au rythme actuel, pas quelques mois.
+
+C'est le déclencheur réel de la phase 3, et il ne dépend pas de la clé de prod :
+tant que l'agrégation lit les lignes brutes, elle paie l'egress. La sortie n'est
+pas d'optimiser le transfert (il l'est déjà) mais de **grouper en SQL** pour que
+les 27 000 lignes ne sortent plus de la base.
+
 ### Les deux plafonds — corrigés le 2026-09-13 (phase 0)
 
 1. **`aggregate.ts` : `MAX_PAGES = 30`** → 30 000 lignes → **~1 660 matchs**. Au-delà,
@@ -427,7 +454,13 @@ Non prioritaire mais présent dans la même réponse, donc gratuit à ajouter en
 
 ---
 
-## Phase 3 — Mise à l'échelle (à l'arrivée de la clé de prod)
+## Phase 3 — Mise à l'échelle
+
+> **Le déclencheur n'est pas la clé de prod, c'est l'egress** (voir la correction
+> du 2026-09-14 en tête de document). Le rafraîchissement relit toute la table à
+> chaque passage : ~14 000 matchs au rythme de cron actuel, et la facture Supabase
+> démarre. À faire avant d'avoir la clé, pas après.
+
 
 ### Architecture cible
 
