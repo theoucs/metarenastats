@@ -28,6 +28,35 @@ create table if not exists match_participants (
 -- alter table match_participants add column if not exists items integer[] not null default '{}';
 
 create index if not exists match_participants_puuid_idx on match_participants (puuid);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Patch de la partie (2026-09-14)
+--
+-- Riot écrit la version du jeu dans chaque match : `gameVersion` vaut par
+-- exemple « 16.18.817.5716 ». C'est la SEULE source fiable pour ranger une
+-- partie dans un patch. Surtout pas la date d'ingestion : le crawler découvre
+-- en permanence des joueurs dont il récupère tout l'historique, et une partie
+-- ingérée aujourd'hui peut dater de mai. Certains joueurs font dix parties par
+-- jour, d'autres dix par an.
+alter table matches add column if not exists game_version text;
+
+-- Le patch court (« 16.18 »), DÉRIVÉ et non recopié : une colonne générée ne
+-- peut pas diverger de la valeur brute, là où un second champ écrit par l'app
+-- finirait par se désynchroniser. `nullif` couvre la version vide, qui
+-- donnerait le patch « . ».
+alter table matches add column if not exists patch text
+  generated always as (
+    nullif(split_part(game_version, '.', 1) || '.' || split_part(game_version, '.', 2), '.')
+  ) stored;
+
+create index if not exists matches_patch_idx on matches (patch, game_creation desc);
+
+-- Index partiel pour la déduction du patch des matchs antérieurs au 14/09 :
+-- minuscule une fois le rattrapage fait.
+create index if not exists matches_patch_missing_idx
+  on matches (game_creation)
+  where patch is null;
+
 create index if not exists match_participants_champion_idx on match_participants (champion);
 
 -- "Automatically expose new tables" étant désactivé sur le projet (bonne pratique),

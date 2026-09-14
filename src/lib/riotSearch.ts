@@ -52,6 +52,12 @@ type ParticipantDetail = {
 export type MatchResult = {
   matchId: string;
   gameCreation: number;
+  /** Version du jeu au moment de la partie, telle que Riot la renvoie
+   *  (« 16.18.817.5716 »). C'est la seule façon fiable de ranger un match dans
+   *  un patch : la date d'ingestion ne dit rien de la date de jeu, et un joueur
+   *  peut très bien ne faire que quelques parties par an. La base en dérive le
+   *  patch court (« 16.18 ») dans une colonne générée. */
+  gameVersion: string | null;
   // All 18 players in the match (6 teams of 3) — the Riot API returns them
   // all in one call, so we save everyone, not just the searched player's team.
   participants: ParticipantDetail[];
@@ -148,6 +154,7 @@ export async function fetchMatchDetail(
   return {
     matchId,
     gameCreation: data.info.gameCreation,
+    gameVersion: typeof data.info.gameVersion === "string" ? data.info.gameVersion : null,
     participants: raw.map(toParticipantDetail),
   };
 }
@@ -282,6 +289,7 @@ export async function persistMatches(matches: MatchResult[]) {
       match_id: m.matchId,
       game_creation: new Date(m.gameCreation).toISOString(),
       queue_id: ARENA_QUEUE_ID,
+      game_version: m.gameVersion,
     })),
     { onConflict: "match_id" }
   );
