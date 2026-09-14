@@ -127,8 +127,25 @@ jobs:
           # fixent la part de la clé Riot qu'on s'autorise (voir l'en-tête) :
           # les allonger rend la main au site, les raccourcir accélère le crawl.
           # C'est LE réglage à toucher, pas les plafonds par passe.
-          PAUSE_AFTER_PASS=120
-          PAUSE_AFTER_CYCLE=540
+          #
+          # Divisées par quatre le 2026-09-14, après décomposition d'un cycle
+          # réel : sur 22 min 40, seules 2 min 30 servaient à chercher des
+          # matchs, contre 15 min de pauses.
+          #
+          #   avant : 22 min 40 par cycle → ~318 matchs/h, 26 % de la clé
+          #   après : 12 min 50 par cycle → ~560 matchs/h, 46 % de la clé
+          #
+          # Le plafond par passe ne bouge pas (120, cf. en-tête) : on tourne
+          # plus souvent, pas plus gros. Il reste plus de la moitié de la clé
+          # pour les recherches de pseudo, qui doivent rester instantanées.
+          #
+          # Ne pas descendre beaucoup plus bas : la clé de dev plafonne à
+          # 100 appels / 2 min, soit 50/min, et un cycle en consomme 294. En
+          # dessous de ~6 min de cycle on tape le plafond, et à partir de là
+          # raccourcir les pauses n'accélère plus rien — ça ne fait plus que
+          # disputer la clé aux joueurs.
+          PAUSE_AFTER_PASS=30
+          PAUSE_AFTER_CYCLE=135
 
           # Le moteur publie lui-même, au lieu de compter sur refresh-stats.yml.
           #
