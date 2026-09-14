@@ -49,21 +49,22 @@ export default async function CombosPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <PageHeader
-        eyebrow="Tier list"
-        title="Combos"
-        isNew
-        description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
-      >
-        <p className="mt-1 text-small text-muted">
-          Looking for combos on a specific champion?{" "}
-          <Link href="/champions" className="text-accent hover:underline">
-            Head to its champion page
-          </Link>
-          .
-        </p>
-      </PageHeader>
-      <PatchSwitch context={patch} views={views} />
+      <PatchSwitch context={patch} views={views}>
+        <PageHeader
+          eyebrow="Tier list"
+          title="Combos"
+          isNew
+          description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
+        >
+          <p className="mt-1 text-small text-muted">
+            Looking for combos on a specific champion?{" "}
+            <Link href="/champions" className="text-accent hover:underline">
+              Head to its champion page
+            </Link>
+            .
+          </p>
+        </PageHeader>
+      </PatchSwitch>
     </div>
   );
 }

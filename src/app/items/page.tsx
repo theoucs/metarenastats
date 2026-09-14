@@ -67,8 +67,9 @@ export default async function ItemsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <PageHeader eyebrow="Tier list" title="Items" description="Split by rarity." />
-      <PatchSwitch context={patch} views={views} />
+      <PatchSwitch context={patch} views={views}>
+        <PageHeader eyebrow="Tier list" title="Items" description="Split by rarity." />
+      </PatchSwitch>
     </div>
   );
 }

@@ -94,12 +94,13 @@ export default async function CompsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <PageHeader
-        eyebrow="Tier list"
-        title="Team Comps"
-        description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
-      />
-      <PatchSwitch context={patch} views={views} />
+      <PatchSwitch context={patch} views={views}>
+        <PageHeader
+          eyebrow="Tier list"
+          title="Team Comps"
+          description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
+        />
+      </PatchSwitch>
     </div>
   );
 }
