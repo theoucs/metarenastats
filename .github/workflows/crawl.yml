@@ -22,6 +22,13 @@
 # recherche de visiteur est dégradée — d'où la pause entre deux passes, qui rend
 # la fenêtre au site.
 #
+# Cette pause est passée de 90 à 150 s le 2026-09-14, en même temps que les
+# passes de 3 à 10. Le raisonnement : un job saturait la clé 10 min d'affilée,
+# il la sature maintenant ~48. Le rapport travail/pause devient donc ce qui
+# compte, et 150 s le ramène à une minute sur deux au lieu de six sur dix. Ça ne
+# coûte QUE de la durée de job — le temps de runner est précisément la ressource
+# illimitée ici — et le rendement en matchs est identique.
+#
 # ⚠️ MAX_MATCHES reste à 120 DÉLIBÉRÉMENT. Les passes s'arrêtent sur ce plafond
 # et non sur la limite de débit : il reste donc du budget dans chaque fenêtre,
 # et c'est exactement ce qu'on veut. Décidé avec Théo le 2026-09-14 — la marge
@@ -47,16 +54,26 @@ on:
         required: false
         default: "10"
 
-# Deux jobs simultanés se disputeraient le budget de débit et liraient la même
-# tête de file.
+# Un SEUL job à la fois touche la clé Riot.
+#
+# Le crawl et les timelines avaient chacun leur groupe, donc ils pouvaient
+# tourner en même temps — sans conséquence tant qu'un job durait 10 min, mais le
+# crawl en dure maintenant ~47. Deux jobs simultanés se disputent le même budget
+# (100 appels / 2 min, attaché à la clé) et, comme le limiteur vit en mémoire de
+# chaque instance Vercel, aucun des deux ne voit ce que l'autre dépense : ils
+# partent tous deux en 429 et écrasent les recherches de visiteurs au passage.
+#
+# Groupe commun = le second attend la fin du premier. Le débit total ne change
+# pas (il est borné par la clé, pas par le nombre de jobs), mais il est dépensé
+# proprement, et le site garde des fenêtres propres entre deux jobs.
 concurrency:
-  group: crawl-arena
+  group: riot-api
   cancel-in-progress: false
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    # 10 passes × (~150 s de travail + 90 s de pause) ≈ 40 min. La marge couvre
+    # 10 passes × (~150 s de travail + 150 s de pause) ≈ 48 min. La marge couvre
     # les passes lentes ; la limite dure de GitHub est de 6 h.
     timeout-minutes: 90
     steps:
@@ -125,8 +142,8 @@ jobs:
             # Rendre la main au site entre deux passes : pendant une passe le
             # budget de débit est saturé et une recherche de visiteur échoue.
             if [ "$i" -lt "${PASSES}" ]; then
-              echo "pause de 90 s (le site retrouve du budget)"
-              sleep 90
+              echo "pause de 150 s (le site retrouve du budget)"
+              sleep 150
             fi
           done
 
