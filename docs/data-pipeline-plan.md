@@ -18,6 +18,9 @@ production** — c'est du travail utile dès maintenant.
 | `GET /matches/{id}` | 138 Ko | réponse réelle |
 | `GET /matches/{id}/timeline` | **1,48 Mo** (10,7×) | réponse réelle |
 
+Au 2026-09-14 le crawler a porté la base à **1 531 matchs / 27 558 participants**
+(17 551 joueurs en file). Les poids unitaires ci-dessus ne bougent pas ; le volume, si.
+
 ### Les deux plafonds — corrigés le 2026-09-13 (phase 0)
 
 1. **`aggregate.ts` : `MAX_PAGES = 30`** → 30 000 lignes → **~1 660 matchs**. Au-delà,
@@ -298,7 +301,50 @@ demande de prod key en cours.)
 
 ---
 
-## Phase 2 — Ordre d'achat réel des items
+## Phase 2 — ✅ Ordre d'achat réel des items (fait le 2026-09-14)
+
+Livré et vérifié en production. `src/lib/timeline.ts` + `/api/cron/timelines` +
+`.github/workflows/timelines.yml`, colonne `match_participants.item_order` et
+marqueur `matches.timeline_fetched_at`.
+
+### Ce que ça corrigeait, mesuré
+
+Le pari du plan était que `items[0]` n'est pas le premier achat. Sur les 4 363
+participants qui ont maintenant les deux, **le premier slot d'inventaire n'est le
+premier achat que dans 37,5 % des cas** : près de deux tiers de l'ancienne stat
+« premier item » était du bruit.
+
+Le nouvel ordre, lui, est immédiatement plausible — six des huit premiers achats
+les plus fréquents sont des bottes (Ionian 719, Berserker's 465, Sorcerer's 385,
+Mercury's 335), les deux autres étant Heartsteel et Infinity Edge. L'ancien
+classement ne ressemblait à rien de tel.
+
+### Débit constaté
+
+| | Valeur |
+|---|---|
+| Une passe | 80 matchs en 127 s, 81 appels, **81 aboutis** |
+| Un job (3 passes) | 240 matchs, 4 320 participants, 9 min 35 |
+| Couverture au 14/09 | 284 / 1 531 matchs (18,5 %), 1 247 en attente |
+
+Le rattrapage est borné par la clé, pas par le code — comme le crawl. À ce
+rythme (~240 matchs/job) le retard se comble en 5 à 6 jobs, mais chaque appel
+dépensé ici est un appel que le crawl principal n'a pas : c'est l'arbitrage
+prévu, et c'est pour ça que la passe est séparée et prioritaire au plus récent.
+
+### Deux choses que l'exécution a apprises
+
+**La famille d'enclumes est continue de 220000 à 220007**, pas les quatre IDs
+listés au plan. Une première version laissait passer « Legendary Fighter Item »
+et « Legendary Assassin Item » dans l'ordre d'achat — repéré en relisant les
+premières lignes écrites en base, pas en relecture de code.
+
+**14,6 % des participants ont un ordre vide** (749 sur 5 112) et c'est normal :
+ce sont ceux dont tout le build sort d'enclumes. Confirme la conclusion du plan —
+`item_order` complète `items`, il ne le remplace pas. `aggregate.ts` retombe
+d'ailleurs sur `items` quand l'ordre est vide.
+
+### Conception d'origine (conservée pour référence)
 
 ### Pourquoi c'est un vrai gain
 
@@ -456,7 +502,7 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 0.3  ✅ rate limiter côté recherche joueur (fait 2026-09-13)
 0.4  ✅ icône d'invocateur (fait 2026-09-13)
 1    ✅ crawler + schéma à deux modes (fait 2026-09-13)
-2    ordre d'achat des items (passe séparée)
+2    ✅ ordre d'achat des items (passe séparée) (fait 2026-09-14)
 3    ─ clé de prod ─ mise à l'échelle, Supabase Pro quand la base le réclame
 4    timelines complets, classement Arena
 ```
