@@ -43,10 +43,11 @@ toute la table à chaque passage :
 > que 4 à 6 fois par jour, ce qui repousse le seuil autour de **14 000 matchs** —
 > quelques semaines au rythme actuel, pas quelques mois.
 
-C'est le déclencheur réel de la phase 3, et il ne dépend pas de la clé de prod :
-tant que l'agrégation lit les lignes brutes, elle paie l'egress. La sortie n'est
-pas d'optimiser le transfert (il l'est déjà) mais de **grouper en SQL** pour que
-les 27 000 lignes ne sortent plus de la base.
+C'est le déclencheur réel de la phase 3, et il ne dépend pas de la clé de prod.
+**Traité le jour même** (voir 3.1 et 3.2) : la ligne est tombée à 31 o et le
+plafond à ~50 000 matchs. La sortie n'a pas été de grouper en SQL comme prévu,
+mais d'arrêter de transporter ce qui ne servait à rien — les chiffres et la
+raison sont en phase 3.
 
 ### Les deux plafonds — corrigés le 2026-09-13 (phase 0)
 
@@ -456,11 +457,101 @@ Non prioritaire mais présent dans la même réponse, donc gratuit à ajouter en
 
 ## Phase 3 — Mise à l'échelle
 
-> **Le déclencheur n'est pas la clé de prod, c'est l'egress** (voir la correction
-> du 2026-09-14 en tête de document). Le rafraîchissement relit toute la table à
-> chaque passage : ~14 000 matchs au rythme de cron actuel, et la facture Supabase
-> démarre. À faire avant d'avoir la clé, pas après.
+### 3.1 — ✅ Dégraisser la lecture partagée (fait le 2026-09-14)
 
+Le déclencheur n'était pas la clé de prod mais l'egress : le rafraîchissement
+relisait les 27 558 lignes de `match_participants` à chaque passage.
+
+**La mesure qui a tout décidé** — ligne participant compressée, telle qu'elle
+voyage vraiment :
+
+| Colonnes | Par ligne | Lecture complète |
+|---|---|---|
+| Toutes (avant) | 109 o | 3,0 Mo |
+| `puuid, riot_id` **seules** | **67 o** | 1,8 Mo |
+| Ce qui reste (après) | **31 o** | **854 Ko** |
+
+**61 % de l'egress servait à transporter deux colonnes** dont un seul agrégateur
+avait besoin, le classement. Un puuid fait 78 caractères aléatoires : c'est la
+seule donnée de la table qui ne se compresse pas.
+
+Elles sortent donc de la lecture partagée. Le classement passe dans une fonction
+SQL (`leaderboard_stats`), les trois compteurs de l'accueil aussi (`site_totals`,
+dont le seul tort était de compter des `puuid` distincts). **La logique JS ne
+bouge pas** : les fonctions SQL renvoient les compteurs bruts, `toStat` met en
+forme comme avant.
+
+### 3.2 — ✅ Le classement pesait plus que la base (fait le 2026-09-14)
+
+Trouvé en mesurant les snapshots plutôt que le calcul. Le snapshot `leaderboard`
+faisait **3,6 Mo — plus qu'une lecture complète de la table** — et la page le
+relisait à chaque régénération ISR, toutes les 30 minutes.
+
+La cause : **14 131 des 17 588 joueurs suivis n'avaient qu'une seule partie.**
+À une partie on fait 0 % ou 100 % de top 3. Ces lignes ne classent personne,
+elles ne font que peser — et elles arrivent par milliers à chaque passe de
+crawl, donc ce poste grossissait plus vite que tous les autres.
+
+| Seuil | Joueurs | Snapshot |
+|---|---|---|
+| aucun | 17 588 | 3,6 Mo |
+| **5 parties** | **629** | **144 Ko** (−96 %) |
+| 10 parties | 156 | ~40 Ko |
+
+5 est un point de départ assumé, pas une méthodologie — le vrai classement reste
+à concevoir (phase 4) et `LEADERBOARD_MIN_GAMES` est une constante d'une ligne.
+Effet de bord bienvenu : la première page du classement n'est plus du bruit.
+
+### Résultat mesuré
+
+| | Avant | Après |
+|---|---|---|
+| Lecture du job | 3,0 Mo | **854 Ko** |
+| Écriture du job | 5,74 Mo | **2,27 Mo** |
+| Plafond 5 Go/mois (rythme horaire) | ~3 600 matchs | **~12 500 matchs** |
+| Plafond au rythme réel des crons | ~14 000 matchs | **~50 000 matchs** |
+
+**Vérification** : l'ancien puis le nouveau code exécutés sur exactement les
+mêmes données (crawl et timelines à l'arrêt). **181 des 182 snapshots sont
+identiques au bit près**, le 182ᵉ étant le classement. C'est la propriété qui
+comptait — déplacer un calcul ne doit pas changer un chiffre publié.
+
+### ⚠️ Ce qui a invalidé la conception d'origine
+
+Le plan disait « porter l'agrégation en SQL ». Mesuré avant d'écrire le code :
+
+| | Lignes à transporter |
+|---|---|
+| Lignes brutes (toute la table) | **27 558** |
+| Groupes (champion, paire de combos) | **483 693** |
+| … même en exigeant 2 parties minimum | 147 588 |
+
+**Pré-agréger les combos coûte 17× plus cher que d'envoyer le brut.** La ligne
+participant est en réalité un encodage très compact du combinatoire : 7 items et
+5 augments tiennent en 31 octets, alors que les ~100 paires qu'ils engendrent
+font une ligne chacune.
+
+Conséquence : la lecture brute **reste nécessaire** pour les combos et les pages
+de champion. Et comme elle reste nécessaire, porter les autres agrégateurs
+(champions, items, augments) en SQL n'économiserait plus rien — ils se calculent
+gratuitement sur des lignes déjà arrivées. Trois tables de référentiel
+(`game_items`, `game_augments`, `game_champions`, miroirs des JSON) avaient été
+créées pour ce portage : elles ont été supprimées faute d'usage.
+
+> **La leçon** : le bon geste n'était pas de déplacer le calcul, c'était de
+> regarder *ce qui pèse* dans ce qui voyage. Deux colonnes et 14 000 joueurs à
+> une partie — pas l'agrégation.
+
+### Ce qu'il reste à faire quand ça remontera
+
+Dans l'ordre où ça deviendra nécessaire :
+
+1. **La fenêtre glissante** (ci-dessous) : elle réduit le nombre de lignes, donc
+   elle agit là où le dégraissage des colonnes ne peut plus rien.
+2. Les snapshots de champion (2 Mo cumulés, 173 pages) si leur relecture devient
+   visible dans l'egress.
+3. L'agrégation SQL complète : seulement si les combos changent de forme, car
+   c'est eux, et eux seuls, qui imposent la lecture brute.
 
 ### Architecture cible
 
@@ -536,7 +627,9 @@ d'inactivité** — un crawler qui tourne tous les quarts d'heure l'évite.
 0.4  ✅ icône d'invocateur (fait 2026-09-13)
 1    ✅ crawler + schéma à deux modes (fait 2026-09-13)
 2    ✅ ordre d'achat des items (passe séparée) (fait 2026-09-14)
-3    ─ clé de prod ─ mise à l'échelle, Supabase Pro quand la base le réclame
+3.1  ✅ dégraisser la lecture partagée (fait 2026-09-14)
+3.2  ✅ seuil de parties au classement (fait 2026-09-14)
+3.3  fenêtre glissante, Supabase Pro quand la base le réclame
 4    timelines complets, classement Arena
 ```
 
