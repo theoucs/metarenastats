@@ -262,6 +262,74 @@ au lieu de 16**, avec 20 à 60 min de retard. Ils sont « best-effort », pas
 garantis. L'estimation initiale de ~1 400 matchs/jour supposait un cron ponctuel
 et était donc fausse (~360/jour en réalité).
 
+### Le planificateur GitHub — diagnostic du 2026-09-14
+
+Le plan notait « les crons GitHub sautent massivement » sans en chercher la
+cause. Elle a été cherchée le 14/09, après six heures sans le moindre
+déclenchement. **Ce n'est pas de l'aléatoire.**
+
+Les douze runs planifiés des 23 h précédentes, alignés :
+
+```
+refresh (:17)  14:26   18:14   20:56   23:11   01:10   06:22
+crawl   (:43)  15:03   18:20   21:07   23:31   01:40   07:07
+```
+
+Ils partent **par paires**, à quelques minutes d'écart, alors que les deux crons
+sont réglés à 26 minutes d'intervalle. GitHub n'évalue donc pas nos crons un par
+un : **il échantillonne le dépôt, toutes les 2 à 6 h.** Aucun réglage de minute
+ne peut y changer quoi que ce soit.
+
+Hypothèses écartées, chacune vérifiée :
+
+| Hypothèse | Verdict |
+|---|---|
+| Minutes Actions épuisées | ❌ dépôt public → illimité |
+| Panne GitHub | ❌ Actions `operational`, zéro incident |
+| Workflows désactivés (60 j d'inactivité) | ❌ les trois `active` |
+| Mauvaise branche, ou fork | ❌ `main`, pas un fork |
+| Erreur dans nos expressions cron | ❌ elles ne sont pas lues séparément |
+| Bascule vers les crons Vercel | ❌ **Hobby = 1×/jour**, le déploiement échoue au-delà |
+
+La seule parade garantie serait un pinger externe (type cron-job.org), au prix
+d'un compte tiers et du `CRON_SECRET` déposé chez lui. Gardé sous le coude.
+
+### Le renversement : long et lent bat court et violent
+
+Puisqu'on ne peut pas rendre les déclenchements fiables, **un seul déclenchement
+doit suffire pour des heures**. D'où `engine.yml`, qui remplace `crawl.yml` et
+`timelines.yml` : il boucle sur une **échéance** (170 min par défaut, 345 max)
+et non sur un nombre de passes.
+
+Et ce changement de forme a révélé une erreur de conception plus ancienne. On
+avait construit à l'envers :
+
+| | Ancien | Moteur |
+|---|---|---|
+| Forme | passes courtes, rares | boucle continue, lente |
+| Part de la clé Riot utilisée | ~50 % par rafales | **~25 % en continu** |
+| Marge laissée aux visiteurs | par intermittence | **75 %, en permanence** |
+| Matchs par déclenchement | 1 200 | **~1 000 + 1 400 timelines**, et davantage si le moteur enchaîne |
+
+Le temps de runner est **gratuit et illimité** sur un dépôt public ; la clé Riot
+est la seule ressource rare, et elle est partagée avec les visiteurs. Optimiser
+le mauvais côté était l'erreur. Un cycle dépense 298 appels étalés sur 20 min,
+soit 0,25 appel/s contre 0,83 autorisé.
+
+> **C'est mieux sur les deux tableaux à la fois** : plus de matchs par jour *et*
+> plus de marge à chaque instant. Quand deux contraintes semblent s'opposer,
+> vérifier laquelle des deux ressources est réellement rare.
+
+Les deux tâches vivent désormais dans le **même** job, puisqu'elles puisent dans
+la même clé : séparées, elles se volaient du budget sans le savoir (le limiteur
+vit en mémoire de chaque instance Vercel, aucune ne voit ce que l'autre dépense).
+Le ratio **1 crawl pour 2 timelines** est une soustraction, pas un goût : un
+crawl crée 120 matchs à timeliner, une timeline en absorbe 80. Il s'auto-régule —
+le jour où le retard atteint zéro, les passes de timeline reviennent vides en une
+seconde.
+
+### Historique : la première correction (dépassée)
+
 Correction : **un job enchaîne plusieurs passes espacées** plutôt que de compter
 sur la fréquence du cron. Un job GitHub peut durer 6 h et les minutes sont
 illimitées sur un repo public — c'est le levier gratuit.
