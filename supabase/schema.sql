@@ -151,3 +151,86 @@ alter table matches add column if not exists timeline_fetched_at timestamptz;
 create index if not exists matches_timeline_pending_idx
   on matches (game_creation desc)
   where timeline_fetched_at is null and ingested_at is not null;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Agrégation côté base (2026-09-14, phase 3 de docs/data-pipeline-plan.md)
+--
+-- Participants retenus par les stats : la table brute moins les équipes AFK.
+--
+-- Un joueur qui finit la partie avec un « Anvil Voucher » en poche
+-- (220008-220011) ne l'a jamais consommé : il n'a pas joué. Riot enregistre
+-- quand même un placement pour son équipe, mais ce placement reflète un 2v3,
+-- pas un résultat. Toute l'équipe sort donc de toutes les stats pour ce match —
+-- même règle que dropAfkTeams() côté app, dont c'est la transposition.
+create or replace view participants_clean as
+select p.*
+from match_participants p
+where not exists (
+  select 1
+  from match_participants afk
+  where afk.match_id = p.match_id
+    and afk.subteam_id = p.subteam_id
+    and afk.items && array[220008, 220009, 220010, 220011]
+);
+
+grant select on participants_clean to service_role;
+
+-- Les trois compteurs de l'accueil, comptés en base.
+--
+-- `total_players` était la dernière raison de faire sortir `puuid` de Postgres
+-- pour l'agrégation : 78 octets par ligne, sur 27 000 lignes, pour produire un
+-- entier.
+create or replace function site_totals()
+returns table (total_matches bigint, total_champions bigint, total_players bigint)
+language sql
+stable
+as $$
+  select count(distinct match_id), count(distinct champion), count(distinct puuid)
+  from participants_clean
+$$;
+
+grant execute on function site_totals() to service_role;
+
+-- Classement calculé dans Postgres.
+--
+-- Deux problèmes d'un coup :
+--
+-- 1. `puuid` + `riot_id` pèsent 67 des 109 octets d'une ligne participant sur
+--    le fil — 61 % de l'egress d'un rafraîchissement — et le classement est le
+--    SEUL agrégateur qui en a besoin. Le calculer ici les laisse en base.
+-- 2. Le snapshot du classement pesait 3,6 Mo, plus qu'une lecture complète de
+--    la base, relu à chaque régénération de la page. Mesuré : 14 131 des 17 588
+--    joueurs n'avaient qu'UNE partie. À une partie on fait 0 % ou 100 % de
+--    top 3 : ces lignes ne classent personne, elles pèsent.
+--
+-- Renvoie les compteurs bruts, pas des pourcentages : la mise en forme (toStat)
+-- reste côté app, au même endroit que pour tous les autres tableaux.
+create or replace function leaderboard_stats(min_games integer)
+returns table (
+  puuid text,
+  riot_id text,
+  games bigint,
+  top3_wins bigint,
+  top1_wins bigint,
+  placement_sum bigint
+)
+language sql
+stable
+as $$
+  select
+    p.puuid,
+    -- Le pseudo le plus récent : un joueur qui se renomme doit apparaître sous
+    -- son nom actuel. (Le calcul JS retenait la dernière ligne lue, donc un
+    -- ordre arbitraire.)
+    (array_agg(p.riot_id order by m.game_creation desc))[1] as riot_id,
+    count(*) as games,
+    count(*) filter (where p.placement <= 3) as top3_wins,
+    count(*) filter (where p.placement = 1) as top1_wins,
+    sum(p.placement) as placement_sum
+  from participants_clean p
+  join matches m on m.match_id = p.match_id
+  group by p.puuid
+  having count(*) >= min_games
+$$;
+
+grant execute on function leaderboard_stats(integer) to service_role;

@@ -40,8 +40,9 @@ export default async function LeaderboardPage() {
         }
       >
         <p className="mt-1 text-small text-muted">
-          Only players who have been searched on this site (or played with someone who was) appear
-          here — this grows over time, it&apos;s not the full EUW player base.
+          Minimum 5 tracked games. Only players who have been searched on this site (or played
+          with someone who was) appear here — this grows over time, it&apos;s not the full EUW
+          player base.
         </p>
       </PageHeader>
       <StatsTable rows={rows} variant="ranked" />

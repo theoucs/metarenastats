@@ -19,9 +19,9 @@ export default function InfoPage() {
           </p>
           <p className="mt-3">
             The exact ranking methodology is still being decided. Right now the leaderboard is
-            sorted by raw win rate (top-3 finish out of 6 teams), which is a placeholder. It will
-            likely account for games played, opponent strength, and recency once we have enough
-            data.
+            sorted by raw win rate (top-3 finish out of 6 teams) among players with at least 5
+            tracked games, which is a placeholder. It will likely account for games played,
+            opponent strength, and recency once we have enough data.
           </p>
         </div>
       </section>

@@ -6,8 +6,6 @@ import { augmentCategory } from "@/lib/gameData";
 
 export type ParticipantRow = {
   match_id: string;
-  puuid: string;
-  riot_id: string;
   subteam_id: number;
   champion: string;
   placement: number;
@@ -94,8 +92,21 @@ const MAX_PAGES = 500;
  * Per-request only: the cache lives for one render pass, so pages still see
  * fresh data on every request.
  */
+/**
+ * Les colonnes de la lecture partagée — et ce qu'elles NE contiennent plus.
+ *
+ * `puuid` et `riot_id` en sont sortis le 2026-09-14. Mesuré sur 1 000 lignes
+ * compressées, telles qu'elles voyagent réellement : la ligne complète pesait
+ * 109 o, dont **67 pour ces deux colonnes seules — 61 % de l'egress** d'un
+ * rafraîchissement. Un puuid fait 78 caractères aléatoires : il ne se compresse
+ * pas, contrairement au reste.
+ *
+ * Or un seul agrégateur en avait besoin, le classement, qui est désormais
+ * calculé dans Postgres (fonction `leaderboard_stats`). Ce qui reste ici est ce
+ * dont le calcul JS a vraiment besoin : **31 o par ligne, 3,5× moins**.
+ */
 const PARTICIPANT_COLUMNS =
-  "match_id, puuid, riot_id, subteam_id, champion, placement, augments, items, item_order";
+  "match_id, subteam_id, champion, placement, augments, items, item_order";
 
 /**
  * Fetches one page. Split out from fetchAllParticipants so pages can be
@@ -211,12 +222,22 @@ function countMatches(rows: ParticipantRow[]): number {
   return new Set(rows.map((r) => r.match_id)).size;
 }
 
+/**
+ * Les trois compteurs de l'accueil, comptés par Postgres.
+ *
+ * C'était la dernière raison de faire voyager `puuid` : 78 octets par ligne,
+ * 27 000 lignes, pour produire un entier. `site_totals()` applique exactement
+ * le même filtre (la vue `participants_clean` = moins les équipes AFK).
+ */
 export async function getSiteStats() {
-  const rows = await fetchAllParticipants();
+  if (!supabaseAdmin) return { totalMatches: 0, totalChampions: 0, totalPlayers: 0 };
+  const { data, error } = await supabaseAdmin.rpc("site_totals");
+  if (error) throw error;
+  const totals = data?.[0];
   return {
-    totalMatches: countMatches(rows),
-    totalChampions: new Set(rows.map((r) => r.champion)).size,
-    totalPlayers: new Set(rows.map((r) => r.puuid)).size,
+    totalMatches: Number(totals?.total_matches ?? 0),
+    totalChampions: Number(totals?.total_champions ?? 0),
+    totalPlayers: Number(totals?.total_players ?? 0),
   };
 }
 
@@ -326,28 +347,62 @@ export async function getAugmentStats() {
   return { totalMatches, augments };
 }
 
+/**
+ * Parties minimum pour figurer au classement.
+ *
+ * Mesuré le 2026-09-14 : **14 131 des 17 588 joueurs suivis n'avaient qu'une
+ * seule partie**. À une partie on fait 0 % ou 100 % de top 3 — ces lignes ne
+ * classent personne, elles ne font que peser : le snapshot du classement
+ * atteignait 3,6 Mo, plus qu'une lecture complète de la base, relu à chaque
+ * régénération de la page.
+ *
+ * 5 est un point de départ assumé, pas une méthodologie (voir /info : le vrai
+ * classement reste à concevoir, phase 4 du plan). Une seule ligne à changer.
+ */
+const LEADERBOARD_MIN_GAMES = 5;
+
+type LeaderboardRpcRow = {
+  puuid: string;
+  riot_id: string;
+  games: number;
+  top3_wins: number;
+  top1_wins: number;
+  placement_sum: number;
+};
+
+/**
+ * Classement, agrégé par Postgres (`leaderboard_stats`).
+ *
+ * Seul agrégateur à avoir besoin de `puuid`/`riot_id`, les deux colonnes les
+ * plus lourdes de la table — d'où ce chemin distinct, qui les laisse en base.
+ * Le calcul lui-même ne change pas : la fonction SQL renvoie les compteurs
+ * bruts et `toStat` les met en forme comme pour tous les autres tableaux.
+ */
 export async function getLeaderboardStats() {
-  const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
-  const byPlayer = new Map<string, Accumulator & { riotId: string }>();
-  for (const r of rows) {
-    const entry = byPlayer.get(r.puuid) ?? {
+  if (!supabaseAdmin) return { totalMatches: 0, players: [] };
+
+  const [{ totalMatches }, { data, error }] = await Promise.all([
+    getSiteStats(),
+    supabaseAdmin.rpc("leaderboard_stats", { min_games: LEADERBOARD_MIN_GAMES }),
+  ]);
+  if (error) throw error;
+
+  const players = ((data ?? []) as LeaderboardRpcRow[])
+    .map((r) => ({
+      puuid: r.puuid,
       riotId: r.riot_id,
-      games: 0,
-      top3Wins: 0,
-      top1Wins: 0,
-      placementSum: 0,
-    };
-    entry.riotId = r.riot_id;
-    entry.games += 1;
-    entry.placementSum += r.placement;
-    if (r.placement <= TOP3_PLACEMENT_THRESHOLD) entry.top3Wins += 1;
-    if (r.placement === 1) entry.top1Wins += 1;
-    byPlayer.set(r.puuid, entry);
-  }
-  const players = Array.from(byPlayer.entries())
-    .map(([puuid, s]) => ({ puuid, riotId: s.riotId, ...toStat(s, totalMatches) }))
+      ...toStat(
+        {
+          games: Number(r.games),
+          top3Wins: Number(r.top3_wins),
+          top1Wins: Number(r.top1_wins),
+          placementSum: Number(r.placement_sum),
+        },
+        totalMatches,
+      ),
+    }))
     .sort((a, b) => b.top3Rate - a.top3Rate || b.games - a.games);
+
   return { totalMatches, players };
 }
 
