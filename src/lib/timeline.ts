@@ -22,8 +22,18 @@ import { itemCategory } from "@/lib/gameData";
  * Enclumes : ce que le joueur achète est le *droit de choisir*, pas l'item qui
  * en sort. Les laisser polluerait l'ordre avec des entrées qui ne sont pas des
  * items (« Stat Bonus » apparaissait 27 fois d'affilée chez un même joueur).
+ *
+ * La famille occupe la plage **220000-220007 en continu** : Stat Bonus, les six
+ * « Legendary <rôle> Item » (Fighter, Marksman, Assassin, Mage, Tank, Support)
+ * et Prismatic Item. Une première version n'en listait que quatre et laissait
+ * passer « Legendary Fighter Item » et « Legendary Assassin Item » dans l'ordre
+ * d'achat — repéré en relisant les premières lignes écrites en base.
+ *
+ * 220008-220011 (les « Voucher ») sont déjà marqués `excluded` dans items.json
+ * et tombent donc sous le filtre de catégorie ci-dessous.
  */
-const ANVIL_ITEM_IDS = new Set([220000, 220002, 220004, 220007]);
+const ANVIL_ID_MIN = 220000;
+const ANVIL_ID_MAX = 220007;
 
 /** Consommables (« juices ») : achetés en cours de partie, jamais un choix de build. */
 const CONSUMABLE_ITEM_IDS = new Set([2142, 2143, 2144, 2145]);
@@ -41,7 +51,8 @@ type TimelineEvent = {
 export type MatchItemOrder = Map<string, number[]>;
 
 function isBuildItem(itemId: number): boolean {
-  if (ANVIL_ITEM_IDS.has(itemId) || CONSUMABLE_ITEM_IDS.has(itemId)) return false;
+  if (itemId >= ANVIL_ID_MIN && itemId <= ANVIL_ID_MAX) return false;
+  if (CONSUMABLE_ITEM_IDS.has(itemId)) return false;
   // « excluded » couvre les récompenses de quête et les items auto-attribués
   // (Arcane Sweeper, que ~tout le monde possède) — jamais un choix de build.
   return itemCategory(itemId) !== "excluded";
