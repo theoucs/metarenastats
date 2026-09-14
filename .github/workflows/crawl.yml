@@ -61,6 +61,7 @@ jobs:
 
           total_ingested=0
           total_repaired=0
+          failures=0
 
           for i in $(seq 1 "${PASSES}"); do
             echo "── passe ${i}/${PASSES} ──"
@@ -79,9 +80,15 @@ jobs:
             echo "HTTP ${http_code}"
             echo "$response"
 
+            # Une passe qui échoue ne tue pas le job : l'état vit entièrement en
+            # base (crawl_queue, matches.ingested_at), donc la passe suivante
+            # reprend là où on en est. Un hoquet transitoire de Supabase (504) a
+            # déjà coûté un job entier — ça ne doit pas se reproduire.
             if [ "$http_code" != "200" ]; then
-              echo "::error::La passe ${i} a échoué (HTTP ${http_code}) : ${response}"
-              exit 1
+              echo "::warning::Passe ${i} échouée (HTTP ${http_code}) : ${response}"
+              failures=$((failures + 1))
+              if [ "$i" -lt "${PASSES}" ]; then sleep 30; fi
+              continue
             fi
 
             # Clé expirée (elle ne dure que 24 h) ou API indisponible : la passe
@@ -109,4 +116,10 @@ jobs:
             fi
           done
 
-          echo "::notice::${total_ingested} matchs ingérés, ${total_repaired} réparés sur ${PASSES} passes."
+          echo "::notice::${total_ingested} matchs ingérés, ${total_repaired} réparés sur ${PASSES} passes (${failures} en échec)."
+
+          # Toutes les passes en échec : là il y a vraiment un problème à voir.
+          if [ "$failures" -ge "${PASSES}" ]; then
+            echo "::error::Les ${PASSES} passes ont échoué."
+            exit 1
+          fi

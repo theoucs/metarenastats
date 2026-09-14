@@ -95,28 +95,51 @@ function db() {
   return supabaseAdmin;
 }
 
+/**
+ * Réessaie une opération Supabase une fois avant d'abandonner.
+ *
+ * Le plan gratuit hoquette : une passe a échoué sur un « Gateway Timeout » (504)
+ * alors que la même requête, mesurée juste après, répondait en 0,1 s. Sans
+ * réessai, un hoquet d'une seconde fait perdre une passe entière — et plus la
+ * base grossit, plus ces à-coups sont probables.
+ */
+async function retryDb<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
+    console.warn(`[crawl] ${label} a échoué (${message}) — seconde tentative dans 1 s.`);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    return fn();
+  }
+}
+
 /** Matchs connus mais jamais complétés — repris en priorité. */
 async function pendingMatchIds(limit: number): Promise<string[]> {
-  const { data, error } = await db()
-    .from("matches")
-    .select("match_id")
-    .is("ingested_at", null)
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((r) => r.match_id as string);
+  return retryDb("lecture des matchs à réparer", async () => {
+    const { data, error } = await db()
+      .from("matches")
+      .select("match_id")
+      .is("ingested_at", null)
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.match_id as string);
+  });
 }
 
 /** Prochains joueurs à explorer : priorité décroissante, jamais-crawlés d'abord. */
 async function pickPlayers(limit: number): Promise<string[]> {
-  const { data, error } = await db()
-    .from("crawl_queue")
-    .select("puuid")
-    .lt("error_count", 5)
-    .order("priority", { ascending: false })
-    .order("last_crawled_at", { ascending: true, nullsFirst: true })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((r) => r.puuid as string);
+  return retryDb("lecture de la file", async () => {
+    const { data, error } = await db()
+      .from("crawl_queue")
+      .select("puuid")
+      .lt("error_count", 5)
+      .order("priority", { ascending: false })
+      .order("last_crawled_at", { ascending: true, nullsFirst: true })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.puuid as string);
+  });
 }
 
 /** Historique Arena d'un joueur (100 = maximum autorisé par Riot en un appel). */
@@ -145,13 +168,17 @@ async function keepNewMatchIds(ids: string[]): Promise<string[]> {
   const unique = Array.from(new Set(ids));
   const known = new Set<string>();
   for (let i = 0; i < unique.length; i += ID_CHUNK) {
-    const { data, error } = await db()
-      .from("matches")
-      .select("match_id")
-      .in("match_id", unique.slice(i, i + ID_CHUNK))
-      .not("ingested_at", "is", null);
-    if (error) throw error;
-    for (const r of data ?? []) known.add(r.match_id as string);
+    const chunk = unique.slice(i, i + ID_CHUNK);
+    const rows = await retryDb("comparaison des identifiants", async () => {
+      const { data, error } = await db()
+        .from("matches")
+        .select("match_id")
+        .in("match_id", chunk)
+        .not("ingested_at", "is", null);
+      if (error) throw error;
+      return data ?? [];
+    });
+    for (const r of rows) known.add(r.match_id as string);
   }
   return unique.filter((id) => !known.has(id));
 }
@@ -162,15 +189,17 @@ async function enqueuePlayers(puuids: string[]): Promise<number> {
   let added = 0;
   for (let i = 0; i < unique.length; i += ID_CHUNK) {
     const chunk = unique.slice(i, i + ID_CHUNK);
-    const { data, error } = await db()
-      .from("crawl_queue")
-      .upsert(
-        chunk.map((puuid) => ({ puuid })),
-        { onConflict: "puuid", ignoreDuplicates: true },
-      )
-      .select("puuid");
-    if (error) throw error;
-    added += data?.length ?? 0;
+    added += await retryDb("ajout à la file", async () => {
+      const { data, error } = await db()
+        .from("crawl_queue")
+        .upsert(
+          chunk.map((puuid) => ({ puuid })),
+          { onConflict: "puuid", ignoreDuplicates: true },
+        )
+        .select("puuid");
+      if (error) throw error;
+      return data?.length ?? 0;
+    });
   }
   return added;
 }
@@ -181,17 +210,19 @@ async function markPlayersCrawled(entries: { puuid: string; matchesFound: number
   const now = new Date().toISOString();
   // `priority` et `discovered_at` ne sont pas dans la charge utile : PostgREST
   // ne met à jour que les colonnes fournies, elles sont donc préservées.
-  const { error } = await db()
-    .from("crawl_queue")
-    .upsert(
-      entries.map((e) => ({
-        puuid: e.puuid,
-        last_crawled_at: now,
-        matches_found: e.matchesFound,
-      })),
-      { onConflict: "puuid" },
-    );
-  if (error) throw error;
+  await retryDb("mise à jour de la file", async () => {
+    const { error } = await db()
+      .from("crawl_queue")
+      .upsert(
+        entries.map((e) => ({
+          puuid: e.puuid,
+          last_crawled_at: now,
+          matches_found: e.matchesFound,
+        })),
+        { onConflict: "puuid" },
+      );
+    if (error) throw error;
+  });
 }
 
 /**
