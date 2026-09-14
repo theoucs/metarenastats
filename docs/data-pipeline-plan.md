@@ -212,10 +212,29 @@ appel comble un trou déjà identifié.
 
 ### Arbitrage à connaître : le crawler et les visiteurs partagent la clé
 
-Même budget de débit. Une passe gourmande fait échouer les recherches des
-visiteurs pendant qu'elle tourne. Le workflow est donc **délibérément bridé** :
-~60 appels/heure sur les ~3 000 disponibles, soit ~1 400 matchs/jour tout en
-laissant le site réactif. À relâcher avec la clé de production.
+Même budget de débit (100 appels / 2 min, attaché à la clé). Pendant une passe
+le budget est saturé et une recherche de visiteur échoue — d'où l'espacement des
+passes, qui rend la fenêtre au site.
+
+### Deux corrections issues de la première nuit d'exploitation
+
+**1. Une clé expirée brûlait le budget en silence.** La clé de dev meurt toutes
+les 24 h ; chaque passe tentait alors 57 appels en 401 avant de s'arrêter, et
+recommençait à chaque cron. Le garde-fou du workflow ne voyait rien : il testait
+`riotCalls:0`, or `riotCalls` compte les appels *tentés*. Désormais la passe
+commence par un contrôle de la clé sur `euw1` (compteur distinct, donc gratuit)
+et abandonne en `apiUnavailable` ; le rapport distingue `riotOk` de `riotCalls`.
+
+**2. Les crons GitHub sautent massivement.** Réglé sur `:43`, les lancements
+réels observés : 15:03, 18:20, 21:07, 23:31, 01:40, 07:07 — **6 passes en 16 h
+au lieu de 16**, avec 20 à 60 min de retard. Ils sont « best-effort », pas
+garantis. L'estimation initiale de ~1 400 matchs/jour supposait un cron ponctuel
+et était donc fausse (~360/jour en réalité).
+
+Correction : **un job enchaîne plusieurs passes espacées** plutôt que de compter
+sur la fréquence du cron. Un job GitHub peut durer 6 h et les minutes sont
+illimitées sur un repo public — c'est le levier gratuit. À 3 passes par job et
+~6 jobs/jour, on retrouve l'ordre de grandeur visé.
 
 ### Dette assumée
 

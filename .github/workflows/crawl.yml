@@ -1,16 +1,24 @@
 # Crawler Arena (voir docs/data-pipeline-plan.md, phase 1).
 #
-# ⚠️ Volontairement bridé tant qu'on est sur une clé de développement.
+# ⚠️ Un job = PLUSIEURS passes, et c'est délibéré.
 #
-# Le crawler et les visiteurs du site partagent le MÊME budget de débit Riot
-# (100 appels / 2 min, attaché à la clé). Un crawler gourmand ferait donc
-# échouer les recherches des visiteurs pendant qu'il tourne. Les réglages
-# ci-dessous consomment ~60 appels par heure sur les ~3 000 disponibles, ce qui
-# laisse tout l'espace nécessaire au site tout en ingérant ~1 400 matchs/jour.
+# Les crons GitHub sont « best-effort » : réglé sur :43, les lancements réels
+# observés tombaient à 15:03, 18:20, 21:07, 23:31, 01:40, 07:07 — soit 6 passes
+# en 16 h au lieu de 16, avec 20 à 60 min de retard. Compter sur la fréquence du
+# cron pour régler le débit d'ingestion ne marche donc pas.
 #
-# À l'arrivée de la clé de production : monter maxMatches, raccourcir
-# l'intervalle, et migrer vers un worker autonome (le plafond de 300 s d'une
-# fonction serverless deviendra alors le facteur limitant).
+# La boucle ci-dessous découple le travail de la planification : chaque job
+# enchaîne PASSES passes espacées. Un job GitHub peut durer 6 h et les minutes
+# sont illimitées sur un repo public, donc c'est le levier gratuit.
+#
+# Le frein réel reste le débit Riot : le crawler et les visiteurs partagent la
+# MÊME clé (100 appels / 2 min). Pendant une passe le budget est saturé et une
+# recherche de visiteur échoue — d'où la pause entre deux passes, qui rend la
+# fenêtre au site. À ~3 passes par job et ~6 jobs/jour : de l'ordre de 2 000
+# matchs/jour pour ~15 min de saturation cumulée.
+#
+# À l'arrivée de la clé de production : monter les plafonds et migrer vers un
+# worker autonome (les 300 s d'une fonction serverless deviendront la limite).
 name: Crawl Arena matches
 
 on:
@@ -19,12 +27,16 @@ on:
   workflow_dispatch:
     inputs:
       maxMatches:
-        description: "Plafond de matchs pour cette passe"
+        description: "Plafond de matchs par passe"
         required: false
-        default: "60"
+        default: "120"
+      passes:
+        description: "Nombre de passes enchaînées dans ce job"
+        required: false
+        default: "3"
 
-# Deux passes simultanées se disputeraient le budget de débit et liraient la
-# même tête de file.
+# Deux jobs simultanés se disputeraient le budget de débit et liraient la même
+# tête de file.
 concurrency:
   group: crawl-arena
   cancel-in-progress: false
@@ -32,13 +44,14 @@ concurrency:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      - name: Lancer une passe de crawl
+      - name: Lancer les passes de crawl
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          MAX_MATCHES: ${{ inputs.maxMatches || '60' }}
+          MAX_MATCHES: ${{ inputs.maxMatches || '120' }}
+          PASSES: ${{ inputs.passes || '3' }}
         run: |
           set -euo pipefail
           if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
@@ -46,33 +59,54 @@ jobs:
             exit 1
           fi
 
-          # Le corps est capturé avant de juger du statut, sinon `set -e` couperait
-          # avant l'affichage et on perdrait le message d'erreur.
-          http_code=$(curl --silent --show-error \
-            --max-time 290 \
-            --request POST \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            --output /tmp/crawl-response.json \
-            --write-out "%{http_code}" \
-            "${SITE_URL%/}/api/cron/crawl?maxMatches=${MAX_MATCHES}&maxDurationMs=120000") || true
+          total_ingested=0
+          total_repaired=0
 
-          response=$(cat /tmp/crawl-response.json 2>/dev/null || true)
-          echo "HTTP ${http_code}"
-          echo "$response"
+          for i in $(seq 1 "${PASSES}"); do
+            echo "── passe ${i}/${PASSES} ──"
 
-          if [ "$http_code" != "200" ]; then
-            echo "::error::La passe de crawl a échoué (HTTP ${http_code}) : ${response}"
-            exit 1
-          fi
+            # Le corps est capturé avant de juger du statut, sinon `set -e`
+            # couperait avant l'affichage et on perdrait le message d'erreur.
+            http_code=$(curl --silent --show-error \
+              --max-time 290 \
+              --request POST \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --output /tmp/crawl-response.json \
+              --write-out "%{http_code}" \
+              "${SITE_URL%/}/api/cron/crawl?maxMatches=${MAX_MATCHES}&maxDurationMs=230000") || true
 
-          # Clé expirée (elle ne dure que 24 h) ou API indisponible : la passe
-          # s'arrête d'entrée sans rien dépenser. Ce n'est pas une erreur du job
-          # — rien à corriger côté code — mais ça doit se voir, sinon le crawler
-          # reste muet des jours sans que rien n'alerte.
-          #
-          # Le test portait auparavant sur `"riotCalls":0`, ce qui ne marchait
-          # pas : `riotCalls` compte les appels *tentés*. Avec une clé morte il
-          # valait 57 et l'avertissement ne partait jamais.
-          if echo "$response" | grep -q '"stoppedBy":"apiUnavailable"'; then
-            echo "::warning::Clé Riot refusée — régénérer la clé de dev (expire toutes les 24 h), la mettre sur Vercel et redéployer."
-          fi
+            response=$(cat /tmp/crawl-response.json 2>/dev/null || true)
+            echo "HTTP ${http_code}"
+            echo "$response"
+
+            if [ "$http_code" != "200" ]; then
+              echo "::error::La passe ${i} a échoué (HTTP ${http_code}) : ${response}"
+              exit 1
+            fi
+
+            # Clé expirée (elle ne dure que 24 h) ou API indisponible : la passe
+            # s'arrête d'entrée sans rien dépenser. Inutile d'enchaîner les
+            # suivantes, elles échoueraient à l'identique.
+            #
+            # Le test portait auparavant sur `"riotCalls":0`, ce qui ne marchait
+            # pas : `riotCalls` compte les appels *tentés*. Avec une clé morte il
+            # valait 57, et l'avertissement ne partait jamais.
+            if echo "$response" | grep -q '"stoppedBy":"apiUnavailable"'; then
+              echo "::warning::Clé Riot refusée — régénérer la clé de dev (expire toutes les 24 h), la mettre sur Vercel et redéployer."
+              exit 0
+            fi
+
+            n=$(echo "$response" | sed -n 's/.*"ingested":\([0-9]*\).*/\1/p')
+            r=$(echo "$response" | sed -n 's/.*"repaired":\([0-9]*\).*/\1/p')
+            total_ingested=$((total_ingested + ${n:-0}))
+            total_repaired=$((total_repaired + ${r:-0}))
+
+            # Rendre la main au site entre deux passes : pendant une passe le
+            # budget de débit est saturé et une recherche de visiteur échoue.
+            if [ "$i" -lt "${PASSES}" ]; then
+              echo "pause de 90 s (le site retrouve du budget)"
+              sleep 90
+            fi
+          done
+
+          echo "::notice::${total_ingested} matchs ingérés, ${total_repaired} réparés sur ${PASSES} passes."
