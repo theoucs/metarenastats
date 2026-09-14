@@ -1,0 +1,97 @@
+# Récupération de l'ordre d'achat des items (voir docs/data-pipeline-plan.md,
+# phase 2).
+#
+# Passe SÉPARÉE du crawl principal, et c'est le point de conception : un
+# timeline pèse 1,48 Mo contre 138 Ko pour un match et coûte un appel de plus.
+# Le mêler à l'ingestion diviserait par deux la couverture en matchs — or la
+# couverture prime, l'ordre d'achat converge vite.
+#
+# Ce job consomme donc le budget de débit RESTANT, et traite les matchs les plus
+# récents d'abord : ce sont eux qui comptent pour la méta du patch courant. Il
+# est décalé de 30 min par rapport au crawl (:43) pour ne pas se superposer.
+name: Fetch item purchase order
+
+on:
+  schedule:
+    - cron: "13 * * * *"
+  workflow_dispatch:
+    inputs:
+      maxMatches:
+        description: "Plafond de matchs par passe"
+        required: false
+        default: "80"
+      passes:
+        description: "Nombre de passes enchaînées dans ce job"
+        required: false
+        default: "2"
+
+concurrency:
+  group: fetch-timelines
+  cancel-in-progress: false
+
+jobs:
+  timelines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Récupérer les ordres d'achat
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MAX_MATCHES: ${{ inputs.maxMatches || '80' }}
+          PASSES: ${{ inputs.passes || '2' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SITE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Secrets SITE_URL et CRON_SECRET requis."
+            exit 1
+          fi
+
+          failures=0
+          remaining="?"
+
+          for i in $(seq 1 "${PASSES}"); do
+            echo "── passe ${i}/${PASSES} ──"
+
+            http_code=$(curl --silent --show-error \
+              --max-time 290 \
+              --request POST \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --output /tmp/timeline-response.json \
+              --write-out "%{http_code}" \
+              "${SITE_URL%/}/api/cron/timelines?maxMatches=${MAX_MATCHES}&maxDurationMs=230000") || true
+
+            response=$(cat /tmp/timeline-response.json 2>/dev/null || true)
+            echo "HTTP ${http_code}"
+            echo "$response"
+
+            # Une passe qui échoue ne tue pas le job : l'état vit en base
+            # (matches.timeline_fetched_at), la suivante reprend où on en est.
+            if [ "$http_code" != "200" ]; then
+              echo "::warning::Passe ${i} échouée (HTTP ${http_code}) : ${response}"
+              failures=$((failures + 1))
+              if [ "$i" -lt "${PASSES}" ]; then sleep 30; fi
+              continue
+            fi
+
+            if echo "$response" | grep -q '"stoppedBy":"apiUnavailable"'; then
+              echo "::warning::Clé Riot refusée — régénérer la clé de dev (expire toutes les 24 h), la mettre sur Vercel et redéployer."
+              exit 0
+            fi
+
+            remaining=$(echo "$response" | sed -n 's/.*"remaining":\([0-9-]*\).*/\1/p')
+
+            # Rendre la main au site entre deux passes : pendant une passe le
+            # budget de débit est saturé et une recherche de visiteur échoue.
+            if [ "$i" -lt "${PASSES}" ]; then
+              echo "pause de 90 s (le site retrouve du budget)"
+              sleep 90
+            fi
+          done
+
+          echo "::notice::${remaining} timelines restants (${failures} passe(s) en échec)."
+
+          if [ "$failures" -ge "${PASSES}" ]; then
+            echo "::error::Les ${PASSES} passes ont échoué."
+            exit 1
+          fi
