@@ -240,6 +240,21 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   );
   if (error) throw error;
 
+  // Ménage : tout ce qui n'a pas été réécrit ce tour-ci est périmé.
+  //
+  // Sans ça, les snapshots s'accumulent indéfiniment — les clés sans patch
+  // héritées d'avant la découpe, puis le jeu complet de chaque patch qui sort
+  // de la fenêtre des deux publiés. Ce sont des lignes que plus personne ne lit
+  // mais qui pèsent, et surtout qui pourraient resservir de repli périmé le
+  // jour où une clé serait relue par erreur.
+  const written = snapshots.map((r) => r.key);
+  const { error: pruneError, count: pruned } = await db
+    .from("stats_snapshots")
+    .delete({ count: "exact" })
+    .not("key", "in", `(${written.map((k) => `"${k}"`).join(",")})`);
+  if (pruneError) throw pruneError;
+  if (pruned) console.log(`[stats] ${pruned} snapshot(s) périmé(s) supprimé(s)`);
+
   return {
     ok: true,
     snapshots: snapshots.length,
