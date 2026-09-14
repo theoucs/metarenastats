@@ -130,6 +130,20 @@ jobs:
           PAUSE_AFTER_PASS=120
           PAUSE_AFTER_CYCLE=540
 
+          # Le moteur publie lui-même, au lieu de compter sur refresh-stats.yml.
+          #
+          # Crawler et publier sont deux choses différentes : la base peut très
+          # bien grossir pendant que le site affiche un nombre figé, et c'est
+          # exactement ce qui s'est produit le 2026-09-14 — 2 260 matchs en base,
+          # 2 140 affichés, snapshot vieux de 3 h.
+          #
+          # refresh-stats.yml dure 20 secondes : impossible de l'allonger pour
+          # survivre à un planificateur qui saute trois rendez-vous sur quatre.
+          # Le moteur, lui, tourne 5 h 30 d'affilée. Il porte donc la
+          # publication, et le workflow horaire reste comme filet quand aucun
+          # moteur ne tourne.
+          REFRESH_EVERY=3300
+
           deadline=$(( $(date +%s) + MINUTES * 60 ))
           cycle=0
           total_ingested=0
@@ -153,6 +167,27 @@ jobs:
             echo "$body"
             [ "$code" = "200" ] || return 1
             return 0
+          }
+
+          # Recalcule les snapshots que le site sert. Jamais fatal : un site
+          # qui affiche des chiffres d'il y a une heure vaut mieux qu'un moteur
+          # arrêté, qui n'en produirait plus du tout.
+          last_refresh=0
+          publish() {
+            local code
+            code=$(curl --silent --show-error \
+              --max-time 290 \
+              --request POST \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --output /tmp/refresh.json \
+              --write-out "%{http_code}" \
+              "${SITE_URL%/}/api/cron/refresh-stats") || true
+            if [ "$code" = "200" ]; then
+              echo "· publié — $(sed -n 's/.*"sourceMatches":\([0-9]*\).*/\1/p' /tmp/refresh.json) matchs, $(sed -n 's/.*"rated":\([0-9]*\).*/\1/p' /tmp/refresh.json) joueurs classés"
+              last_refresh=$(date +%s)
+            else
+              echo "::warning::Publication échouée (HTTP ${code}) : $(cat /tmp/refresh.json 2>/dev/null)"
+            fi
           }
 
           # Attend `$1` secondes, mais jamais au-delà de la fin prévue du moteur.
@@ -214,8 +249,18 @@ jobs:
               nap "${PAUSE_AFTER_PASS}"
             done
 
+            # En fin de cycle, pas entre les passes : publier au milieu d'un
+            # cycle donnerait un snapshot calculé sur un crawl à moitié fait.
+            if [ $(( $(date +%s) - last_refresh )) -ge "$REFRESH_EVERY" ]; then
+              publish
+            fi
+
             nap "${PAUSE_AFTER_CYCLE}"
           done
+
+          # Le dernier cycle a produit des matchs que personne n'a encore
+          # publiés : sans ça, ils attendraient le prochain moteur.
+          publish
 
           echo "::notice::${cycle} cycles — ${total_ingested} matchs ingérés, ${total_repaired} réparés, ${total_timelines} timelines (${remaining} restants), ${failures} passe(s) en échec."
 
