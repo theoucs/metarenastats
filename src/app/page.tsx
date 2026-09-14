@@ -160,24 +160,24 @@ export default async function Home() {
               alt=""
               width={1280}
               height={720}
-              className="absolute inset-y-0 right-0 hidden h-full w-[58%] object-cover object-[center_25%] [-webkit-mask-image:linear-gradient(to_bottom,#000_0%,#000_38%,transparent_94%)] [mask-image:linear-gradient(to_bottom,#000_0%,#000_38%,transparent_94%)] md:block"
+              className="absolute inset-y-0 right-0 hidden h-full w-[58%] object-cover object-[center_25%] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_28%)] [mask-image:linear-gradient(to_right,transparent_0%,#000_28%)] md:block"
             />
-            {/* Left-to-right scrim over the art, pour que le texte reste
-                lisible par-dessus. */}
+            {/* Le bord GAUCHE de l'image se dissout par un masque.
+                L'image occupe les 58 % de droite, donc son bord gauche tombe à
+                42 % de la largeur. Le voile horizontal ci-dessous y est opaque
+                à ~93 %, pas à 100 % : il restait donc 7 % d'image d'un côté du
+                trait et 0 % de l'autre. Mesuré sur une capture : 10,81 à
+                41,8 % de la largeur, 11,42 à 42,1 %. Moins d'un niveau de
+                luminance, mais sur un aplat quasi noir l'œil lit une couture
+                verticale sur toute la hauteur du héros.
+                Un voile ne peut pas la supprimer — il faudrait qu'il soit
+                opaque à 100 % pile au bord, ce qui effacerait l'image. Le
+                masque, lui, met l'alpha de l'image à zéro sur son propre bord :
+                plus d'arête, quelle que soit l'image. */}
+            {/* Left-to-right scrim over the art, then a bottom fade so it
+                doesn't end on a hard horizontal line above the fold. */}
             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base)] from-30% via-[var(--bg-base)]/85 via-55% to-[var(--bg-base)]/45" />
-            {/* Le bas se dissout par un MASQUE sur l'image, pas par un aplat
-                noir posé dessus.
-                Un aplat doit atteindre 100 % d'opacité pour rejoindre le fond,
-                donc son efficacité dépend de la luminosité du splash : les
-                112 px d'avant effaçaient un splash sombre (Fiora) mais pas un
-                splash clair (Yunara, ciel pâle), où les nuages restaient nets
-                puis disparaissaient d'un coup — la « cassure » signalée. Et le
-                héros suit le n°1 de la tier list : le problème apparaissait ou
-                non selon le champion du moment.
-                Un masque efface l'image elle-même : l'alpha tombe à zéro, donc
-                le résultat est exactement le fond de page, quelle que soit
-                l'image. Reste un court dégradé pour fondre dans la bordure. */}
-            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[var(--bg-base)] to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[var(--bg-base)] to-transparent" />
           </>
         )}
 
