@@ -3,6 +3,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { resolveItem, itemCategory } from "@/lib/gameData";
 
 // Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
@@ -16,7 +17,8 @@ const TABS = [
 ] as const;
 
 export default async function ItemsPage() {
-  const { totalMatches, items } = await readSnapshot("items", () => getItemStats(itemCategory));
+  const patch = await getPatchContext();
+  const { items } = await readSnapshot("items", () => getItemStats(itemCategory), patch.defaultPatch);
 
   const rowsByTier: Record<string, StatsRow[]> = { legendary: [], prismatic: [] };
   for (const entry of items) {
@@ -45,7 +47,7 @@ export default async function ItemsPage() {
         eyebrow="Tier list"
         title="Items"
         description="Split by rarity."
-        totalMatches={totalMatches}
+        patch={patch}
       />
       <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} display="grid" />
     </div>

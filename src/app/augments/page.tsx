@@ -3,6 +3,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { resolveAugment } from "@/lib/gameData";
 
@@ -18,9 +19,10 @@ const TABS = [
 ] as const;
 
 export default async function AugmentsPage() {
-  const [{ totalMatches, augments }, timing] = await Promise.all([
-    readSnapshot("augments", getAugmentStats),
-    readSnapshot("augmentTiming", getAugmentTimingStats),
+  const patch = await getPatchContext();
+  const [{ augments }, timing] = await Promise.all([
+    readSnapshot("augments", getAugmentStats, patch.defaultPatch),
+    readSnapshot("augmentTiming", getAugmentTimingStats, patch.defaultPatch),
   ]);
 
   const timingById = new Map(
@@ -56,7 +58,7 @@ export default async function AugmentsPage() {
         eyebrow="Tier list"
         title="Augments"
         description="Split by rarity."
-        totalMatches={totalMatches}
+        patch={patch}
       >
         <ShowMoreNote>
           <p className="max-w-2xl text-small text-muted">

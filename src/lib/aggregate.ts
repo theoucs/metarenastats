@@ -132,18 +132,23 @@ const PARTICIPANT_SOURCE = "participants_clean";
  * Le passage à une vue avec jointure l'a révélé immédiatement : 2 051 matchs
  * agrégés au lieu de 2 087, et des chiffres faux sur 172 champions sur 173.
  */
-function fetchParticipantPage(page: number) {
+function fetchParticipantPage(page: number, patch: string | null) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
   const from = page * PAGE_SIZE;
-  return supabaseAdmin
+  let query = supabaseAdmin
     .from(PARTICIPANT_SOURCE)
     .select(PARTICIPANT_COLUMNS)
     .order("id", { ascending: true })
-    .range(from, from + PAGE_SIZE - 1)
-    .then(({ data, error }) => {
-      if (error) throw error;
-      return data ?? [];
-    });
+    .range(from, from + PAGE_SIZE - 1);
+  // Le filtre part en SQL : on ne lit que les lignes du patch demandé au lieu
+  // de tout charger pour trier ensuite. Découper par patch coûte donc moins
+  // d'egress qu'avant, pas plus. `patch` n'est jamais dans les colonnes
+  // sélectionnées — filtrer dessus n'oblige pas à le transporter.
+  if (patch) query = query.eq("patch", patch);
+  return query.then(({ data, error }) => {
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export type ParticipantSet = {
@@ -174,18 +179,24 @@ export function withParticipantSet<T>(set: ParticipantSet, fn: () => Promise<T>)
 }
 
 /** Lecture brute paginée, partagée par tous les agrégateurs d'un même calcul. */
-export async function fetchParticipantSet(): Promise<ParticipantSet> {
+export async function fetchParticipantSet(patch: string | null = null): Promise<ParticipantSet> {
   // Le contexte l'emporte quand il est posé (job de snapshot) ; sinon on
   // retombe sur la mémoïsation React, qui elle fonctionne au rendu d'une page.
-  return participantSetStore.getStore() ?? readParticipantSet();
+  //
+  // `patch` ne sert donc qu'au chemin de repli : quand un contexte est posé, il
+  // a DÉJÀ été filtré par le patch voulu, et les agrégateurs n'ont pas à le
+  // savoir. C'est ce qui évite de propager un paramètre de patch dans les douze
+  // signatures d'agrégateurs.
+  return participantSetStore.getStore() ?? readParticipantSet(patch);
 }
 
-const readParticipantSet = cache(async function readParticipantSet(): Promise<ParticipantSet> {
+const readParticipantSet = cache(async function readParticipantSet(
+  patch: string | null,
+): Promise<ParticipantSet> {
   if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
 
-  const { count, error } = await supabaseAdmin
-    .from(PARTICIPANT_SOURCE)
-    .select("*", { count: "exact", head: true });
+  const countQuery = supabaseAdmin.from(PARTICIPANT_SOURCE).select("*", { count: "exact", head: true });
+  const { count, error } = await (patch ? countQuery.eq("patch", patch) : countQuery);
   if (error) throw error;
 
   const totalRows = count ?? 0;
@@ -201,13 +212,18 @@ const readParticipantSet = cache(async function readParticipantSet(): Promise<Pa
   }
 
   const pages = await Promise.all(
-    Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page)),
+    Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page, patch)),
   );
   return { rows: dropExcludedAugments(pages.flat()), totalRows, truncated };
 });
 
 export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
   return (await fetchParticipantSet()).rows;
+}
+
+/** Lecture ciblée d'un patch, pour le job de snapshots et le repli des pages. */
+export async function readParticipantSetForPatch(patch: string | null): Promise<ParticipantSet> {
+  return readParticipantSet(patch);
 }
 
 // Strips one-off event augments (see gameData's augmentCategory) out of every

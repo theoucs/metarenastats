@@ -9,6 +9,7 @@ import {
 } from "@/lib/aggregate";
 import { resolveChampion, resolveItem, resolveAugment, heroSplashUrl } from "@/lib/gameData";
 import { readChampionDetailSnapshot, readSnapshot } from "@/lib/statsSnapshot";
+import { getPatchContext } from "@/lib/patches";
 import {
   EntityIcon,
   top1Color,
@@ -248,9 +249,10 @@ export default async function ChampionDetailPage({
   // Site-wide champion stats come along for the ride so the header can say
   // where this champion actually sits — a tier badge and "#7 of 173" is the
   // one thing a build page header can tell you that the numbers below can't.
+  const patch = await getPatchContext();
   const [detail, { champions }] = await Promise.all([
-    readChampionDetailSnapshot(slug.toLowerCase()),
-    readSnapshot("champions", getChampionStats),
+    readChampionDetailSnapshot(slug.toLowerCase(), patch.defaultPatch),
+    readSnapshot("champions", getChampionStats, patch.defaultPatch),
   ]);
 
   const rank = (() => {

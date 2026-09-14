@@ -2,6 +2,7 @@ import { getChampionStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { resolveChampion } from "@/lib/gameData";
 
 // Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
@@ -10,7 +11,8 @@ import { resolveChampion } from "@/lib/gameData";
 export const revalidate = 1800;
 
 export default async function ChampionsPage() {
-  const { totalMatches, champions } = await readSnapshot("champions", getChampionStats);
+  const patch = await getPatchContext();
+  const { champions } = await readSnapshot("champions", getChampionStats, patch.defaultPatch);
 
   const rows: StatsRow[] = champions.map((c) => {
     const info = resolveChampion(c.champion);
@@ -35,7 +37,7 @@ export default async function ChampionsPage() {
         eyebrow="Tier list"
         title="Champions"
         description="Click a champion for its full build page."
-        totalMatches={totalMatches}
+        patch={patch}
       />
       <StatsTable rows={rows} linkPrefix="/champions/" />
     </div>

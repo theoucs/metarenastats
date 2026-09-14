@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSiteStats, getChampionStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
+import { getPatchContext } from "@/lib/patches";
 import { computeTiers, type Tier } from "@/lib/tiers";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
 import { EntityIcon, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
@@ -115,9 +116,13 @@ export default async function Home() {
   // getChampionStats() is already called by /champions and is cheap — do not
   // add getComboStats() here, it's ~2.4s (builds every participant pairing)
   // and would make the homepage the slow page on the site.
+  // Les compteurs du site restent sur TOUT l'historique — « 2 087 matchs
+  // suivis » parle de ce que le site connaît, pas du patch courant. La tier
+  // list, elle, suit le patch affiché.
+  const patch = await getPatchContext();
   const [{ totalMatches, totalChampions, totalPlayers }, { champions }] = await Promise.all([
     readSnapshot("site", getSiteStats),
-    readSnapshot("champions", getChampionStats),
+    readSnapshot("champions", getChampionStats, patch.defaultPatch),
   ]);
 
   const rows = champions.map((c) => {

@@ -4,6 +4,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs, type StatsTab } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { championRole } from "@/lib/gameData";
 
@@ -24,8 +25,11 @@ const TABS: StatsTab[] = [
 const n = (value: number) => value.toLocaleString("en-US");
 
 export default async function CompsPage() {
-  const { totalMatches, totalTeams, archetypes, coverage } = await readSnapshot("comps", () =>
-    getCompStats(championRole),
+  const patch = await getPatchContext();
+  const { totalTeams, archetypes, coverage } = await readSnapshot(
+    "comps",
+    () => getCompStats(championRole),
+    patch.defaultPatch,
   );
 
   const rows: StatsRow[] = archetypes.map((a) => ({
@@ -45,7 +49,7 @@ export default async function CompsPage() {
         eyebrow="Tier list"
         title="Team Comps"
         description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
-        totalMatches={totalMatches}
+        patch={patch}
       >
         <ShowMoreNote>
           <p className="max-w-2xl text-small text-muted">

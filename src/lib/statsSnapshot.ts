@@ -1,7 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { championRole, itemCategory, resolveAugment } from "@/lib/gameData";
+import { getPatchContext, patchedKey } from "@/lib/patches";
 import {
-  fetchParticipantSet,
+  readParticipantSetForPatch,
   withParticipantSet,
   getAnvilChampionStats,
   getAugmentStats,
@@ -79,21 +80,31 @@ type SnapshotRow = { key: string; payload: unknown };
 export async function readSnapshot<K extends keyof SnapshotPayloads>(
   key: K,
   compute: () => Promise<SnapshotPayloads[K]>,
+  patch?: string | null,
 ): Promise<SnapshotPayloads[K]> {
-  const stored = await readSnapshotRaw(SNAPSHOT_KEYS[key]);
+  const storageKey = patch ? patchedKey(SNAPSHOT_KEYS[key], patch) : SNAPSHOT_KEYS[key];
+  const stored = await readSnapshotRaw(storageKey);
   if (stored !== null) return stored as SnapshotPayloads[K];
-  console.warn(`[stats] snapshot "${SNAPSHOT_KEYS[key]}" absent — calcul direct (le cron a-t-il tourné ?)`);
-  return compute();
+  console.warn(`[stats] snapshot "${storageKey}" absent — calcul direct (le cron a-t-il tourné ?)`);
+  // Le repli doit calculer sur le MÊME périmètre que le snapshot manquant,
+  // sinon une page afficherait tout l'historique là où elle annonce un patch.
+  if (!patch) return compute();
+  return withParticipantSet(await readParticipantSetForPatch(patch), compute);
 }
 
 /** Même repli, pour les pages de détail d'un champion (clé dynamique). */
 export async function readChampionDetailSnapshot(
   championIdLower: string,
+  patch?: string | null,
 ): Promise<Awaited<ReturnType<typeof getChampionDetail>>> {
-  const stored = await readSnapshotRaw(championDetailKey(championIdLower));
+  const base = championDetailKey(championIdLower);
+  const storageKey = patch ? patchedKey(base, patch) : base;
+  const stored = await readSnapshotRaw(storageKey);
   if (stored !== null) return stored as Awaited<ReturnType<typeof getChampionDetail>>;
-  console.warn(`[stats] snapshot champion "${championIdLower}" absent — calcul direct`);
-  return getChampionDetail(championIdLower, augmentRarity, itemCategory);
+  console.warn(`[stats] snapshot champion "${storageKey}" absent — calcul direct`);
+  const compute = () => getChampionDetail(championIdLower, augmentRarity, itemCategory);
+  if (!patch) return compute();
+  return withParticipantSet(await readParticipantSetForPatch(patch), compute);
 }
 
 async function readSnapshotRaw(key: string): Promise<unknown | null> {
@@ -120,91 +131,123 @@ export type RefreshReport = {
   truncated: boolean;
   durationMs: number;
   bytes: number;
+  /** Ce qui a été publié, patch par patch. */
+  patches: { patch: string; matches: number; participants: number }[];
 };
 
 /**
  * Recalcule et réécrit tous les snapshots. Appelé par le cron, jamais par une
  * page.
  *
- * Tous les agrégateurs partagent une seule lecture de `match_participants`,
- * propagée par `withParticipantSet`. Ne pas remplacer ça par le `cache()` de
- * React : il ne s'applique pas dans un route handler, et sans le contexte
- * explicite un rafraîchissement relit la base 184 fois (mesuré).
+ * Deux périmètres cohabitent, et c'est délibéré :
+ *
+ *  - **par patch** : tier lists, combos, compos, pages de champion. Les chiffres
+ *    d'un patch périmé ne veulent plus rien dire — un augment nerfé de 20 %
+ *    garde ses anciens résultats — donc chaque patch a son propre jeu.
+ *  - **tout l'historique** : classement et compteurs du site. Le palmarès d'un
+ *    joueur ne se remet pas à zéro à chaque patch, et « 2 087 matchs suivis »
+ *    parle de ce que le site connaît, pas du patch courant.
+ *
+ * Chaque patch fait UNE lecture, propagée à tous ses agrégateurs par
+ * `withParticipantSet`. Ne pas remplacer ça par le `cache()` de React : il ne
+ * s'applique pas dans un route handler, et sans le contexte explicite un
+ * rafraîchissement relit la base 184 fois par patch (mesuré).
  */
 export async function refreshSnapshots(): Promise<RefreshReport> {
   const startedAt = Date.now();
   const db = supabaseAdmin;
   if (!db) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
 
-  // Une seule lecture de la table, réutilisée par tous les agrégateurs via le
-  // contexte asynchrone.
-  const participantSet = await fetchParticipantSet();
-  const { rows: participants, truncated } = participantSet;
+  const context = await getPatchContext();
 
-  return withParticipantSet(participantSet, async () => {
-    const [site, champions, anvil, items, augments, augmentTiming, leaderboard, comps, combos] =
-      await Promise.all([
-        getSiteStats(),
+  // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
+  // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
+  const [site, leaderboard] = await Promise.all([getSiteStats(), getLeaderboardStats()]);
+  const snapshots: SnapshotRow[] = [
+    { key: SNAPSHOT_KEYS.site, payload: site },
+    { key: SNAPSHOT_KEYS.leaderboard, payload: leaderboard },
+  ];
+
+  const published: RefreshReport["patches"] = [];
+  let truncated = false;
+  let totalParticipants = 0;
+
+  // Séquentiel et non parallèle : deux patchs en parallèle, ce sont deux
+  // lectures complètes simultanées en mémoire, pour un job qui a tout son temps.
+  for (const option of context.options) {
+    const set = await readParticipantSetForPatch(option.patch);
+    truncated = truncated || set.truncated;
+    totalParticipants += set.rows.length;
+
+    const patchSnapshots = await withParticipantSet(set, async () => {
+      const [champions, anvil, items, augments, augmentTiming, comps, combos] = await Promise.all([
         getChampionStats(),
         getAnvilChampionStats(itemCategory),
         getItemStats(itemCategory),
         getAugmentStats(),
         getAugmentTimingStats(),
-        getLeaderboardStats(),
         getCompStats(championRole),
         getComboStats(itemCategory),
       ]);
 
-    const snapshots: SnapshotRow[] = [
-      { key: SNAPSHOT_KEYS.site, payload: site },
-      { key: SNAPSHOT_KEYS.champions, payload: champions },
-      { key: SNAPSHOT_KEYS.anvil, payload: anvil },
-      { key: SNAPSHOT_KEYS.items, payload: items },
-      { key: SNAPSHOT_KEYS.augments, payload: augments },
-      { key: SNAPSHOT_KEYS.augmentTiming, payload: augmentTiming },
-      { key: SNAPSHOT_KEYS.leaderboard, payload: leaderboard },
-      { key: SNAPSHOT_KEYS.comps, payload: comps },
-      { key: SNAPSHOT_KEYS.combos, payload: combos },
-    ];
+      const rows: SnapshotRow[] = [
+        { key: SNAPSHOT_KEYS.champions, payload: champions },
+        { key: SNAPSHOT_KEYS.anvil, payload: anvil },
+        { key: SNAPSHOT_KEYS.items, payload: items },
+        { key: SNAPSHOT_KEYS.augments, payload: augments },
+        { key: SNAPSHOT_KEYS.augmentTiming, payload: augmentTiming },
+        { key: SNAPSHOT_KEYS.comps, payload: comps },
+        { key: SNAPSHOT_KEYS.combos, payload: combos },
+      ].map((r) => ({ key: patchedKey(r.key, option.patch), payload: r.payload }));
 
-    // Une entrée par champion réellement joué, pour que /champions/[slug] soit
-    // servi depuis un snapshot comme les autres pages.
-    const championDetails = await Promise.all(
-      champions.champions.map(async (c) => {
-        const idLower = c.champion.toLowerCase();
-        return {
-          key: championDetailKey(idLower),
-          payload: await getChampionDetail(idLower, augmentRarity, itemCategory),
-        };
-      }),
-    );
-    snapshots.push(...championDetails.filter((s) => s.payload !== null));
+      // Une entrée par champion réellement joué SUR CE PATCH : un champion
+      // absent du patch courant n'a pas de page pour ce patch, ce qui est la
+      // bonne réponse plutôt qu'une page vide.
+      const details = await Promise.all(
+        champions.champions.map(async (c) => {
+          const idLower = c.champion.toLowerCase();
+          return {
+            key: patchedKey(championDetailKey(idLower), option.patch),
+            payload: await getChampionDetail(idLower, augmentRarity, itemCategory),
+          };
+        }),
+      );
+      rows.push(...details.filter((r) => r.payload !== null));
+      return rows;
+    });
 
-    const sourceMatches = site.totalMatches;
-    const bytes = snapshots.reduce((n, s) => n + JSON.stringify(s.payload).length, 0);
-    const computedAt = new Date().toISOString();
+    snapshots.push(...patchSnapshots);
+    published.push({
+      patch: option.patch,
+      matches: option.matches,
+      participants: set.rows.length,
+    });
+  }
 
-    const { error } = await db.from("stats_snapshots").upsert(
-      snapshots.map((s) => ({
-        key: s.key,
-        payload: s.payload,
-        computed_at: computedAt,
-        source_matches: sourceMatches,
-        source_participants: participants.length,
-        truncated,
-      })),
-      { onConflict: "key" },
-    );
-    if (error) throw error;
+  const bytes = snapshots.reduce((n, r) => n + JSON.stringify(r.payload).length, 0);
+  const computedAt = new Date().toISOString();
 
-    return {
-      ok: true,
-      snapshots: snapshots.length,
-      sourceMatches,
-      sourceParticipants: participants.length,
+  const { error } = await db.from("stats_snapshots").upsert(
+    snapshots.map((r) => ({
+      key: r.key,
+      payload: r.payload,
+      computed_at: computedAt,
+      source_matches: site.totalMatches,
+      source_participants: totalParticipants,
       truncated,
-      durationMs: Date.now() - startedAt,
-      bytes,
-    };
-  });
+    })),
+    { onConflict: "key" },
+  );
+  if (error) throw error;
+
+  return {
+    ok: true,
+    snapshots: snapshots.length,
+    sourceMatches: site.totalMatches,
+    sourceParticipants: totalParticipants,
+    truncated,
+    durationMs: Date.now() - startedAt,
+    bytes,
+    patches: published,
+  };
 }

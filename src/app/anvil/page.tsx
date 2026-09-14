@@ -2,6 +2,7 @@ import { getAnvilChampionStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { resolveChampion, itemCategory } from "@/lib/gameData";
 
 // Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
@@ -10,8 +11,11 @@ import { resolveChampion, itemCategory } from "@/lib/gameData";
 export const revalidate = 1800;
 
 export default async function AnvilPage() {
-  const { totalMatches, champions } = await readSnapshot("anvil", () =>
-    getAnvilChampionStats(itemCategory),
+  const patch = await getPatchContext();
+  const { champions } = await readSnapshot(
+    "anvil",
+    () => getAnvilChampionStats(itemCategory),
+    patch.defaultPatch,
   );
 
   const rows: StatsRow[] = champions.map((c) => {
@@ -35,7 +39,7 @@ export default async function AnvilPage() {
         title="Anvil Run"
         isNew
         description="Best champions to play a full anvil run on — stat anvils only, no items bought. Click a champion for its full build page."
-        totalMatches={totalMatches}
+        patch={patch}
       />
       <StatsTable rows={rows} linkPrefix="/champions/" playRateLabel="% Anvil Run" />
     </div>

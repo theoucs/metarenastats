@@ -4,6 +4,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { getPatchContext } from "@/lib/patches";
 import { itemCategory } from "@/lib/gameData";
 import { comboToRow } from "@/lib/comboDisplay";
 
@@ -19,8 +20,11 @@ const TABS = [
 ] as const;
 
 export default async function CombosPage() {
-  const { totalMatches, byCategory } = await readSnapshot("combos", () =>
-    getComboStats(itemCategory),
+  const patch = await getPatchContext();
+  const { byCategory } = await readSnapshot(
+    "combos",
+    () => getComboStats(itemCategory),
+    patch.defaultPatch,
   );
 
   const rowsByTier: Record<string, StatsRow[]> = {
@@ -39,7 +43,7 @@ export default async function CombosPage() {
         title="Combos"
         isNew
         description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
-        totalMatches={totalMatches}
+        patch={patch}
       >
         <p className="mt-1 text-small text-muted">
           Looking for combos on a specific champion?{" "}
