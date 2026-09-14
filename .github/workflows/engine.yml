@@ -52,13 +52,20 @@ on:
     # dépôt à intervalles irréguliers, doubler les entrées double les chances
     # qu'une tombe dans une fenêtre servie. Ça ne coûte rien : le groupe de
     # concurrence garantit qu'un seul moteur tourne à la fois.
+    #
+    # Ne pas s'attendre à ce que ces horaires soient tenus. Mesuré sur 28 h de
+    # journal (13-14/09/2026), le planificateur n'a servi que 7 des ~28
+    # déclenchements horaires attendus — 25 % — avec un trou de 7 h 47. C'est
+    # documenté par GitHub comme « best-effort », et rien dans ce fichier ne le
+    # corrige. La seule variable qu'on maîtrise, c'est ce qu'un déclenchement
+    # SERVI parvient à couvrir : d'où MINUTES ci-dessous.
     - cron: "9,39 * * * *"
   workflow_dispatch:
     inputs:
       minutes:
         description: "Durée du moteur en minutes (max 330)"
         required: false
-        default: "170"
+        default: "330"
       crawlMatches:
         description: "Matchs par passe de crawl"
         required: false
@@ -95,7 +102,7 @@ jobs:
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          MINUTES: ${{ inputs.minutes || '170' }}
+          MINUTES: ${{ inputs.minutes || '330' }}
           CRAWL_MATCHES: ${{ inputs.crawlMatches || '120' }}
           TIMELINE_MATCHES: ${{ inputs.timelineMatches || '80' }}
           CRAWL_PASSES: ${{ inputs.crawlPasses || '1' }}
@@ -108,6 +115,14 @@ jobs:
             exit 1
           fi
 
+          # 330 min, soit 5 h 30 : c'est la réponse au planificateur, pas un
+          # appétit de données. Un déclenchement servi couvre ainsi la quasi-
+          # totalité des trous mesurés, là où 170 min en laissait passer la
+          # moitié. Le DÉBIT ne change pas — mêmes plafonds par passe, mêmes
+          # pauses, donc la même part de la clé Riot laissée aux joueurs qui
+          # cherchent leur pseudo. On tourne plus longtemps, pas plus vite.
+          # (La limite dure de GitHub est 360 min par job.)
+          #
           # Pause après une passe, et pause de fin de cycle. Ensemble elles
           # fixent la part de la clé Riot qu'on s'autorise (voir l'en-tête) :
           # les allonger rend la main au site, les raccourcir accélère le crawl.
