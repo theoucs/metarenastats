@@ -2,6 +2,7 @@ import {
   searchPlayerMatches,
   findKnownPlayerByRiotId,
   fetchSummonerProfile,
+  normalizeRiotId,
 } from "@/lib/riotSearch";
 import { getPlayerProfile } from "@/lib/aggregate";
 import { resolveChampion, profileIconUrl } from "@/lib/gameData";
@@ -20,7 +21,10 @@ export default async function PlayerPage({
   params: Promise<{ riotId: string }>;
 }) {
   const { riotId: rawParam } = await params;
-  const riotId = decodeURIComponent(rawParam);
+  // Le tag par défaut est appliqué ici aussi, pas seulement dans la barre de
+  // recherche : /players/Theoucs doit marcher, qu'on y arrive par un lien
+  // partagé, l'historique du navigateur ou une URL tapée à la main.
+  const riotId = normalizeRiotId(decodeURIComponent(rawParam)) ?? decodeURIComponent(rawParam);
 
   const result = await searchPlayerMatches(riotId);
 

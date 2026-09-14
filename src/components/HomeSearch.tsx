@@ -33,16 +33,20 @@ export function HomeSearch() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const isPlayerQuery = query.includes("#");
-  const suggestions = useMemo(
-    () => (isPlayerQuery ? [] : searchEntities(query)),
-    [query, isPlayerQuery]
-  );
+  const hasTag = query.includes("#");
+  const suggestions = useMemo(() => (hasTag ? [] : searchEntities(query)), [query, hasTag]);
+
+  // Le tag n'est plus obligatoire : sans « # », le serveur complète en #EUW
+  // (voir parseRiotId). Mais la barre sert aussi à trouver champions et items,
+  // donc une saisie sans « # » n'est traitée comme un joueur que si elle ne
+  // correspond à AUCUNE entité connue — sinon taper « fiora » emmènerait sur
+  // le profil d'un joueur au lieu de la page du champion.
+  const isPlayerQuery = hasTag || (query.trim().length > 0 && suggestions.length === 0);
 
   function searchPlayer(riotId: string) {
-    if (!riotId.includes("#")) return;
+    if (!riotId.trim()) return;
     startTransition(() => {
-      router.push(`/players/${encodeURIComponent(riotId)}`);
+      router.push(`/players/${encodeURIComponent(riotId.trim())}`);
     });
   }
 
@@ -51,7 +55,11 @@ export function HomeSearch() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          searchPlayer(query);
+          // Même priorité que NavSearch : une entité connue passe devant, pour
+          // que « fiora » reste le champion. Le joueur ne prend la main que
+          // s'il y a un tag explicite, ou si rien ne correspond.
+          if (!hasTag && suggestions[0]) router.push(suggestions[0].href);
+          else searchPlayer(query);
         }}
         className="relative w-full max-w-xl"
       >

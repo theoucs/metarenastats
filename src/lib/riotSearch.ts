@@ -165,11 +165,47 @@ export async function fetchMatchDetail(
  * returns display-ready match data. Used by both the player page and the
  * /api/matches route so there's a single place this logic lives.
  */
+/**
+ * Le tag appliqué quand le joueur n'en donne pas.
+ *
+ * Riot attribue par défaut le tag de la région, et l'immense majorité des
+ * joueurs ne le change jamais. Le site ne suit que EUW : exiger « #EUW » à
+ * chaque recherche revenait donc à faire retaper la même chose à presque tout
+ * le monde, et à renvoyer une erreur de format à qui l'oubliait.
+ */
+const DEFAULT_TAG = "EUW";
+
+/**
+ * Découpe un Riot ID saisi à la main en nom + tag.
+ *
+ * Rend `null` seulement si le nom est vide : un tag absent n'est pas une
+ * erreur, c'est le cas courant. Un tag explicite l'emporte toujours — on ne
+ * corrige jamais ce que le joueur a écrit.
+ */
+export function parseRiotId(raw: string): { gameName: string; tagLine: string } | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Un nom ne peut pas contenir de « # » : tout ce qui suit le PREMIER est le
+  // tag, et un « # » final sans rien derrière vaut un tag absent.
+  const hash = trimmed.indexOf("#");
+  const gameName = (hash === -1 ? trimmed : trimmed.slice(0, hash)).trim();
+  const tagLine = (hash === -1 ? "" : trimmed.slice(hash + 1)).trim();
+  if (!gameName) return null;
+  return { gameName, tagLine: tagLine || DEFAULT_TAG };
+}
+
+/** Le Riot ID complet correspondant à une saisie, tag par défaut compris. */
+export function normalizeRiotId(raw: string): string | null {
+  const parsed = parseRiotId(raw);
+  return parsed && `${parsed.gameName}#${parsed.tagLine}`;
+}
+
 export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerResult> {
-  const [gameName, tagLine] = riotId.split("#");
-  if (!gameName || !tagLine) {
-    return { ok: false, status: 400, error: "Expected format: Name#TAG (e.g. Theoucs#EUW)" };
+  const parsed = parseRiotId(riotId);
+  if (!parsed) {
+    return { ok: false, status: 400, error: "Enter a player name (e.g. Theoucs, or Theoucs#EUW)" };
   }
+  const { gameName, tagLine } = parsed;
 
   const accountRes = await riotFetch(
     `https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,

@@ -58,10 +58,13 @@ export function NavSearch({
   }
 
   function submit() {
-    if (isPlayerQuery) {
-      goTo(`/players/${encodeURIComponent(query.trim())}`);
-    } else if (suggestions[0]) {
+    // Une entité connue passe devant : « fiora » doit rester le champion.
+    // Sinon c'est un joueur, tag ou pas — le serveur complète en #EUW
+    // (voir parseRiotId dans lib/riotSearch.ts).
+    if (!isPlayerQuery && suggestions[0]) {
       goTo(suggestions[0].href);
+    } else if (query.trim()) {
+      goTo(`/players/${encodeURIComponent(query.trim())}`);
     }
   }
 
