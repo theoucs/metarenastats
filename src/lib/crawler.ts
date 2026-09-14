@@ -436,18 +436,28 @@ export async function runTimelineCrawl({
 
     try {
       // Une mise à jour par participant : `item_order` dépend du couple
-      // (match, joueur), il n'y a pas d'écriture groupée possible sans réécrire
-      // des lignes entières — et un upsert complet risquerait d'écraser des
-      // colonnes avec des valeurs périmées.
-      for (const [puuid, items] of order) {
-        const { error } = await db()
-          .from("match_participants")
-          .update({ item_order: items })
-          .eq("match_id", matchId)
-          .eq("puuid", puuid);
-        if (error) throw error;
-        participantsUpdated++;
-      }
+      // (match, joueur), et un upsert groupé devrait réécrire des lignes
+      // entières — au risque d'y remettre des valeurs périmées.
+      //
+      // En revanche ces 18 écritures partent ensemble. En séquentiel elles
+      // tenaient en local (~1,9 s par match) mais échouaient en production :
+      // la latence Vercel → Supabase les faisait durer ~7,8 s par match, et
+      // 6 matchs sur 8 finissaient en erreur. La parallélisation supprime ce
+      // cumul, et `retryDb` absorbe les à-coups.
+      await retryDb("écriture des ordres d'achat", async () => {
+        const results = await Promise.all(
+          Array.from(order, ([puuid, items]) =>
+            db()
+              .from("match_participants")
+              .update({ item_order: items })
+              .eq("match_id", matchId)
+              .eq("puuid", puuid),
+          ),
+        );
+        const failed = results.find((r) => r.error);
+        if (failed?.error) throw failed.error;
+      });
+      participantsUpdated += order.size;
 
       await retryDb("marquage du timeline", async () => {
         const { error } = await db()
