@@ -4,6 +4,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { PatchSwitch } from "@/components/PatchSwitch";
 import { getPatchContext } from "@/lib/patches";
 import { itemCategory } from "@/lib/gameData";
 import { comboToRow } from "@/lib/comboDisplay";
@@ -21,20 +22,30 @@ const TABS = [
 
 export default async function CombosPage() {
   const patch = await getPatchContext();
-  const { byCategory } = await readSnapshot(
-    "combos",
-    () => getComboStats(itemCategory),
-    patch.defaultPatch,
-  );
 
-  const rowsByTier: Record<string, StatsRow[]> = {
-    "item-item": [],
-    "augment-augment": [],
-    "item-augment": [],
-  };
-  for (const [category, combos] of Object.entries(byCategory)) {
-    rowsByTier[category] = combos.map(comboToRow);
-  }
+  const views = Object.fromEntries(
+    await Promise.all(
+      patch.options.map(async (option) => {
+        const { byCategory } = await readSnapshot(
+          "combos",
+          () => getComboStats(itemCategory),
+          option.patch,
+        );
+        const rowsByTier: Record<string, StatsRow[]> = {
+          "item-item": [],
+          "augment-augment": [],
+          "item-augment": [],
+        };
+        for (const [category, combos] of Object.entries(byCategory)) {
+          rowsByTier[category] = combos.map(comboToRow);
+        }
+        return [
+          option.patch,
+          <TieredStatsTabs key={option.patch} tabs={TABS} rowsByTier={rowsByTier} />,
+        ] as const;
+      }),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -43,7 +54,6 @@ export default async function CombosPage() {
         title="Combos"
         isNew
         description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
-        patch={patch}
       >
         <p className="mt-1 text-small text-muted">
           Looking for combos on a specific champion?{" "}
@@ -53,7 +63,7 @@ export default async function CombosPage() {
           .
         </p>
       </PageHeader>
-      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} />
+      <PatchSwitch context={patch} views={views} />
     </div>
   );
 }

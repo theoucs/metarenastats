@@ -3,6 +3,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { PatchSwitch } from "@/components/PatchSwitch";
 import { getPatchContext } from "@/lib/patches";
 import { resolveItem, itemCategory } from "@/lib/gameData";
 
@@ -16,10 +17,7 @@ const TABS = [
   { key: "prismatic", label: "Prismatic" },
 ] as const;
 
-export default async function ItemsPage() {
-  const patch = await getPatchContext();
-  const { items } = await readSnapshot("items", () => getItemStats(itemCategory), patch.defaultPatch);
-
+function toRowsByTier(items: Awaited<ReturnType<typeof getItemStats>>["items"]) {
   const rowsByTier: Record<string, StatsRow[]> = { legendary: [], prismatic: [] };
   for (const entry of items) {
     const info = resolveItem(entry.itemId);
@@ -40,16 +38,37 @@ export default async function ItemsPage() {
     };
     rowsByTier[isPrismatic ? "prismatic" : "legendary"].push(row);
   }
+  return rowsByTier;
+}
+
+export default async function ItemsPage() {
+  const patch = await getPatchContext();
+
+  const views = Object.fromEntries(
+    await Promise.all(
+      patch.options.map(async (option) => {
+        const { items } = await readSnapshot(
+          "items",
+          () => getItemStats(itemCategory),
+          option.patch,
+        );
+        return [
+          option.patch,
+          <TieredStatsTabs
+            key={option.patch}
+            tabs={TABS}
+            rowsByTier={toRowsByTier(items)}
+            display="grid"
+          />,
+        ] as const;
+      }),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <PageHeader
-        eyebrow="Tier list"
-        title="Items"
-        description="Split by rarity."
-        patch={patch}
-      />
-      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} display="grid" />
+      <PageHeader eyebrow="Tier list" title="Items" description="Split by rarity." />
+      <PatchSwitch context={patch} views={views} />
     </div>
   );
 }

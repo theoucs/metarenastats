@@ -1,37 +1,25 @@
-import type { PatchContext } from "@/lib/patches";
-
 /**
- * Le patch sur lequel une tier list est calculée.
+ * Le patch sur lequel des stats sont calculées.
  *
  * Ce n'est pas décoratif : sans lui, rien ne distingue une tier list du patch
  * courant d'une tier list périmée, alors que c'est toute la différence entre
  * une recommandation et un souvenir.
  *
- * Le cas « on affiche le patch précédent » est le seul qui mérite une phrase :
- * un visiteur qui voit 16.17 alors que 16.18 est sorti doit comprendre que
- * c'est un choix, pas un retard.
+ * Sert aux pages qui n'ont pas de sélecteur (page de champion, où le patch
+ * arrive par l'URL). Les tier lists, elles, affichent le patch à même leur
+ * sélecteur — voir PatchSwitch.
  */
-export function PatchBadge({ context }: { context: PatchContext }) {
-  if (!context.defaultPatch) return null;
-
-  const shown = context.showingPrevious ? context.previous : context.current;
-  if (!shown) return null;
-
+export function PatchBadge({ patch, matches }: { patch: string; matches?: number }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2.5 py-0.5 text-micro font-bold uppercase tracking-wide text-accent">
-        Patch {shown.patch}
+    <span className="inline-flex items-center gap-1.5">
+      <span className="rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent-muted)] px-2 py-0.5 text-micro font-bold uppercase tracking-wide text-accent">
+        Patch {patch}
       </span>
-      <span className="text-small text-muted">
-        <span className="text-secondary">{shown.matches}</span> match
-        {shown.matches === 1 ? "" : "es"} on this patch
-      </span>
-      {context.showingPrevious && context.current && (
+      {matches !== undefined && (
         <span className="text-small text-muted">
-          — {context.current.patch} just released, {context.current.matches} match
-          {context.current.matches === 1 ? "" : "es"} so far
+          {matches} match{matches === 1 ? "" : "es"}
         </span>
       )}
-    </div>
+    </span>
   );
 }

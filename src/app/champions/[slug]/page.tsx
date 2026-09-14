@@ -10,6 +10,7 @@ import {
 import { resolveChampion, resolveItem, resolveAugment, heroSplashUrl } from "@/lib/gameData";
 import { readChampionDetailSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import { getPatchContext } from "@/lib/patches";
+import { PatchBadge } from "@/components/PatchBadge";
 import {
   EntityIcon,
   top1Color,
@@ -239,20 +240,35 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
 
 export default async function ChampionDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ patch?: string }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   const champInfo = resolveChampion(slug);
   if (!champInfo) notFound();
+
+  const context = await getPatchContext();
+
+  // Cette page est déjà dynamique (elle est rendue à la demande), donc lire un
+  // paramètre d'URL ne lui coûte rien — contrairement aux tier lists, qui sont
+  // statiques et basculent côté client. Le `?patch=` vient des liens de ces
+  // tier lists : sans lui, cliquer un champion depuis une liste basculée
+  // ramènerait au patch par défaut sans prévenir.
+  const requested = query.patch;
+  const shown =
+    context.options.find((o) => o.patch === requested) ??
+    context.options.find((o) => o.patch === context.defaultPatch) ??
+    null;
+  const patch = shown ? shown.patch : context.defaultPatch;
 
   // Site-wide champion stats come along for the ride so the header can say
   // where this champion actually sits — a tier badge and "#7 of 173" is the
   // one thing a build page header can tell you that the numbers below can't.
-  const patch = await getPatchContext();
   const [detail, { champions }] = await Promise.all([
-    readChampionDetailSnapshot(slug.toLowerCase(), patch.defaultPatch),
-    readSnapshot("champions", getChampionStats, patch.defaultPatch),
+    readChampionDetailSnapshot(slug.toLowerCase(), patch),
+    readSnapshot("champions", getChampionStats, patch),
   ]);
 
   const rank = (() => {
@@ -335,15 +351,16 @@ export default async function ChampionDetailPage({
                 </h1>
                 {rank && <TierBadge tier={rank.tier} />}
               </div>
-              <p className="text-small text-secondary">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-secondary">
                 {rank ? (
-                  <>
+                  <span>
                     Rank <span className="font-mono tabular-nums text-primary">#{rank.position}</span>{" "}
                     of {rank.total} champions
-                  </>
+                  </span>
                 ) : (
-                  "Arena build summary"
+                  <span>Arena build summary</span>
                 )}
+                {patch && <PatchBadge patch={patch} matches={shown?.matches} />}
               </p>
             </div>
           </div>

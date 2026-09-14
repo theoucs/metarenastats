@@ -1,6 +1,4 @@
 import { SampleSizeBadge } from "@/components/StatsTable";
-import { PatchBadge } from "@/components/PatchBadge";
-import type { PatchContext } from "@/lib/patches";
 
 /**
  * The header block every list page opens with. Before this existed each page
@@ -15,7 +13,6 @@ export function PageHeader({
   isNew,
   description,
   totalMatches,
-  patch,
   children,
 }: {
   /** Short category label above the title — "Tier list", "Rankings", etc. */
@@ -26,10 +23,6 @@ export function PageHeader({
   description?: React.ReactNode;
   /** Renders the shared sample-size line when provided. */
   totalMatches?: number;
-  /** Renders the patch badge, and replaces the sample-size line: sur une page
-   *  filtrée par patch, « N matchs suivis » induirait en erreur puisque le
-   *  chiffre affiché ne couvre que ce patch. */
-  patch?: PatchContext;
   /** Extra notes under the description (caveats, cross-links). */
   children?: React.ReactNode;
 }) {
@@ -48,16 +41,10 @@ export function PageHeader({
       </div>
       {description && <p className="mt-2 max-w-2xl text-secondary">{description}</p>}
       {children}
-      {patch ? (
+      {totalMatches !== undefined && (
         <div className="mt-4">
-          <PatchBadge context={patch} />
+          <SampleSizeBadge totalMatches={totalMatches} />
         </div>
-      ) : (
-        totalMatches !== undefined && (
-          <div className="mt-4">
-            <SampleSizeBadge totalMatches={totalMatches} />
-          </div>
-        )
       )}
     </header>
   );

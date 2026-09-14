@@ -337,6 +337,7 @@ function DataRow({
   variant,
   tierMap,
   linkPrefix,
+  linkSuffix,
   maxTop3,
   maxTop1,
   bestPlacement,
@@ -349,6 +350,7 @@ function DataRow({
   variant: "tiers" | "ranked";
   tierMap: Map<string, TierInfo>;
   linkPrefix?: string;
+  linkSuffix?: string;
   maxTop3: number;
   maxTop1: number;
   bestPlacement: number;
@@ -383,7 +385,7 @@ function DataRow({
       )}
       <td className={`${cellX} py-1.5`}>
         {linkPrefix ? (
-          <Link href={`${linkPrefix}${row.key}`} className="flex items-center gap-2.5 hover:underline">
+          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex items-center gap-2.5 hover:underline">
             <NameCellContent row={row} />
           </Link>
         ) : (
@@ -447,6 +449,7 @@ function MobileCard({
   variant,
   tierInfo,
   linkPrefix,
+  linkSuffix,
   bestPlacement,
   worstPlacement,
   playRateLabel,
@@ -460,6 +463,7 @@ function MobileCard({
    *  shown, since the band right above already says the letter. */
   hideTierBadge: boolean;
   linkPrefix?: string;
+  linkSuffix?: string;
   bestPlacement: number;
   worstPlacement: number;
   playRateLabel: string;
@@ -513,7 +517,7 @@ function MobileCard({
           {variant === "ranked" ? <RankCell rank={rank + 1} /> : rank + 1}
         </span>
         {linkPrefix ? (
-          <Link href={`${linkPrefix}${row.key}`} className="flex min-w-0 flex-1">
+          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex min-w-0 flex-1">
             {heading}
           </Link>
         ) : (
@@ -567,6 +571,7 @@ export function StatsTable({
   rows,
   variant = "tiers",
   linkPrefix,
+  linkSuffix,
   playRateLabel = "% Played",
   compact = false,
 }: {
@@ -574,6 +579,10 @@ export function StatsTable({
   variant?: "tiers" | "ranked";
   /** When set, the name cell links to `${linkPrefix}${row.key}` — used for Champions -> champion detail page. */
   linkPrefix?: string;
+  /** Ajouté tel quel après la clé. Sert à emmener le patch sélectionné sur la
+   *  page de destination (« ?patch=16.18 ») : sans lui, cliquer un champion
+   *  depuis une tier list basculée ramènerait au patch par défaut. */
+  linkSuffix?: string;
   /** Column/sort label for `playRate` — its meaning (and denominator) varies by page. */
   playRateLabel?: string;
   /** For a narrow sidebar column (the player page's Top Champions sits in a
@@ -687,6 +696,7 @@ export function StatsTable({
                   variant={variant}
                   tierInfo={variant === "tiers" ? tierMap.get(row.key) : undefined}
                   linkPrefix={linkPrefix}
+                  linkSuffix={linkSuffix}
                   bestPlacement={bestPlacement}
                   worstPlacement={worstPlacement}
                   playRateLabel={playRateLabel}
@@ -751,6 +761,7 @@ export function StatsTable({
                     variant={variant}
                     tierMap={tierMap}
                     linkPrefix={linkPrefix}
+                    linkSuffix={linkSuffix}
                     maxTop3={maxTop3}
                     maxTop1={maxTop1}
                     bestPlacement={bestPlacement}

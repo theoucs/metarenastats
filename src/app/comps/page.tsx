@@ -4,6 +4,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs, type StatsTab } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { PatchSwitch } from "@/components/PatchSwitch";
 import { getPatchContext } from "@/lib/patches";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { championRole } from "@/lib/gameData";
@@ -26,22 +27,70 @@ const n = (value: number) => value.toLocaleString("en-US");
 
 export default async function CompsPage() {
   const patch = await getPatchContext();
-  const { totalTeams, archetypes, coverage } = await readSnapshot(
-    "comps",
-    () => getCompStats(championRole),
-    patch.defaultPatch,
-  );
 
-  const rows: StatsRow[] = archetypes.map((a) => ({
-    key: a.roles.join("-"),
-    name: a.roles.join(" · "),
-    roles: a.roles,
-    games: a.games,
-    top3Rate: a.top3Rate,
-    top1Rate: a.top1Rate,
-    avgPlacement: a.avgPlacement,
-    playRate: a.playRate,
-  }));
+  // La note de couverture bascule avec le tableau : ses chiffres (équipes
+  // suivies, trios distincts) sont propres au patch, donc la laisser dans
+  // l'en-tête afficherait les chiffres d'un patch sous le tableau d'un autre.
+  const views = Object.fromEntries(
+    await Promise.all(
+      patch.options.map(async (option) => {
+        const { totalTeams, archetypes, coverage } = await readSnapshot(
+          "comps",
+          () => getCompStats(championRole),
+          option.patch,
+        );
+
+        const rows: StatsRow[] = archetypes.map((a) => ({
+          key: a.roles.join("-"),
+          name: a.roles.join(" · "),
+          roles: a.roles,
+          games: a.games,
+          top3Rate: a.top3Rate,
+          top1Rate: a.top1Rate,
+          avgPlacement: a.avgPlacement,
+          playRate: a.playRate,
+        }));
+
+        return [
+          option.patch,
+          <div key={option.patch}>
+            <ShowMoreNote>
+              <p className="max-w-2xl text-small text-muted">
+                Comps are grouped by champion class, because naming specific champions doesn&apos;t
+                work yet: across <span className="text-secondary">{n(totalTeams)}</span> tracked
+                teams there are <span className="text-secondary">{n(coverage.trios.distinct)}</span>{" "}
+                distinct trios, and only{" "}
+                <span className="text-secondary">{n(coverage.trios.repeated)}</span> have been seen
+                more than once. Specific duos aren&apos;t much better —{" "}
+                <span className="text-secondary">{n(coverage.duos.usable)}</span> of{" "}
+                <span className="text-secondary">{n(coverage.duos.distinct)}</span> pairings clear 8
+                games. Both tabs unlock once the sample supports them — ranking either one today
+                would be noise with a tier badge on it.
+              </p>
+              <p className="mt-1.5 max-w-2xl text-small text-muted">
+                A comp needs 20 teams to be listed. Tiers here ignore how often a shape turns up —
+                with 50 of 173 champions classed as Fighters, that measures the roster, not the comp.{" "}
+                <Link href="/info" className="text-accent hover:underline">
+                  How tiers are calculated
+                </Link>
+                .
+              </p>
+            </ShowMoreNote>
+
+            {/* gamesBonus off — see the note above and TierOptions. */}
+            <TieredStatsTabs
+              tabs={TABS}
+              rowsByTier={{ archetypes: rows }}
+              display="grid"
+              playRateLabel="% of Teams"
+              unitLabel="teams"
+              gamesBonus={false}
+            />
+          </div>,
+        ] as const;
+      }),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -49,40 +98,8 @@ export default async function CompsPage() {
         eyebrow="Tier list"
         title="Team Comps"
         description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
-        patch={patch}
-      >
-        <ShowMoreNote>
-          <p className="max-w-2xl text-small text-muted">
-            Comps are grouped by champion class, because naming specific champions doesn&apos;t work
-            yet: across <span className="text-secondary">{n(totalTeams)}</span> tracked teams there are{" "}
-            <span className="text-secondary">{n(coverage.trios.distinct)}</span> distinct trios, and
-            only <span className="text-secondary">{n(coverage.trios.repeated)}</span> have been seen
-            more than once. Specific duos aren&apos;t much better —{" "}
-            <span className="text-secondary">{n(coverage.duos.usable)}</span> of{" "}
-            <span className="text-secondary">{n(coverage.duos.distinct)}</span> pairings clear 8 games.
-            Both tabs unlock once the sample supports them — ranking either one today would be noise
-            with a tier badge on it.
-          </p>
-          <p className="mt-1.5 max-w-2xl text-small text-muted">
-            A comp needs 20 teams to be listed. Tiers here ignore how often a shape turns up — with 50
-            of 173 champions classed as Fighters, that measures the roster, not the comp.{" "}
-            <Link href="/info" className="text-accent hover:underline">
-              How tiers are calculated
-            </Link>
-            .
-          </p>
-        </ShowMoreNote>
-      </PageHeader>
-
-      {/* gamesBonus off — see the note above and TierOptions. */}
-      <TieredStatsTabs
-        tabs={TABS}
-        rowsByTier={{ archetypes: rows }}
-        display="grid"
-        playRateLabel="% of Teams"
-        unitLabel="teams"
-        gamesBonus={false}
       />
+      <PatchSwitch context={patch} views={views} />
     </div>
   );
 }

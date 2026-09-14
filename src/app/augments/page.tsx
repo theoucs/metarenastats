@@ -3,6 +3,7 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
+import { PatchSwitch } from "@/components/PatchSwitch";
 import { getPatchContext } from "@/lib/patches";
 import { ShowMoreNote } from "@/components/ShowMoreNote";
 import { resolveAugment } from "@/lib/gameData";
@@ -18,18 +19,15 @@ const TABS = [
   { key: "silver", label: "Silver" },
 ] as const;
 
-export default async function AugmentsPage() {
-  const patch = await getPatchContext();
-  const [{ augments }, timing] = await Promise.all([
-    readSnapshot("augments", getAugmentStats, patch.defaultPatch),
-    readSnapshot("augmentTiming", getAugmentTimingStats, patch.defaultPatch),
-  ]);
-
+function toRowsByTier(
+  augments: Awaited<ReturnType<typeof getAugmentStats>>["augments"],
+  timing: Awaited<ReturnType<typeof getAugmentTimingStats>>,
+) {
   const timingById = new Map(
     timing.augments.map((entry) => [
       entry.augmentId,
       { swing: entry.swing, rates: entry.slots.map((s) => s.top3Rate) },
-    ])
+    ]),
   );
 
   const rowsByTier: Record<string, StatsRow[]> = { silver: [], gold: [], prismatic: [] };
@@ -51,15 +49,35 @@ export default async function AugmentsPage() {
     };
     (rowsByTier[tier] ??= []).push(row);
   }
+  return rowsByTier;
+}
+
+export default async function AugmentsPage() {
+  const patch = await getPatchContext();
+
+  const views = Object.fromEntries(
+    await Promise.all(
+      patch.options.map(async (option) => {
+        const [{ augments }, timing] = await Promise.all([
+          readSnapshot("augments", getAugmentStats, option.patch),
+          readSnapshot("augmentTiming", getAugmentTimingStats, option.patch),
+        ]);
+        return [
+          option.patch,
+          <TieredStatsTabs
+            key={option.patch}
+            tabs={TABS}
+            rowsByTier={toRowsByTier(augments, timing)}
+            display="grid"
+          />,
+        ] as const;
+      }),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-      <PageHeader
-        eyebrow="Tier list"
-        title="Augments"
-        description="Split by rarity."
-        patch={patch}
-      >
+      <PageHeader eyebrow="Tier list" title="Augments" description="Split by rarity.">
         <ShowMoreNote>
           <p className="max-w-2xl text-small text-muted">
             Sort by <span className="text-secondary">Better early</span> or{" "}
@@ -70,7 +88,7 @@ export default async function AugmentsPage() {
           </p>
         </ShowMoreNote>
       </PageHeader>
-      <TieredStatsTabs tabs={TABS} rowsByTier={rowsByTier} display="grid" />
+      <PatchSwitch context={patch} views={views} />
     </div>
   );
 }

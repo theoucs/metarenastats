@@ -20,6 +20,7 @@ export function TieredStatsTabs({
   tabs,
   rowsByTier,
   linkPrefix,
+  linkSuffix,
   playRateLabel,
   defaultTab,
   display = "table",
@@ -29,6 +30,7 @@ export function TieredStatsTabs({
   tabs: readonly StatsTab[];
   rowsByTier: Record<string, StatsRow[]>;
   linkPrefix?: string;
+  linkSuffix?: string;
   playRateLabel?: string;
   /** Which tab key is active initially — defaults to the first enabled tab. */
   defaultTab?: string;
@@ -94,6 +96,7 @@ export function TieredStatsTabs({
         <StatsTable
           rows={rowsByTier[active] ?? []}
           linkPrefix={linkPrefix}
+          linkSuffix={linkSuffix}
           playRateLabel={playRateLabel}
         />
       )}
