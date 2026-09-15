@@ -136,6 +136,10 @@ export type RefreshReport = {
   patches: { patch: string; matches: number; participants: number }[];
   /** Le classement recalculé en même temps (voir lib/playerRatings.ts). */
   rated: number;
+  /** Millisecondes par phase. Permanent et non temporaire : ce job vit sous une
+   *  limite dure de 300 s, et savoir CE QUI coûte est la seule façon de décider
+   *  quoi alléger quand il s'en approche. */
+  timings: Record<string, number>;
 };
 
 /**
@@ -197,19 +201,29 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   const db = supabaseAdmin;
   if (!db) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
 
-  const context = await getPatchContext();
+  const timings: Record<string, number> = {};
+  const clock = async <T,>(label: string, run: () => Promise<T>): Promise<T> => {
+    const at = Date.now();
+    const value = await run();
+    timings[label] = (timings[label] ?? 0) + (Date.now() - at);
+    return value;
+  };
+
+  const context = await clock("patchContext", () => getPatchContext());
 
   // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
-  const rating = await refreshPlayerRatings();
+  const rating = await clock("mmr", () => refreshPlayerRatings());
   console.log(
     `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
   );
-  const promoted = await promoteTrackedPlayers();
+  const promoted = await clock("promote", () => promoteTrackedPlayers());
   if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
 
   // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
   // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
-  const [site, leaderboard] = await Promise.all([getSiteStats(), getLeaderboardStats()]);
+  const [site, leaderboard] = await clock("siteEtClassement", () =>
+    Promise.all([getSiteStats(), getLeaderboardStats()]),
+  );
   const snapshots: SnapshotRow[] = [
     { key: SNAPSHOT_KEYS.site, payload: site },
     { key: SNAPSHOT_KEYS.leaderboard, payload: leaderboard },
@@ -222,11 +236,14 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   // Séquentiel et non parallèle : deux patchs en parallèle, ce sont deux
   // lectures complètes simultanées en mémoire, pour un job qui a tout son temps.
   for (const option of context.options) {
-    const set = await readParticipantSetForPatch(option.patch);
+    const set = await clock("lectureParticipants", () =>
+      readParticipantSetForPatch(option.patch),
+    );
     truncated = truncated || set.truncated;
     totalParticipants += set.rows.length;
 
-    const patchSnapshots = await withParticipantSet(set, async () => {
+    const patchSnapshots = await clock("agregation", () =>
+      withParticipantSet(set, async () => {
       const [champions, anvil, items, augments, augmentTiming, comps, combos] = await Promise.all([
         getChampionStats(),
         getAnvilChampionStats(itemCategory),
@@ -261,7 +278,8 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       );
       rows.push(...details.filter((r) => r.payload !== null));
       return rows;
-    });
+      }),
+    );
 
     snapshots.push(...patchSnapshots);
     published.push({
@@ -274,16 +292,18 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   const bytes = snapshots.reduce((n, r) => n + JSON.stringify(r.payload).length, 0);
   const computedAt = new Date().toISOString();
 
-  const { error } = await db.from("stats_snapshots").upsert(
-    snapshots.map((r) => ({
-      key: r.key,
-      payload: r.payload,
-      computed_at: computedAt,
-      source_matches: site.totalMatches,
-      source_participants: totalParticipants,
-      truncated,
-    })),
-    { onConflict: "key" },
+  const { error } = await clock("ecriture", async () =>
+    db.from("stats_snapshots").upsert(
+      snapshots.map((r) => ({
+        key: r.key,
+        payload: r.payload,
+        computed_at: computedAt,
+        source_matches: site.totalMatches,
+        source_participants: totalParticipants,
+        truncated,
+      })),
+      { onConflict: "key" },
+    ),
   );
   if (error) throw error;
 
@@ -295,10 +315,12 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   // mais qui pèsent, et surtout qui pourraient resservir de repli périmé le
   // jour où une clé serait relue par erreur.
   const written = snapshots.map((r) => r.key);
-  const { error: pruneError, count: pruned } = await db
-    .from("stats_snapshots")
-    .delete({ count: "exact" })
-    .not("key", "in", `(${written.map((k) => `"${k}"`).join(",")})`);
+  const { error: pruneError, count: pruned } = await clock("menage", async () =>
+    db
+      .from("stats_snapshots")
+      .delete({ count: "exact" })
+      .not("key", "in", `(${written.map((k) => `"${k}"`).join(",")})`),
+  );
   if (pruneError) throw pruneError;
   if (pruned) console.log(`[stats] ${pruned} snapshot(s) périmé(s) supprimé(s)`);
 
@@ -312,5 +334,6 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     bytes,
     patches: published,
     rated: rating.rated,
+    timings,
   };
 }
