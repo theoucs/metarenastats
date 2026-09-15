@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { TOP3_PLACEMENT_THRESHOLD } from "@/lib/aggregate";
 import {
   RATING_MIN_GAMES,
   type Rating,
@@ -88,13 +89,30 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   const ratings: Rating[] = [];
   const at = (idx: number) => (ratings[idx] ??= newRating());
 
+  // Les compteurs du classement, accumulés dans la MÊME passe.
+  //
+  // Ils étaient recalculés à la lecture par une jointure sur les participations,
+  // qui réévaluait l'exclusion AFK pour chacune : 1,1 s pour 50 joueurs. Or
+  // cette boucle voit déjà chaque participation avec son placement — les
+  // compter ici ne coûte rien, et garantit qu'ils portent exactement sur le
+  // même échantillon que le rang.
+  const counters: { games: number; top3: number; top1: number; sum: number }[] = [];
+  const countFor = (idx: number) => (counters[idx] ??= { games: 0, top3: 0, top1: 0, sum: 0 });
+
   for (const match of matches) {
     // Les trois tableaux sont alignés (même ordre d'agrégation côté SQL).
     const teams = new Map<number, { players: number[]; placement: number }>();
     for (let i = 0; i < match.players.length; i++) {
+      const placement = match.placements[i];
+      const c = countFor(match.players[i]);
+      c.games++;
+      c.sum += placement;
+      if (placement <= TOP3_PLACEMENT_THRESHOLD) c.top3++;
+      if (placement === 1) c.top1++;
+
       const team = teams.get(match.subteams[i]);
       if (team) team.players.push(match.players[i]);
-      else teams.set(match.subteams[i], { players: [match.players[i]], placement: match.placements[i] });
+      else teams.set(match.subteams[i], { players: [match.players[i]], placement });
     }
     if (teams.size < 2) continue;
 
@@ -134,6 +152,9 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
     puuid: entry.puuid,
     riot_id: entry.riot_id,
     games: Number(entry.games),
+    top3_wins: countFor(entry.player_idx).top3,
+    top1_wins: countFor(entry.player_idx).top1,
+    placement_sum: countFor(entry.player_idx).sum,
     mu: entry.rating.mu,
     sigma: entry.rating.sigma,
     rank_position: i + 1,

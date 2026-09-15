@@ -5,6 +5,9 @@ import { computeTiers } from "@/lib/tiers";
 import { augmentCategory } from "@/lib/gameData";
 
 export type ParticipantRow = {
+  /** Curseur de pagination (voir readParticipantSet), jamais lu par les
+   *  agrégateurs eux-mêmes. */
+  id: number;
   match_id: string;
   subteam_id: number;
   champion: string;
@@ -92,11 +95,11 @@ const MAX_PAGES = 500;
  * pas, contrairement au reste.
  *
  * Or un seul agrégateur en avait besoin, le classement, qui est désormais
- * calculé dans Postgres (fonction `leaderboard_stats`). Ce qui reste ici est ce
+ * calculé dans Postgres (fonction `leaderboard_top`). Ce qui reste ici est ce
  * dont le calcul JS a vraiment besoin : **31 o par ligne, 3,5× moins**.
  */
 const PARTICIPANT_COLUMNS =
-  "match_id, subteam_id, champion, placement, augments, items, item_order";
+  "id, match_id, subteam_id, champion, placement, augments, items, item_order";
 
 /**
  * La vue `participants_clean` plutôt que la table brute.
@@ -132,14 +135,14 @@ const PARTICIPANT_SOURCE = "participants_clean";
  * Le passage à une vue avec jointure l'a révélé immédiatement : 2 051 matchs
  * agrégés au lieu de 2 087, et des chiffres faux sur 172 champions sur 173.
  */
-function fetchParticipantPage(page: number, patch: string | null) {
+function fetchParticipantPage(afterId: number, patch: string | null) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
-  const from = page * PAGE_SIZE;
   let query = supabaseAdmin
     .from(PARTICIPANT_SOURCE)
     .select(PARTICIPANT_COLUMNS)
     .order("id", { ascending: true })
-    .range(from, from + PAGE_SIZE - 1);
+    .gt("id", afterId)
+    .limit(PAGE_SIZE);
   // Le filtre part en SQL : on ne lit que les lignes du patch demandé au lieu
   // de tout charger pour trier ensuite. Découper par patch coûte donc moins
   // d'egress qu'avant, pas plus. `patch` n'est jamais dans les colonnes
@@ -195,26 +198,41 @@ const readParticipantSet = cache(async function readParticipantSet(
 ): Promise<ParticipantSet> {
   if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
 
-  const countQuery = supabaseAdmin.from(PARTICIPANT_SOURCE).select("*", { count: "exact", head: true });
-  const { count, error } = await (patch ? countQuery.eq("patch", patch) : countQuery);
-  if (error) throw error;
-
-  const totalRows = count ?? 0;
-  const neededPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const pageCount = Math.min(neededPages, MAX_PAGES);
-  const truncated = neededPages > MAX_PAGES;
+  // Pagination PAR CLÉ, et non par offset.
+  //
+  // `.range(60000, 60999)` oblige Postgres à parcourir puis jeter les 60 000
+  // lignes précédentes — le coût d'une page croît avec sa profondeur. Mesuré au
+  // 2026-09-15 sur 65 000 lignes : 1,42 s pour la page 60 en offset contre
+  // 0,21 s par clé, et constant. Et comme ces pages partaient toutes EN
+  // PARALLÈLE, la base recevait 65 parcours complets d'un coup : le job de
+  // publication dépassait le délai maximum et le site ne se mettait plus à jour.
+  //
+  // Par clé, chaque page est un parcours d'index borné. La lecture redevient
+  // séquentielle — on a besoin du dernier `id` pour demander le suivant — mais
+  // chaque requête est si courte que le total est plus rapide qu'en parallèle,
+  // sans saturer la base.
+  const rows: ParticipantRow[] = [];
+  let afterId = 0;
+  let pages = 0;
+  for (; pages < MAX_PAGES; pages++) {
+    const page = await fetchParticipantPage(afterId, patch);
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    afterId = page[page.length - 1].id;
+  }
+  const truncated = pages >= MAX_PAGES;
 
   if (truncated) {
     console.error(
-      `[aggregate] TRONCATURE : ${totalRows} lignes en base, seules ${MAX_PAGES * PAGE_SIZE} ont été lues. ` +
+      `[aggregate] TRONCATURE : lecture arrêtée à ${MAX_PAGES * PAGE_SIZE} lignes. ` +
         `Les stats calculées sont partielles — il faut passer l'agrégation en SQL (phase 3 du plan).`,
     );
   }
 
-  const pages = await Promise.all(
-    Array.from({ length: pageCount }, (_, page) => fetchParticipantPage(page, patch)),
-  );
-  return { rows: dropExcludedAugments(pages.flat()), totalRows, truncated };
+  // `totalRows` vaut ce qu'on a lu : le comptage exact qui le fournissait
+  // coûtait jusqu'à 8 s sur la vue (anti-jointure AFK sur chaque ligne) pour
+  // une information que la lecture donne gratuitement.
+  return { rows: dropExcludedAugments(rows), totalRows: rows.length, truncated };
 });
 
 export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
@@ -369,18 +387,15 @@ export async function getAugmentStats() {
 }
 
 /**
- * Parties minimum pour figurer au classement.
+ * Le seuil de parties minimum ne vit plus ici : `player_ratings` ne contient
+ * que des joueurs déjà au-dessus de RATING_MIN_GAMES (voir lib/rating.ts), et
+ * cette table est désormais la source du classement. Le garder en double ici
+ * aurait donné deux seuils à changer pour un seul réglage.
  *
- * Mesuré le 2026-09-14 : **14 131 des 17 588 joueurs suivis n'avaient qu'une
- * seule partie**. À une partie on fait 0 % ou 100 % de top 3 — ces lignes ne
- * classent personne, elles ne font que peser : le snapshot du classement
- * atteignait 3,6 Mo, plus qu'une lecture complète de la base, relu à chaque
- * régénération de la page.
- *
- * 5 est un point de départ assumé, pas une méthodologie (voir /info : le vrai
- * classement reste à concevoir, phase 4 du plan). Une seule ligne à changer.
+ * Il reste indispensable : mesuré le 2026-09-14, 14 131 des 17 588 joueurs
+ * suivis n'avaient qu'une seule partie. À une partie on fait 0 % ou 100 % de
+ * top 3 — ces lignes ne classent personne, elles ne font que peser.
  */
-const LEADERBOARD_MIN_GAMES = 5;
 
 type LeaderboardRpcRow = {
   puuid: string;
@@ -389,67 +404,68 @@ type LeaderboardRpcRow = {
   top3_wins: number;
   top1_wins: number;
   placement_sum: number;
+  rank_position: number;
+  tier: string;
 };
 
+/** Combien de joueurs le classement publie.
+ *
+ *  Un plafond DÉCIDÉ, et non plus subi : la page rend chaque ligne dans son
+ *  HTML, à ~276 octets de JSON par joueur. Publier les 8 467 classés ferait un
+ *  snapshot de 2,3 Mo et une page bien plus lourde — qui grossirait chaque
+ *  jour. Au-delà du millième, personne ne parcourt un classement : on y cherche
+ *  quelqu'un, et la page joueur donne le rang exact de n'importe qui. */
+export const LEADERBOARD_MAX_ROWS = 1000;
+
 /**
- * Classement, agrégé par Postgres (`leaderboard_stats`).
+ * Le haut du classement, trié et borné par Postgres (`leaderboard_top`).
  *
  * Seul agrégateur à avoir besoin de `puuid`/`riot_id`, les deux colonnes les
  * plus lourdes de la table — d'où ce chemin distinct, qui les laisse en base.
- * Le calcul lui-même ne change pas : la fonction SQL renvoie les compteurs
- * bruts et `toStat` les met en forme comme pour tous les autres tableaux.
+ *
+ * Le tri et la coupe se font EN SQL, pas ici. La version précédente lisait les
+ * stats et les rangs par deux requêtes séparées puis les recollait en mémoire :
+ * PostgREST plafonnait chacune à 1 000 lignes sans le dire, et l'intersection
+ * de deux échantillons arbitraires de 8 467 joueurs ne contenait presque
+ * personne. La page affichait 1 000 joueurs dont 775 sans rang, et 112
+ * seulement du vrai top 1 000. Trier en mémoire ne rattrape jamais ce qu'une
+ * lecture tronquée n'a pas rapporté.
  */
 export async function getLeaderboardStats() {
-  if (!supabaseAdmin) return { totalMatches: 0, players: [] };
+  if (!supabaseAdmin) return { totalMatches: 0, players: [], totalRanked: 0 };
 
-  // Le classement (rang + palier) est calculé à part, dans lib/playerRatings.ts,
-  // et lu ici : il demande de rejouer toute l'histoire dans l'ordre, ce qu'une
-  // fonction SQL d'agrégation ne sait pas faire.
-  const [{ totalMatches }, { data, error }, { data: ranks, error: rankError }] = await Promise.all([
+  const [{ totalMatches }, { data, error }, { count, error: countError }] = await Promise.all([
     getSiteStats(),
-    supabaseAdmin.rpc("leaderboard_stats", { min_games: LEADERBOARD_MIN_GAMES }),
-    supabaseAdmin.from("player_ratings").select("puuid, tier, rank_position"),
+    supabaseAdmin
+      .rpc("leaderboard_top", { max_rows: LEADERBOARD_MAX_ROWS })
+      // Explicite, pour que la borne vienne du code et pas d'un réglage serveur
+      // qu'on découvre le jour où la base le dépasse.
+      .range(0, LEADERBOARD_MAX_ROWS - 1),
+    // Le total sert à dire « top 1 000 sur 8 467 » : un rang ne se lit pas sans
+    // savoir sur combien.
+    supabaseAdmin.from("player_ratings").select("puuid", { count: "exact", head: true }),
   ]);
   if (error) throw error;
-  if (rankError) throw rankError;
+  if (countError) throw countError;
 
-  const rankByPuuid = new Map(
-    ((ranks ?? []) as { puuid: string; tier: string; rank_position: number }[]).map((r) => [
-      r.puuid,
-      r,
-    ]),
-  );
+  // Déjà trié par `rank_position` côté SQL : aucun tri à refaire ici.
+  const players = ((data ?? []) as LeaderboardRpcRow[]).map((r) => ({
+    puuid: r.puuid,
+    riotId: r.riot_id,
+    tier: r.tier,
+    position: r.rank_position,
+    ...toStat(
+      {
+        games: Number(r.games),
+        top3Wins: Number(r.top3_wins),
+        top1Wins: Number(r.top1_wins),
+        placementSum: Number(r.placement_sum),
+      },
+      totalMatches,
+    ),
+  }));
 
-  const players = ((data ?? []) as LeaderboardRpcRow[])
-    .map((r) => {
-      const rank = rankByPuuid.get(r.puuid);
-      return {
-        puuid: r.puuid,
-        riotId: r.riot_id,
-        tier: rank?.tier ?? null,
-        position: rank?.rank_position ?? null,
-        ...toStat(
-          {
-            games: Number(r.games),
-            top3Wins: Number(r.top3_wins),
-            top1Wins: Number(r.top1_wins),
-            placementSum: Number(r.placement_sum),
-          },
-          totalMatches,
-        ),
-      };
-    })
-    // Le rang d'abord. Un joueur sans rang ne devrait pas exister ici (même
-    // seuil, même source), mais s'il en apparaît un, il passe en fin de liste
-    // plutôt qu'en tête d'un classement où il n'a rien à faire.
-    .sort(
-      (a, b) =>
-        (a.position ?? Infinity) - (b.position ?? Infinity) ||
-        b.top3Rate - a.top3Rate ||
-        b.games - a.games,
-    );
-
-  return { totalMatches, players };
+  return { totalMatches, players, totalRanked: count ?? players.length };
 }
 
 export type PlayerChampionStat = { champion: string } & Stat;

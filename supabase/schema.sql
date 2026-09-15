@@ -266,35 +266,54 @@ grant execute on function site_totals() to service_role;
 --
 -- Renvoie les compteurs bruts, pas des pourcentages : la mise en forme (toStat)
 -- reste côté app, au même endroit que pour tous les autres tableaux.
-create or replace function leaderboard_stats(min_games integer)
+-- Le haut du classement, trié et borné EN SQL.
+--
+-- La version précédente rendait les compteurs bruts sans ordre ni limite, et
+-- l'application recollait ensuite les rangs lus séparément. Les deux lectures
+-- étaient plafonnées en silence à 1 000 lignes par PostgREST : sur 8 467
+-- joueurs classés, la page affichait 1 000 joueurs arbitraires dont 775 sans
+-- aucun rang, et 112 seulement du vrai top 1 000. Un tri en mémoire ne rattrape
+-- jamais ce qu'une lecture tronquée n'a pas rapporté — d'où le tri ET la coupe
+-- ramenés là où sont les données.
+--
+-- Le seuil de parties n'est plus un paramètre : player_ratings ne contient que
+-- des joueurs déjà au-dessus (voir lib/rating.ts).
+create or replace function leaderboard_top(max_rows integer)
 returns table (
   puuid text,
   riot_id text,
   games bigint,
   top3_wins bigint,
   top1_wins bigint,
-  placement_sum bigint
+  placement_sum bigint,
+  rank_position integer,
+  tier text
 )
 language sql
 stable
 as $$
+  with top as (
+    select r.puuid, r.riot_id, r.rank_position, r.tier
+    from player_ratings r
+    order by r.rank_position
+    limit max_rows
+  )
   select
-    p.puuid,
-    -- Le pseudo le plus récent : un joueur qui se renomme doit apparaître sous
-    -- son nom actuel. (Le calcul JS retenait la dernière ligne lue, donc un
-    -- ordre arbitraire.)
-    (array_agg(p.riot_id order by m.game_creation desc))[1] as riot_id,
-    count(*) as games,
-    count(*) filter (where p.placement <= 3) as top3_wins,
-    count(*) filter (where p.placement = 1) as top1_wins,
-    sum(p.placement) as placement_sum
-  from participants_clean p
-  join matches m on m.match_id = p.match_id
-  group by p.puuid
-  having count(*) >= min_games
+    top.puuid,
+    top.riot_id,
+    count(p.*) as games,
+    count(p.*) filter (where p.placement <= 3) as top3_wins,
+    count(p.*) filter (where p.placement = 1) as top1_wins,
+    sum(p.placement) as placement_sum,
+    top.rank_position,
+    top.tier
+  from top
+  join participants_clean p on p.puuid = top.puuid
+  group by top.puuid, top.riot_id, top.rank_position, top.tier
+  order by top.rank_position
 $$;
 
-grant execute on function leaderboard_stats(integer) to service_role;
+grant execute on function leaderboard_top(integer) to service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Classement des joueurs par MMR (2026-09-14)
@@ -374,6 +393,12 @@ create table if not exists player_ratings (
   puuid text primary key,
   riot_id text not null,
   games integer not null,
+  -- Compteurs du classement, accumulés par la passe de MMR qui parcourt déjà
+  -- toutes les participations. Les recalculer à la lecture coûtait 1,1 s pour
+  -- 50 joueurs (jointure + réévaluation de l'exclusion AFK ligne à ligne).
+  top3_wins integer not null default 0,
+  top1_wins integer not null default 0,
+  placement_sum integer not null default 0,
   mu double precision not null,
   sigma double precision not null,
   rank_position integer not null,
