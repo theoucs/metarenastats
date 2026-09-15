@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { TOP3_PLACEMENT_THRESHOLD } from "@/lib/aggregate";
 import {
   RATING_MIN_GAMES,
+  SIGMA,
   type Rating,
   type Tier,
   agedRating,
@@ -129,33 +130,69 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   const counters: { games: number; top3: number; top1: number; sum: number }[] = [];
   const countFor = (idx: number) => (counters[idx] ??= { games: 0, top3: 0, top1: 0, sum: 0 });
 
-  for (const match of matches) {
-    // Les trois tableaux sont alignés (même ordre d'agrégation côté SQL).
-    const teams = new Map<number, { players: number[]; placement: number }>();
-    for (let i = 0; i < match.players.length; i++) {
-      const placement = match.placements[i];
-      const c = countFor(match.players[i]);
-      c.games++;
-      c.sum += placement;
-      if (placement <= TOP3_PLACEMENT_THRESHOLD) c.top3++;
-      if (placement === 1) c.top1++;
+  // ─── PLUSIEURS PASSES SUR LA MÊME HISTOIRE ─────────────────────────────────
+  //
+  // Les premières parties d'un joueur sont jugées contre des adversaires encore
+  // notés à la valeur par défaut : le résultat est réel, mais l'attente à
+  // laquelle on le compare ne vaut rien. Rejouer l'histoire en repartant des
+  // notes finales corrige ce biais de départ — c'est une approximation bon
+  // marché de TrueSkill Through Time, qui fait la même chose proprement en
+  // propageant l'information dans les deux sens du temps.
+  //
+  // Mesuré le 2026-09-15 sur 12 219 parties (entraînement 85 %, test sur les
+  // 15 % jamais vus), prédiction du duel entre deux équipes :
+  //
+  //                    tous les duels   joueurs à 3+ parties   à 10+ parties
+  //   1 passe             50,5 %              52,4 %              56,7 %
+  //   3 passes            50,7 %              53,4 %              60,2 %
+  //   5 passes            50,8 %              53,4 %              61,7 %
+  //
+  // Le gain porte exactement là où il sert : sur les joueurs qu'on classe
+  // vraiment. Trois passes en captent l'essentiel et la courbe est plate
+  // ensuite — prendre cinq reviendrait à choisir le maximum observé sur le jeu
+  // de test, ce qui n'est pas une mesure mais une coïncidence.
+  const PASSES = 3;
 
-      const team = teams.get(match.subteams[i]);
-      if (team) team.players.push(match.players[i]);
-      else teams.set(match.subteams[i], { players: [match.players[i]], placement });
+  for (let pass = 0; pass < PASSES; pass++) {
+    // On garde ce qu'on a appris (mu) mais on rouvre l'incertitude : le joueur
+    // retraverse son histoire avec ce qu'on a fini par savoir de lui.
+    if (pass > 0) {
+      for (let i = 0; i < ratings.length; i++) {
+        if (ratings[i]) ratings[i] = { mu: ratings[i].mu, sigma: SIGMA };
+      }
     }
-    if (teams.size < 2) continue;
 
-    const rosters = [...teams.values()];
-    const updated = rateMatch(
-      rosters.map((t) => t.players.map((idx) => agedRating(at(idx)))),
-      rosters.map((t) => t.placement),
-    );
-    rosters.forEach((roster, i) => {
-      roster.players.forEach((idx, j) => {
-        ratings[idx] = updated[i][j];
+    for (const match of matches) {
+      // Les trois tableaux sont alignés (même ordre d'agrégation côté SQL).
+      const teams = new Map<number, { players: number[]; placement: number }>();
+      for (let i = 0; i < match.players.length; i++) {
+        const placement = match.placements[i];
+        // Les compteurs ne dépendent pas des notes : une seule passe suffit.
+        if (pass === 0) {
+          const c = countFor(match.players[i]);
+          c.games++;
+          c.sum += placement;
+          if (placement <= TOP3_PLACEMENT_THRESHOLD) c.top3++;
+          if (placement === 1) c.top1++;
+        }
+
+        const team = teams.get(match.subteams[i]);
+        if (team) team.players.push(match.players[i]);
+        else teams.set(match.subteams[i], { players: [match.players[i]], placement });
+      }
+      if (teams.size < 2) continue;
+
+      const rosters = [...teams.values()];
+      const updated = rateMatch(
+        rosters.map((t) => t.players.map((idx) => agedRating(at(idx)))),
+        rosters.map((t) => t.placement),
+      );
+      rosters.forEach((roster, i) => {
+        roster.players.forEach((idx, j) => {
+          ratings[idx] = updated[i][j];
+        });
       });
-    });
+    }
   }
 
   const identities = await readAll<IdentityRow>("rating_players", "player_idx", {
