@@ -22,6 +22,7 @@ export function TieredStatsTabs({
   linkPrefix,
   linkSuffix,
   playRateLabel,
+  filterPlaceholder,
   defaultTab,
   display = "table",
   unitLabel,
@@ -32,6 +33,8 @@ export function TieredStatsTabs({
   linkPrefix?: string;
   linkSuffix?: string;
   playRateLabel?: string;
+  /** Ce que le filtre cherche sur cette page — voir StatsTable. */
+  filterPlaceholder?: string;
   /** Which tab key is active initially — defaults to the first enabled tab. */
   defaultTab?: string;
   /** "grid" for icon-led browsing (augments, items); "table" for rankings. */
@@ -89,6 +92,7 @@ export function TieredStatsTabs({
         <StatsGrid
           rows={rowsByTier[active] ?? []}
           playRateLabel={playRateLabel}
+          filterPlaceholder={filterPlaceholder}
           unitLabel={unitLabel}
           gamesBonus={gamesBonus}
         />
@@ -98,6 +102,7 @@ export function TieredStatsTabs({
           linkPrefix={linkPrefix}
           linkSuffix={linkSuffix}
           playRateLabel={playRateLabel}
+          filterPlaceholder={filterPlaceholder}
         />
       )}
       </div>

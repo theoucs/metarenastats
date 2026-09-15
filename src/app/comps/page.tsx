@@ -79,6 +79,7 @@ export default async function CompsPage() {
 
             {/* gamesBonus off — see the note above and TierOptions. */}
             <TieredStatsTabs
+              filterPlaceholder="Search a role"
               tabs={TABS}
               rowsByTier={{ archetypes: rows }}
               display="grid"

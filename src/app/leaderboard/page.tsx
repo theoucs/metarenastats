@@ -46,7 +46,7 @@ export default async function LeaderboardPage() {
           player base.
         </p>
       </PageHeader>
-      <StatsTable rows={rows} variant="ranked" />
+      <StatsTable filterPlaceholder="Search a player" rows={rows} variant="ranked" />
     </div>
   );
 }

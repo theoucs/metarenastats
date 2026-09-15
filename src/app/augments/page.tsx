@@ -65,6 +65,7 @@ export default async function AugmentsPage() {
         return [
           option.patch,
           <TieredStatsTabs
+            filterPlaceholder="Search an augment"
             key={option.patch}
             tabs={TABS}
             rowsByTier={toRowsByTier(augments, timing)}

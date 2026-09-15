@@ -42,6 +42,7 @@ export default async function ChampionsPage() {
         return [
           option.patch,
           <StatsTable
+            filterPlaceholder="Search a champion"
             key={option.patch}
             rows={toRows(champions)}
             linkPrefix="/champions/"

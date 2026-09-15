@@ -55,6 +55,7 @@ export default async function ItemsPage() {
         return [
           option.patch,
           <TieredStatsTabs
+            filterPlaceholder="Search an item"
             key={option.patch}
             tabs={TABS}
             rowsByTier={toRowsByTier(items)}

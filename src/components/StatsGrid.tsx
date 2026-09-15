@@ -15,10 +15,14 @@ import {
   RoleChips,
   EmptyState,
   ShowMoreButton,
+  FilterInput,
   SortControl,
   TierBadge,
   TierBandHeading,
   placementMeterWidth,
+  normalizeForSearch,
+  rowHaystack,
+  type SortDir,
   type SortKey,
   type StatsRow,
 } from "@/components/StatsTable";
@@ -203,17 +207,22 @@ function GridCard({
 export function StatsGrid({
   rows,
   playRateLabel = "% Played",
+  filterPlaceholder = "Search\u2026",
   unitLabel = "games",
   gamesBonus = true,
 }: {
   rows: StatsRow[];
   playRateLabel?: string;
+  /** Ce que le filtre cherche sur CETTE page — voir StatsTable. */
+  filterPlaceholder?: string;
   /** What one row's `games` counts — "games" for items/augments, "teams" for comps. */
   unitLabel?: string;
   /** See TierOptions — false where volume is structural, not chosen. */
   gamesBonus?: boolean;
 }) {
   const [sortBy, setSortBy] = useState<SortKey>("tier");
+  const [sortDir, setSortDir] = useState<SortDir>("best");
+  const [filter, setFilter] = useState("");
   // Unlike the table, this grid isn't inside a bounded scrollport — every card
   // adds to page height, so it pages in like the mobile card list does.
   const [limit, setLimit] = useState(CARD_PAGE_SIZE);
@@ -248,8 +257,32 @@ export function StatsGrid({
         return sign * (b.timing.swing - a.timing.swing);
       });
     } else copy.sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
+    // « Meilleur d'abord » est écrit ci-dessus ; l'autre sens s'en déduit.
+    // Sauf pour Better early / Better late, qui SONT déjà les deux sens d'un
+    // même axe : les inverser donnerait deux fois le même tri sous deux noms.
+    if (sortDir === "worst" && sortBy !== "later" && sortBy !== "earlier") copy.reverse();
     return copy;
-  }, [rows, sortBy, tierMap]);
+  }, [rows, sortBy, sortDir, tierMap]);
+
+  // Filtre appliqué après le tri : l'ordre ne dépend jamais de la recherche.
+  const visible = useMemo(() => {
+    const needle = normalizeForSearch(filter.trim());
+    if (!needle) return sorted;
+    return sorted.filter((row) => rowHaystack(row).includes(needle));
+  }, [sorted, filter]);
+
+  function cycleSort(key: SortKey) {
+    setLimit(CARD_PAGE_SIZE);
+    if (key !== sortBy) {
+      setSortBy(key);
+      setSortDir("best");
+    } else if (sortDir === "best" && key !== "later" && key !== "earlier") {
+      setSortDir("worst");
+    } else {
+      setSortBy("tier");
+      setSortDir("best");
+    }
+  }
 
   if (rows.length === 0) {
     return <EmptyState />;
@@ -258,14 +291,13 @@ export function StatsGrid({
   const showBands = sortBy === "tier";
   let lastTier: Tier | null = null;
 
-  return (
-    <div>
+  const toolbar = (
+    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className="min-w-0">
       <SortControl
         sortBy={sortBy}
-        onChange={(s) => {
-          setSortBy(s);
-          setLimit(CARD_PAGE_SIZE);
-        }}
+        dir={sortDir}
+        onChange={cycleSort}
         options={[
           { key: "tier", label: "Tier" },
           { key: "top3Rate", label: "% Top 3" },
@@ -280,11 +312,46 @@ export function StatsGrid({
             : []),
         ]}
       />
+      </div>
+      <FilterInput
+        value={filter}
+        onChange={(v) => {
+          setFilter(v);
+          setLimit(CARD_PAGE_SIZE);
+        }}
+        placeholder={filterPlaceholder}
+        shown={visible.length}
+        total={rows.length}
+      />
+    </div>
+  );
+
+  if (visible.length === 0) {
+    return (
+      <div>
+        {toolbar}
+        <div className="rounded-xl border border-dashed border-default bg-raised/30 px-6 py-10 text-center">
+          <p className="text-secondary">No match for “{filter.trim()}”.</p>
+          <button
+            type="button"
+            onClick={() => setFilter("")}
+            className="mt-3 rounded-lg border border-subtle bg-raised/40 px-3.5 py-1.5 text-small font-medium text-secondary transition-colors hover:border-default hover:text-primary"
+          >
+            Clear filter
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {toolbar}
       {/* Bands are full-width rules between grid rows, so the grid has to be
           the direct parent of both — hence `col-span-full` rather than a
           wrapper per band. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {sorted.slice(0, limit).map((row, i) => {
+        {visible.slice(0, limit).map((row, i) => {
           const tier = tierMap.get(row.key)!.tier;
           const isNewBand = showBands && tier !== lastTier;
           if (isNewBand) lastTier = tier;
@@ -311,8 +378,8 @@ export function StatsGrid({
         })}
       </div>
       <ShowMoreButton
-        shown={Math.min(limit, sorted.length)}
-        total={sorted.length}
+        shown={Math.min(limit, visible.length)}
+        total={visible.length}
         onClick={() => setLimit((n) => n + CARD_PAGE_SIZE)}
       />
     </div>

@@ -41,7 +41,7 @@ export default async function CombosPage() {
         }
         return [
           option.patch,
-          <TieredStatsTabs key={option.patch} tabs={TABS} rowsByTier={rowsByTier} />,
+          <TieredStatsTabs filterPlaceholder="Search an item or augment" key={option.patch} tabs={TABS} rowsByTier={rowsByTier} />,
         ] as const;
       }),
     ),

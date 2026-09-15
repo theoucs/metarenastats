@@ -82,6 +82,7 @@ export type SortKey =
   | "top1Rate"
   | "avgPlacement"
   | "playRate"
+  | "games"
   /** Grid-only, and only where rows carry `timing` — see StatsGrid. */
   | "later"
   | "earlier";
@@ -190,16 +191,64 @@ function TierBandRow({ tier, colSpan, isFirst }: { tier: Tier; colSpan: number; 
   );
 }
 
+/**
+ * Sens du tri : « best » met les meilleures lignes en tête, « worst » les pires.
+ *
+ * On raisonne en qualité, pas en valeur croissante/décroissante, parce que les
+ * deux ne coïncident pas : la meilleure ligne a le PLUS de % Top 3 mais le
+ * MOINS de placement moyen. Un seul concept pour l'utilisateur (meilleur
+ * d'abord, puis pire d'abord), la conversion se fait ici.
+ */
+export type SortDir = "best" | "worst";
+
+/** Les colonnes où « meilleur » veut dire « plus petit ». */
+function bestIsAscending(key: SortKey): boolean {
+  return key === "avgPlacement" || key === "rank";
+}
+
+/** La flèche à afficher : le sens RÉEL des valeurs, convention habituelle des
+ *  tableaux, et non le sens de la qualité — qui varie d'une colonne à l'autre
+ *  et n'est pas lisible sur une flèche. */
+export function sortAscending(key: SortKey, dir: SortDir): boolean {
+  return dir === "best" ? bestIsAscending(key) : !bestIsAscending(key);
+}
+
+/**
+ * Normalise une chaîne pour la recherche : minuscules et sans accents.
+ *
+ * Sans ça « mundo » ne trouve pas « Dr. Mundo » à cause de la casse, et
+ * « rene » ne trouve pas « Renata » — les noms de champions et d'objets sont
+ * pleins de diacritiques que personne ne tape.
+ */
+export function normalizeForSearch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/** Tout ce sur quoi une ligne peut être trouvée : son nom, celui de sa moitié
+ *  de paire (Combos) et ses rôles (Team Comps, qui n'ont pas de nom du tout). */
+export function rowHaystack(row: StatsRow): string {
+  return normalizeForSearch(
+    [row.name, row.secondaryName, ...(row.roles ?? [])].filter(Boolean).join(" "),
+  );
+}
+
 /** Generic over the key type so pages with their own sort axes (augment timing)
  *  reuse it without casting through SortKey. */
 export function SortControl<K extends string>({
   sortBy,
   onChange,
   options,
+  dir,
 }: {
   sortBy: K;
   onChange: (s: K) => void;
   options: { key: K; label: string }[];
+  /** Sens courant, pour que la pastille active dise aussi vers où ça trie.
+   *  Absent là où le tri n'a qu'un sens (grilles, timing d'augments). */
+  dir?: SortDir;
 }) {
   const { containerRef, register, rect } = useSlidingHighlight(sortBy, options);
 
@@ -223,9 +272,138 @@ export function SortControl<K extends string>({
             }`}
           >
             {opt.label}
+            {dir && sortBy === opt.key && (
+              <span aria-hidden className="ml-1 text-muted">
+                {sortAscending(opt.key as unknown as SortKey, dir) ? "\u2191" : "\u2193"}
+              </span>
+            )}
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Un en-tête de colonne qui trie.
+ *
+ * Remplace la rangée de pastilles au-dessus du tableau : elle répétait mot pour
+ * mot les intitulés de la première ligne, à trois centimètres d'écart. Le
+ * tableau portait déjà les noms des métriques — il lui manquait juste de
+ * répondre au clic.
+ *
+ * Trois états par colonne, comme demandé : meilleur d'abord, pire d'abord, puis
+ * retour au tri de repos. La flèche suit le sens RÉEL des valeurs (convention
+ * des tableaux), pas celui de la qualité, qui s'inverse d'une colonne à l'autre
+ * et ne se lit pas sur une flèche.
+ */
+function SortableHead({
+  label,
+  sortKey,
+  sortBy,
+  sortDir,
+  onSort,
+  className,
+  align = "left",
+}: {
+  label: React.ReactNode;
+  /** Absent = colonne non triable (le rang, le nom). */
+  sortKey?: SortKey;
+  sortBy: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+  className: string;
+  align?: "left" | "right";
+}) {
+  if (!sortKey) return <th className={className}>{label}</th>;
+
+  const active = sortBy === sortKey;
+  const ascending = active && sortAscending(sortKey, sortDir);
+
+  return (
+    <th className={className} aria-sort={active ? (ascending ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`group/sort inline-flex w-full cursor-pointer items-center gap-1 uppercase tracking-wide transition-colors hover:text-secondary ${
+          align === "right" ? "justify-end" : ""
+        } ${active ? "text-secondary" : ""}`}
+      >
+        {label}
+        {/* Toujours rendu, même inactif : sinon la largeur de la colonne saute
+            au premier clic et toute la ligne d'en-tête se décale. Et toujours
+            VISIBLE, même faiblement : réserver la flèche au survol, c'est
+            cacher la seule chose qui dit que l'en-tête répond au clic — à la
+            souris on finit par le découvrir, au doigt jamais. */}
+        <span
+          aria-hidden
+          className={`text-[10px] leading-none transition-opacity ${
+            active ? "opacity-100" : "opacity-30 group-hover/sort:opacity-70"
+          }`}
+        >
+          {active ? (ascending ? "\u2191" : "\u2193") : "\u2195"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+/**
+ * Filtre texte d'une tier list.
+ *
+ * Les listes font 170 champions ou 200 combos : sans ça, trouver une ligne
+ * précise se fait au défilement et à l'œil. Le compteur ne s'affiche que
+ * pendant la frappe — hors filtre il répéterait le total déjà connu.
+ */
+export function FilterInput({
+  value,
+  onChange,
+  placeholder,
+  shown,
+  total,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  shown: number;
+  total: number;
+}) {
+  return (
+    <div className="w-full sm:w-60">
+      <div className="relative">
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+          aria-hidden
+        >
+          <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M17.5 17.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="w-full rounded-lg border border-subtle bg-inset py-1.5 pl-8 pr-8 text-small text-primary placeholder:text-muted focus:border-accent"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="Clear filter"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-small text-muted transition-colors hover:text-primary"
+          >
+            {"\u00d7"}
+          </button>
+        )}
+      </div>
+      {value.trim() !== "" && (
+        <p className="mt-1 text-micro tabular-nums text-muted">
+          {shown} of {total}
+        </p>
+      )}
     </div>
   );
 }
@@ -589,6 +767,7 @@ export function StatsTable({
   linkPrefix,
   linkSuffix,
   playRateLabel = "% Played",
+  filterPlaceholder = "Search\u2026",
   compact = false,
 }: {
   rows: StatsRow[];
@@ -601,14 +780,20 @@ export function StatsTable({
   linkSuffix?: string;
   /** Column/sort label for `playRate` — its meaning (and denominator) varies by page. */
   playRateLabel?: string;
+  /** Ce que le filtre cherche sur CETTE page — « Search a champion », « Search
+   *  a player »… Le mot compte : « Filter » seul laisse deviner sur quoi. */
+  filterPlaceholder?: string;
   /** For a narrow sidebar column (the player page's Top Champions sits in a
    *  380px track). Drops the 640px floor and the two least important columns
    *  rather than clipping the table mid-cell behind a scrollbar nobody sees. */
   compact?: boolean;
 }) {
-  const [sortBy, setSortBy] = useState<SortKey>(
-    variant === "tiers" ? "tier" : rows.some((r) => r.rankTier) ? "rank" : "top3Rate",
-  );
+  // Le tri de repos : celui auquel le troisième clic sur une colonne ramène.
+  const defaultSortKey: SortKey =
+    variant === "tiers" ? "tier" : rows.some((r) => r.rankTier) ? "rank" : "top3Rate";
+  const [sortBy, setSortBy] = useState<SortKey>(defaultSortKey);
+  const [sortDir, setSortDir] = useState<SortDir>("best");
+  const [filter, setFilter] = useState("");
   // Mobile-only: see CARD_PAGE_SIZE. Reset from the sort handler rather than an
   // effect — re-sorting reshuffles which rows are "the first 40", so keeping an
   // expanded count would silently change what the button means.
@@ -635,24 +820,47 @@ export function StatsTable({
 
   const sorted = useMemo(() => {
     const copy = [...rows];
-    if (sortBy === "top3Rate") {
-      copy.sort((a, b) => b.top3Rate - a.top3Rate);
-    } else if (sortBy === "top1Rate") {
-      copy.sort((a, b) => b.top1Rate - a.top1Rate);
-    } else if (sortBy === "avgPlacement") {
-      copy.sort((a, b) => a.avgPlacement - b.avgPlacement);
-    } else if (sortBy === "rank") {
+    // Un seul comparateur par colonne, toujours écrit « meilleur d'abord » ;
+    // l'autre sens s'en déduit par inversion. Écrire les deux à la main, c'est
+    // se tromper une fois sur deux sur le placement moyen.
+    const order = new Map(rows.map((r, i) => [r.key, i]));
+    const bestFirst: Record<string, (a: StatsRow, b: StatsRow) => number> = {
+      top3Rate: (a, b) => b.top3Rate - a.top3Rate,
+      top1Rate: (a, b) => b.top1Rate - a.top1Rate,
+      avgPlacement: (a, b) => a.avgPlacement - b.avgPlacement,
+      playRate: (a, b) => b.playRate - a.playRate,
+      games: (a, b) => b.games - a.games,
       // Les lignes arrivent déjà dans l'ordre du classement : le MMR n'est pas
       // dans la ligne, et n'a pas à y être — on ne l'affiche jamais.
-      const order = new Map(rows.map((r, i) => [r.key, i]));
-      copy.sort((a, b) => order.get(a.key)! - order.get(b.key)!);
-    } else if (sortBy === "playRate") {
-      copy.sort((a, b) => b.playRate - a.playRate);
-    } else {
-      copy.sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score);
-    }
+      rank: (a, b) => order.get(a.key)! - order.get(b.key)!,
+      tier: (a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score,
+    };
+    const compare = bestFirst[sortBy] ?? bestFirst.tier;
+    copy.sort(sortDir === "best" ? compare : (a, b) => compare(b, a));
     return copy;
-  }, [rows, sortBy, tierMap]);
+  }, [rows, sortBy, sortDir, tierMap]);
+
+  // Le filtre s'applique APRÈS le tri : l'ordre ne dépend jamais de ce qui est
+  // filtré, donc taper puis effacer rend exactement la liste de départ.
+  const visible = useMemo(() => {
+    const needle = normalizeForSearch(filter.trim());
+    if (!needle) return sorted;
+    return sorted.filter((row) => rowHaystack(row).includes(needle));
+  }, [sorted, filter]);
+
+  function cycleSort(key: SortKey) {
+    setCardLimit(CARD_PAGE_SIZE);
+    if (key !== sortBy) {
+      setSortBy(key);
+      setSortDir("best");
+    } else if (sortDir === "best") {
+      setSortDir("worst");
+    } else {
+      // Troisième clic : retour au tri de repos plutôt qu'un troisième ordre.
+      setSortBy(defaultSortKey);
+      setSortDir("best");
+    }
+  }
 
   if (rows.length === 0) return <EmptyState />;
 
@@ -663,12 +871,14 @@ export function StatsTable({
           { key: "top3Rate", label: "% Top 3" },
           { key: "top1Rate", label: "% Top 1" },
           { key: "avgPlacement", label: "Avg Placement" },
+          { key: "games", label: "Games" },
           { key: "playRate", label: playRateLabel },
         ]
       : [
           ...(showRankColumn ? [{ key: "rank" as SortKey, label: "Rank" }] : []),
           { key: "top3Rate", label: "% Top 3" },
           { key: "avgPlacement", label: "Avg Placement" },
+          { key: "games", label: "Games" },
         ];
 
   // Pair rows (Combos) carry two icon+name blocks in one cell, so the table
@@ -691,16 +901,55 @@ export function StatsTable({
 
   let lastMobileTier: Tier | null = null;
 
+  const toolbar = (
+    // Le tri en pastilles ne sert QUE la vue en cartes : au-dessus du point de
+    // rupture, ce sont les en-têtes du tableau qui trient, et garder les deux
+    // affichait la même liste de métriques deux fois à trois centimètres
+    // d'intervalle. Les cartes, elles, n'ont pas d'en-tête à cliquer.
+    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className={`min-w-0 ${cardsClass}`}>
+        <SortControl sortBy={sortBy} dir={sortDir} onChange={cycleSort} options={sortOptions} />
+      </div>
+      {/* Pas de filtre dans la colonne étroite de la page joueur : la liste y
+          fait quelques lignes, et le champ prendrait plus de place qu'elle. */}
+      {!compact && (
+        <FilterInput
+          value={filter}
+          onChange={(v) => {
+            setFilter(v);
+            setCardLimit(CARD_PAGE_SIZE);
+          }}
+          placeholder={filterPlaceholder}
+          shown={visible.length}
+          total={rows.length}
+        />
+      )}
+    </div>
+  );
+
+  // Filtre sans résultat : on garde la barre — sans elle, plus moyen d'effacer
+  // ce qu'on vient de taper, et la page paraît vide et bloquée.
+  if (visible.length === 0) {
+    return (
+      <div>
+        {toolbar}
+        <div className="rounded-xl border border-dashed border-default bg-raised/30 px-6 py-10 text-center">
+          <p className="text-secondary">No match for “{filter.trim()}”.</p>
+          <button
+            type="button"
+            onClick={() => setFilter("")}
+            className="mt-3 rounded-lg border border-subtle bg-raised/40 px-3.5 py-1.5 text-small font-medium text-secondary transition-colors hover:border-default hover:text-primary"
+          >
+            Clear filter
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <SortControl
-        sortBy={sortBy}
-        onChange={(s) => {
-          setSortBy(s);
-          setCardLimit(CARD_PAGE_SIZE);
-        }}
-        options={sortOptions}
-      />
+      {toolbar}
 
       {/* Below the breakpoint the table can't fit (8 columns need ~640px, or
           ~785px for pair rows) — same rows as stacked cards instead, in normal
@@ -708,7 +957,7 @@ export function StatsTable({
           scroll on a phone. */}
       <div className={cardsClass}>
         <div className="flex flex-col gap-2">
-          {sorted.slice(0, cardLimit).map((row, i) => {
+          {visible.slice(0, cardLimit).map((row, i) => {
             const tier = showBands ? tierMap.get(row.key)!.tier : null;
             const isNewBand = showBands && tier !== lastMobileTier;
             if (isNewBand) lastMobileTier = tier;
@@ -736,8 +985,8 @@ export function StatsTable({
           })}
         </div>
         <ShowMoreButton
-          shown={Math.min(cardLimit, sorted.length)}
-          total={sorted.length}
+          shown={Math.min(cardLimit, visible.length)}
+          total={visible.length}
           onClick={() => setCardLimit((n) => n + CARD_PAGE_SIZE)}
         />
       </div>
@@ -758,25 +1007,79 @@ export function StatsTable({
                 #
               </th>
               {variant === "tiers" && !showBands && (
-                <th className={`${stickyHeadCell} w-14 px-4`}>Tier</th>
+                <SortableHead
+                  label="Tier"
+                  sortKey="tier"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={cycleSort}
+                  className={`${stickyHeadCell} w-14 px-4`}
+                />
               )}
-              {showRankColumn && <th className={`${stickyHeadCell} w-28 px-4`}>Rank</th>}
+              {showRankColumn && (
+                <SortableHead
+                  label="Rank"
+                  sortKey="rank"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={cycleSort}
+                  className={`${stickyHeadCell} w-28 px-4`}
+                />
+              )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
-              <th className={`${stickyHeadCell} ${cellX} text-right`}>
-                {compact ? "Avg" : "Avg Placement"}
-              </th>
-              <th className={`${stickyHeadCell} ${cellX} text-right`}>% Top 3</th>
+              <SortableHead
+                label={compact ? "Avg" : "Avg Placement"}
+                sortKey="avgPlacement"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={cycleSort}
+                align="right"
+                className={`${stickyHeadCell} ${cellX} text-right`}
+              />
+              <SortableHead
+                label="% Top 3"
+                sortKey="top3Rate"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={cycleSort}
+                align="right"
+                className={`${stickyHeadCell} ${cellX} text-right`}
+              />
               {variant === "tiers" && !compact && (
-                <th className={`${stickyHeadCell} ${cellX} text-right`}>% Top 1</th>
+                <SortableHead
+                  label="% Top 1"
+                  sortKey="top1Rate"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={cycleSort}
+                  align="right"
+                  className={`${stickyHeadCell} ${cellX} text-right`}
+                />
               )}
-              <th className={`${stickyHeadCell} ${cellX} text-right`}>Games</th>
+              <SortableHead
+                label="Games"
+                sortKey="games"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={cycleSort}
+                align="right"
+                className={`${stickyHeadCell} ${cellX} text-right`}
+              />
               {variant === "tiers" && !compact && (
-                <th className={`${stickyHeadCell} ${cellX} text-right`}>{playRateLabel}</th>
+                <SortableHead
+                  label={playRateLabel}
+                  sortKey="playRate"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={cycleSort}
+                  align="right"
+                  className={`${stickyHeadCell} ${cellX} text-right`}
+                />
               )}
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, i) => {
+            {visible.map((row, i) => {
               const tier = showBands ? tierMap.get(row.key)!.tier : null;
               const isNewBand = showBands && tier !== lastTier;
               if (isNewBand) lastTier = tier;
