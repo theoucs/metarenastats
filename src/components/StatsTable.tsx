@@ -403,11 +403,7 @@ export function FilterInput({
   total: number;
 }) {
   return (
-    // `sm:ml-auto` : sur les pages à tableau, les pastilles de tri sont
-    // masquées, et un `justify-between` à enfant unique collerait le champ à
-    // gauche. Le filtre se retrouvait à droite sur les grilles et à gauche sur
-    // les tableaux — d'un onglet à l'autre, il sautait d'un bord à l'autre.
-    <div className="w-full sm:ml-auto sm:w-60">
+    <div className="w-full sm:w-60">
       <div className="relative">
         <svg
           viewBox="0 0 20 20"
@@ -1013,10 +1009,11 @@ export function StatsTable({
     // rupture, ce sont les en-têtes du tableau qui trient, et garder les deux
     // affichait la même liste de métriques deux fois à trois centimètres
     // d'intervalle. Les cartes, elles, n'ont pas d'en-tête à cliquer.
-    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <div className={`min-w-0 ${cardsClass}`}>
-        <SortControl sortBy={sortBy} dir={sortDir} onChange={cycleSort} options={sortOptions} />
-      </div>
+    // Le filtre d'abord, le tri ensuite. C'est ce qu'on cherche en premier —
+    // une ligne précise — et ça le pose sous le titre, là où l'œil arrive. Le
+    // tri part à droite : il ne sert qu'aux vues sans en-tête cliquable, donc
+    // le laisser à gauche vidait ce côté sur toutes les autres pages.
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       {/* Pas de filtre dans la colonne étroite de la page joueur : la liste y
           fait quelques lignes, et le champ prendrait plus de place qu'elle. */}
       {!compact && (
@@ -1031,6 +1028,9 @@ export function StatsTable({
           total={rows.length}
         />
       )}
+      <div className={`min-w-0 sm:ml-auto ${cardsClass}`}>
+        <SortControl sortBy={sortBy} dir={sortDir} onChange={cycleSort} options={sortOptions} />
+      </div>
     </div>
   );
 

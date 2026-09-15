@@ -292,27 +292,8 @@ export function StatsGrid({
   let lastTier: Tier | null = null;
 
   const toolbar = (
-    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <div className="min-w-0">
-      <SortControl
-        sortBy={sortBy}
-        dir={sortDir}
-        onChange={cycleSort}
-        options={[
-          { key: "tier", label: "Tier" },
-          { key: "top3Rate", label: "% Top 3" },
-          { key: "top1Rate", label: "% Top 1" },
-          { key: "avgPlacement", label: "Avg Placement" },
-          { key: "playRate", label: playRateLabel },
-          ...(hasTiming
-            ? ([
-                { key: "earlier", label: "Better early" },
-                { key: "later", label: "Better late" },
-              ] as const)
-            : []),
-        ]}
-      />
-      </div>
+    // Même ordre que StatsTable : le filtre d'abord, le tri à droite.
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <FilterInput
         value={filter}
         onChange={(v) => {
@@ -323,6 +304,26 @@ export function StatsGrid({
         shown={visible.length}
         total={rows.length}
       />
+      <div className="min-w-0 sm:ml-auto">
+        <SortControl
+          sortBy={sortBy}
+          dir={sortDir}
+          onChange={cycleSort}
+          options={[
+            { key: "tier", label: "Tier" },
+            { key: "top3Rate", label: "% Top 3" },
+            { key: "top1Rate", label: "% Top 1" },
+            { key: "avgPlacement", label: "Avg Placement" },
+            { key: "playRate", label: playRateLabel },
+            ...(hasTiming
+              ? ([
+                  { key: "earlier", label: "Better early" },
+                  { key: "later", label: "Better late" },
+                ] as const)
+              : []),
+          ]}
+        />
+      </div>
     </div>
   );
 

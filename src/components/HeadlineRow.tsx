@@ -28,7 +28,13 @@ export function HeadlineRow({ aside, children }: { aside?: ReactNode; children: 
  */
 export function HeaderAside({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="mb-6 flex shrink-0 flex-col items-start gap-1.5 sm:mb-0 sm:items-end">
+    // `sm:mb-7` et non `sm:mb-0` : sur une page sans description, cette colonne
+    // est PLUS HAUTE que le titre, c'est donc elle qui fixe la hauteur de la
+    // rangée. Sans marge basse, le contrôle suivant se collait à elle et la
+    // pile — étiquette, sélecteur, compteur, filtre — se lisait comme un seul
+    // amas dans le coin. La marge reprend celle de PageHeader, donc la
+    // séparation est la même quelle que soit la colonne la plus haute.
+    <div className="mb-6 flex shrink-0 flex-col items-start gap-1.5 sm:mb-7 sm:items-end">
       <span className="text-micro font-semibold uppercase tracking-[0.14em] text-muted">
         {label}
       </span>
