@@ -66,7 +66,14 @@ async function handle(request: Request) {
           ? String((error as { message: unknown }).message)
           : String(error);
     console.error("[cron] échec du rafraîchissement :", message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    // Les mesures de phase accompagnent l'erreur (voir refreshSnapshots) : sans
+    // elles, la seule exécution qui mérite d'être analysée est la seule dont on
+    // ne saurait rien.
+    const timings =
+      typeof error === "object" && error !== null && "timings" in error
+        ? (error as { timings: Record<string, number> }).timings
+        : undefined;
+    return NextResponse.json({ ok: false, error: message, timings }, { status: 500 });
   }
 }
 

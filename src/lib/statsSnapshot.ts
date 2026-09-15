@@ -204,136 +204,146 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   const timings: Record<string, number> = {};
   const clock = async <T,>(label: string, run: () => Promise<T>): Promise<T> => {
     const at = Date.now();
-    const value = await run();
-    timings[label] = (timings[label] ?? 0) + (Date.now() - at);
-    return value;
+    try {
+      return await run();
+    } finally {
+      // `finally` et non après l'await : la phase qui échoue est justement
+      // celle qu'on veut chronométrer. Sans ça l'instrumentation se tait au
+      // moment précis où elle sert.
+      timings[label] = (timings[label] ?? 0) + (Date.now() - at);
+    }
   };
 
-  const context = await clock("patchContext", () => getPatchContext());
+  try {
+    const context = await clock("patchContext", () => getPatchContext());
 
-  // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
-  const rating = await clock("mmr", () => refreshPlayerRatings());
-  console.log(
-    `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
-  );
-  const promoted = await clock("promote", () => promoteTrackedPlayers());
-  if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
-
-  // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
-  // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
-  const [site, leaderboard] = await clock("siteEtClassement", () =>
-    Promise.all([getSiteStats(), getLeaderboardStats()]),
-  );
-  const snapshots: SnapshotRow[] = [
-    { key: SNAPSHOT_KEYS.site, payload: site },
-    { key: SNAPSHOT_KEYS.leaderboard, payload: leaderboard },
-  ];
-
-  const published: RefreshReport["patches"] = [];
-  let truncated = false;
-  let totalParticipants = 0;
-
-  // Séquentiel et non parallèle : deux patchs en parallèle, ce sont deux
-  // lectures complètes simultanées en mémoire, pour un job qui a tout son temps.
-  for (const option of context.options) {
-    const set = await clock("lectureParticipants", () =>
-      readParticipantSetForPatch(option.patch),
+    // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
+    const rating = await clock("mmr", () => refreshPlayerRatings());
+    console.log(
+      `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
     );
-    truncated = truncated || set.truncated;
-    totalParticipants += set.rows.length;
+    const promoted = await clock("promote", () => promoteTrackedPlayers());
+    if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
 
-    const patchSnapshots = await clock("agregation", () =>
-      withParticipantSet(set, async () => {
-      const [champions, anvil, items, augments, augmentTiming, comps, combos] = await Promise.all([
-        getChampionStats(),
-        getAnvilChampionStats(itemCategory),
-        getItemStats(itemCategory),
-        getAugmentStats(),
-        getAugmentTimingStats(),
-        getCompStats(championRole),
-        getComboStats(itemCategory),
-      ]);
+    // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
+    // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
+    const [site, leaderboard] = await clock("siteEtClassement", () =>
+      Promise.all([getSiteStats(), getLeaderboardStats()]),
+    );
+    const snapshots: SnapshotRow[] = [
+      { key: SNAPSHOT_KEYS.site, payload: site },
+      { key: SNAPSHOT_KEYS.leaderboard, payload: leaderboard },
+    ];
 
-      const rows: SnapshotRow[] = [
-        { key: SNAPSHOT_KEYS.champions, payload: champions },
-        { key: SNAPSHOT_KEYS.anvil, payload: anvil },
-        { key: SNAPSHOT_KEYS.items, payload: items },
-        { key: SNAPSHOT_KEYS.augments, payload: augments },
-        { key: SNAPSHOT_KEYS.augmentTiming, payload: augmentTiming },
-        { key: SNAPSHOT_KEYS.comps, payload: comps },
-        { key: SNAPSHOT_KEYS.combos, payload: combos },
-      ].map((r) => ({ key: patchedKey(r.key, option.patch), payload: r.payload }));
+    const published: RefreshReport["patches"] = [];
+    let truncated = false;
+    let totalParticipants = 0;
 
-      // Une entrée par champion réellement joué SUR CE PATCH : un champion
-      // absent du patch courant n'a pas de page pour ce patch, ce qui est la
-      // bonne réponse plutôt qu'une page vide.
-      const details = await Promise.all(
-        champions.champions.map(async (c) => {
-          const idLower = c.champion.toLowerCase();
-          return {
-            key: patchedKey(championDetailKey(idLower), option.patch),
-            payload: await getChampionDetail(idLower, augmentRarity, itemCategory),
-          };
+    // Séquentiel et non parallèle : deux patchs en parallèle, ce sont deux
+    // lectures complètes simultanées en mémoire, pour un job qui a tout son temps.
+    for (const option of context.options) {
+      const set = await clock("lectureParticipants", () =>
+        readParticipantSetForPatch(option.patch),
+      );
+      truncated = truncated || set.truncated;
+      totalParticipants += set.rows.length;
+
+      const patchSnapshots = await clock("agregation", () =>
+        withParticipantSet(set, async () => {
+        const [champions, anvil, items, augments, augmentTiming, comps, combos] = await Promise.all([
+          getChampionStats(),
+          getAnvilChampionStats(itemCategory),
+          getItemStats(itemCategory),
+          getAugmentStats(),
+          getAugmentTimingStats(),
+          getCompStats(championRole),
+          getComboStats(itemCategory),
+        ]);
+
+        const rows: SnapshotRow[] = [
+          { key: SNAPSHOT_KEYS.champions, payload: champions },
+          { key: SNAPSHOT_KEYS.anvil, payload: anvil },
+          { key: SNAPSHOT_KEYS.items, payload: items },
+          { key: SNAPSHOT_KEYS.augments, payload: augments },
+          { key: SNAPSHOT_KEYS.augmentTiming, payload: augmentTiming },
+          { key: SNAPSHOT_KEYS.comps, payload: comps },
+          { key: SNAPSHOT_KEYS.combos, payload: combos },
+        ].map((r) => ({ key: patchedKey(r.key, option.patch), payload: r.payload }));
+
+        // Une entrée par champion réellement joué SUR CE PATCH : un champion
+        // absent du patch courant n'a pas de page pour ce patch, ce qui est la
+        // bonne réponse plutôt qu'une page vide.
+        const details = await Promise.all(
+          champions.champions.map(async (c) => {
+            const idLower = c.champion.toLowerCase();
+            return {
+              key: patchedKey(championDetailKey(idLower), option.patch),
+              payload: await getChampionDetail(idLower, augmentRarity, itemCategory),
+            };
+          }),
+        );
+        rows.push(...details.filter((r) => r.payload !== null));
+        return rows;
         }),
       );
-      rows.push(...details.filter((r) => r.payload !== null));
-      return rows;
-      }),
+
+      snapshots.push(...patchSnapshots);
+      published.push({
+        patch: option.patch,
+        matches: option.matches,
+        participants: set.rows.length,
+      });
+    }
+
+    const bytes = snapshots.reduce((n, r) => n + JSON.stringify(r.payload).length, 0);
+    const computedAt = new Date().toISOString();
+
+    const { error } = await clock("ecriture", async () =>
+      db.from("stats_snapshots").upsert(
+        snapshots.map((r) => ({
+          key: r.key,
+          payload: r.payload,
+          computed_at: computedAt,
+          source_matches: site.totalMatches,
+          source_participants: totalParticipants,
+          truncated,
+        })),
+        { onConflict: "key" },
+      ),
     );
+    if (error) throw error;
 
-    snapshots.push(...patchSnapshots);
-    published.push({
-      patch: option.patch,
-      matches: option.matches,
-      participants: set.rows.length,
-    });
-  }
+    // Ménage : tout ce qui n'a pas été réécrit ce tour-ci est périmé.
+    //
+    // Sans ça, les snapshots s'accumulent indéfiniment — les clés sans patch
+    // héritées d'avant la découpe, puis le jeu complet de chaque patch qui sort
+    // de la fenêtre des deux publiés. Ce sont des lignes que plus personne ne lit
+    // mais qui pèsent, et surtout qui pourraient resservir de repli périmé le
+    // jour où une clé serait relue par erreur.
+    const written = snapshots.map((r) => r.key);
+    const { error: pruneError, count: pruned } = await clock("menage", async () =>
+      db
+        .from("stats_snapshots")
+        .delete({ count: "exact" })
+        .not("key", "in", `(${written.map((k) => `"${k}"`).join(",")})`),
+    );
+    if (pruneError) throw pruneError;
+    if (pruned) console.log(`[stats] ${pruned} snapshot(s) périmé(s) supprimé(s)`);
 
-  const bytes = snapshots.reduce((n, r) => n + JSON.stringify(r.payload).length, 0);
-  const computedAt = new Date().toISOString();
-
-  const { error } = await clock("ecriture", async () =>
-    db.from("stats_snapshots").upsert(
-      snapshots.map((r) => ({
-        key: r.key,
-        payload: r.payload,
-        computed_at: computedAt,
-        source_matches: site.totalMatches,
-        source_participants: totalParticipants,
-        truncated,
-      })),
-      { onConflict: "key" },
-    ),
-  );
-  if (error) throw error;
-
-  // Ménage : tout ce qui n'a pas été réécrit ce tour-ci est périmé.
-  //
-  // Sans ça, les snapshots s'accumulent indéfiniment — les clés sans patch
-  // héritées d'avant la découpe, puis le jeu complet de chaque patch qui sort
-  // de la fenêtre des deux publiés. Ce sont des lignes que plus personne ne lit
-  // mais qui pèsent, et surtout qui pourraient resservir de repli périmé le
-  // jour où une clé serait relue par erreur.
-  const written = snapshots.map((r) => r.key);
-  const { error: pruneError, count: pruned } = await clock("menage", async () =>
-    db
-      .from("stats_snapshots")
-      .delete({ count: "exact" })
-      .not("key", "in", `(${written.map((k) => `"${k}"`).join(",")})`),
-  );
-  if (pruneError) throw pruneError;
-  if (pruned) console.log(`[stats] ${pruned} snapshot(s) périmé(s) supprimé(s)`);
-
-  return {
-    ok: true,
-    snapshots: snapshots.length,
-    sourceMatches: site.totalMatches,
-    sourceParticipants: totalParticipants,
-    truncated,
-    durationMs: Date.now() - startedAt,
-    bytes,
-    patches: published,
-    rated: rating.rated,
+    return {
+      ok: true,
+      snapshots: snapshots.length,
+      sourceMatches: site.totalMatches,
+      sourceParticipants: totalParticipants,
+      truncated,
+      durationMs: Date.now() - startedAt,
+      bytes,
+      patches: published,
+      rated: rating.rated,
     timings,
-  };
+    };
+  } catch (cause) {
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    throw Object.assign(error, { timings });
+  }
 }
