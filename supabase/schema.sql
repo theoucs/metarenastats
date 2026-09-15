@@ -521,3 +521,14 @@ create index if not exists match_rating_rows_chrono_idx
 grant select, insert, update, delete on match_rating_rows to service_role;
 
 grant select, insert, update on players to service_role;
+
+-- Plafond de lignes par réponse de l'API, relevé de 1 000 à 20 000.
+--
+-- Le coût d'une page est presque entièrement dans la MISE EN PLACE de la
+-- requête, pas dans le transfert : mesuré le 2026-09-15 sur la vue des
+-- participants, 1 000 lignes coûtent 1,54 s et 10 000 lignes 1,28 s. Lire les
+-- 116 000 participations d'une passe faisait donc 116 requêtes séquentielles,
+-- soit 65 s — un tiers du job de publication.
+--
+--   alter role authenticator set pgrst.db_max_rows = '20000';
+--   notify pgrst, 'reload config';

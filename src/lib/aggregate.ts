@@ -63,10 +63,17 @@ const BOOTS_SLOT = 1;
 const PRISMATIC_SLOT = 2;
 const ALTS_PER_SLOT = 3; // 1 primary + 2 alternates
 
-// Supabase/PostgREST caps every response at 1000 rows server-side (the "Max Rows"
-// project setting) regardless of the .limit() a client asks for — paginate with
-// .range() to actually fetch everything.
-const PAGE_SIZE = 1000;
+// Combien de lignes par requête de lecture.
+//
+// Le plafond par défaut de PostgREST est 1 000. Il a été relevé à 20 000 côté
+// projet (`alter role authenticator set pgrst.db_max_rows`), parce que le coût
+// d'une page est presque entièrement dans la MISE EN PLACE de la requête, pas
+// dans le transfert : mesuré le 2026-09-15 sur la vue des participants, 1 000
+// lignes coûtent 1,54 s et 10 000 lignes 1,28 s.
+//
+// Lire 116 000 participations faisait donc 116 requêtes séquentielles — 65 s,
+// soit un tiers du job de publication. À 10 000 par page il en reste douze.
+const PAGE_SIZE = 10000;
 
 // Ce chemin ne sert plus une requête utilisateur : depuis 2026-09-13 les pages
 // lisent des snapshots pré-calculés (lib/statsSnapshot.ts) et seul le job de
@@ -74,11 +81,11 @@ const PAGE_SIZE = 1000;
 // d'où un plafond bien plus haut que les 30 pages d'avant (qui tronquaient dès
 // ~1 660 matchs).
 //
-// 500 pages = 500 000 lignes ≈ 28 000 matchs, soit ~100 Mo en mémoire JS. Le
+// 60 pages × 10 000 = 600 000 lignes ≈ 33 000 matchs, soit ~120 Mo en mémoire JS. Le
 // plafond reste un garde-fou mémoire, pas une limite de conception : au-delà,
 // l'agrégation doit passer en SQL (phase 3 du plan). La différence essentielle
 // avec l'ancienne version est que la troncature n'est plus muette.
-const MAX_PAGES = 500;
+const MAX_PAGES = 60;
 
 /**
  * Wrapped in React's `cache` so a page that runs two aggregators pays for one

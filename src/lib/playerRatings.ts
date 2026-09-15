@@ -46,7 +46,13 @@ type IdentityRow = {
   games: number;
 };
 
-const PAGE_SIZE = 1000;
+// Voir la note de lib/aggregate.ts : le plafond PostgREST a été relevé à
+// 20 000 lignes, et le coût d'une page tient dans sa mise en place.
+const PAGE_SIZE = 10000;
+
+/** Lignes par requête d'écriture du classement. 12 000 joueurs en paquets de
+ *  500 faisaient 24 allers-retours ; ils tiennent en six. */
+const UPSERT_CHUNK = 2000;
 
 /**
  * Les deux lectures de ce fichier paginent PAR CURSEUR et non par `Range`.
@@ -258,10 +264,10 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
     updated_at: stamp,
   }));
 
-  for (let i = 0; i < rows.length; i += 500) {
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
     const { error } = await supabaseAdmin
       .from("player_ratings")
-      .upsert(rows.slice(i, i + 500), { onConflict: "puuid" });
+      .upsert(rows.slice(i, i + UPSERT_CHUNK), { onConflict: "puuid" });
     if (error) throw error;
   }
 
