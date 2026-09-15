@@ -274,6 +274,73 @@ function countMatches(rows: ParticipantRow[]): number {
 }
 
 /**
+ * Dérivés d'un jeu de lignes, calculés une seule fois pour tous ses lecteurs.
+ *
+ * Trois calculs traversaient l'échantillon ENTIER une fois par champion, soit
+ * 346 fois par patch : le comptage des matchs, le filtre `champion`, et les
+ * références de jalon. Mesuré au 2026-09-15 sur 96 000 lignes, l'agrégation
+ * passait 76 s dont l'essentiel là-dedans, pour recalculer 346 fois trois
+ * résultats strictement identiques.
+ *
+ * Le cache est une `WeakMap` sur le tableau de lignes lui-même : deux jeux
+ * différents (un patch, un sous-ensemble anvil) ne partagent rien, et rien ne
+ * survit au jeu qui l'a produit.
+ */
+type DerivedSet = {
+  matchCount?: number;
+  byChampion?: Map<string, ParticipantRow[]>;
+  /** Par fonction de catégorie : une catégorisation différente donne des
+   *  références différentes, et rien ne garantit qu'il n'y en ait qu'une. */
+  baselines: Map<ItemCategoryLookup, LandmarkBaselines>;
+};
+
+const derivedStore = new WeakMap<ParticipantRow[], DerivedSet>();
+
+function derivedOf(rows: ParticipantRow[]): DerivedSet {
+  let derived = derivedStore.get(rows);
+  if (!derived) {
+    derived = { baselines: new Map() };
+    derivedStore.set(rows, derived);
+  }
+  return derived;
+}
+
+function matchCountOf(rows: ParticipantRow[]): number {
+  const derived = derivedOf(rows);
+  derived.matchCount ??= countMatches(rows);
+  return derived.matchCount;
+}
+
+/** Les lignes regroupées par champion, clé en minuscules. */
+function championRowsOf(rows: ParticipantRow[]): Map<string, ParticipantRow[]> {
+  const derived = derivedOf(rows);
+  if (!derived.byChampion) {
+    const index = new Map<string, ParticipantRow[]>();
+    for (const row of rows) {
+      const key = row.champion.toLowerCase();
+      const bucket = index.get(key);
+      if (bucket) bucket.push(row);
+      else index.set(key, [row]);
+    }
+    derived.byChampion = index;
+  }
+  return derived.byChampion;
+}
+
+function landmarkBaselinesOf(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+): LandmarkBaselines {
+  const derived = derivedOf(rows);
+  let baselines = derived.baselines.get(categoryOf);
+  if (!baselines) {
+    baselines = buildLandmarkBaselines(rows, categoryOf);
+    derived.baselines.set(categoryOf, baselines);
+  }
+  return baselines;
+}
+
+/**
  * Les trois compteurs de l'accueil, comptés par Postgres.
  *
  * C'était la dernière raison de faire voyager `puuid` : 78 octets par ligne,
@@ -326,7 +393,7 @@ function accumulate(map: Map<string | number, Accumulator>, key: string | number
 
 export async function getChampionStats() {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
+  const totalMatches = matchCountOf(rows);
   const byChampion = new Map<string, Accumulator>();
   for (const r of rows) accumulate(byChampion, r.champion, r.placement);
   const champions = Array.from(byChampion.entries())
@@ -644,8 +711,8 @@ export function adjustedItemStats(
 
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
-  const baselines = buildLandmarkBaselines(rows, categoryOf);
+  const totalMatches = matchCountOf(rows);
+  const baselines = landmarkBaselinesOf(rows, categoryOf);
   const items = adjustedItemStats(
     rows,
     categoryOf,
@@ -658,7 +725,7 @@ export async function getItemStats(categoryOf: ItemCategoryLookup) {
 
 export async function getAugmentStats() {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
+  const totalMatches = matchCountOf(rows);
   const byAugment = new Map<number, Accumulator>();
   for (const r of rows) {
     for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
@@ -903,8 +970,8 @@ export async function getChampionDetail(
   itemCategoryOf: ItemCategoryLookup
 ): Promise<ChampionDetail | null> {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
-  const champRows = rows.filter((r) => r.champion.toLowerCase() === championIdLower);
+  const totalMatches = matchCountOf(rows);
+  const champRows = championRowsOf(rows).get(championIdLower) ?? [];
   if (champRows.length === 0) return null;
 
   const championAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
@@ -1010,7 +1077,7 @@ export async function getChampionDetail(
   // parties de ce champion : quelques centaines de parties ne suffisent pas à
   // estimer une moyenne par jalon, et une référence bruitée corrigerait de
   // travers.
-  const baselines = buildLandmarkBaselines(rows, itemCategoryOf);
+  const baselines = landmarkBaselinesOf(rows, itemCategoryOf);
 
   // Top 6 Prismatic items across this champion's games overall (any
   // playstyle) — sits under the item build slots.
@@ -1107,7 +1174,7 @@ export type AugmentTimingStats = {
 
 export async function getAugmentTimingStats(): Promise<AugmentTimingStats> {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
+  const totalMatches = matchCountOf(rows);
 
   const perSlot: Map<number, Accumulator>[] = Array.from(
     { length: TIMING_SLOTS },
@@ -1229,7 +1296,7 @@ export async function getCompStats(
   roleOf: (champion: string) => string | undefined
 ): Promise<CompStats> {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
+  const totalMatches = matchCountOf(rows);
   const teams = groupIntoTeams(rows);
   const totalTeams = teams.length;
 
@@ -1378,7 +1445,7 @@ export async function getComboStats(
   itemCategoryOf: ItemCategoryLookup
 ): Promise<{ totalMatches: number; byCategory: Record<ComboCategory, ComboStat[]> }> {
   const rows = await fetchAllParticipants();
-  const totalMatches = countMatches(rows);
+  const totalMatches = matchCountOf(rows);
   const denominator = totalMatches * PARTICIPANTS_PER_MATCH;
   const byCategory = computeCombos(rows, itemCategoryOf, denominator, COMBO_MIN_GAMES, COMBO_MAX_ROWS);
   return { totalMatches, byCategory };
