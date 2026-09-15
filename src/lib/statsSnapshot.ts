@@ -254,12 +254,24 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     let truncated = false;
     let totalParticipants = 0;
 
-    // Séquentiel et non parallèle : deux patchs en parallèle, ce sont deux
-    // lectures complètes simultanées en mémoire, pour un job qui a tout son temps.
-    for (const option of context.options) {
-      const set = await clock("lectureParticipants", () =>
-        readParticipantSetForPatch(option.patch),
-      );
+    // Les deux patchs sont lus EN MÊME TEMPS, l'agrégation reste séquentielle.
+    //
+    // La remarque d'origine — « deux lectures complètes simultanées en mémoire,
+    // pour un job qui a tout son temps » — ne tient plus : le job n'a plus tout
+    // son temps. Les deux jeux cohabitent bien en mémoire, ce que la version
+    // séquentielle évitait ; mais ça représente 142 000 lignes, une trentaine
+    // de mégaoctets, sans commune mesure avec ce dont la fonction dispose.
+    //
+    // Chaque lecture est séquentielle par nature (curseur : il faut le dernier
+    // `id` pour demander la page suivante), donc elle passe son temps à
+    // attendre. Deux flux, ce n'est pas la lecture parallèle en soixante-cinq
+    // requêtes qui avait saturé la base — c'est exactement deux.
+    const sets = await clock("lectureParticipants", () =>
+      Promise.all(context.options.map((option) => readParticipantSetForPatch(option.patch))),
+    );
+
+    for (const [index, option] of context.options.entries()) {
+      const set = sets[index];
       truncated = truncated || set.truncated;
       totalParticipants += set.rows.length;
 

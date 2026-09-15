@@ -54,6 +54,10 @@ const PAGE_SIZE = 10000;
  *  500 faisaient 24 allers-retours ; ils tiennent en six. */
 const UPSERT_CHUNK = 2000;
 
+/** Écritures du classement simultanées. Voir l'appel : la phase est de
+ *  l'entrée-sortie presque pure, elle gagne à recouvrir. */
+const LADDER_WRITERS = 4;
+
 /**
  * Les deux lectures de ce fichier paginent PAR CURSEUR et non par `Range`.
  *
@@ -296,14 +300,29 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
     updated_at: stamp,
   }));
 
-  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-    const { error } = await clock("ecritureClassement", () =>
-      db
-        .from("player_ratings")
-        .upsert(rows.slice(i, i + UPSERT_CHUNK), { onConflict: "puuid" }),
+  // Les paquets partent à plusieurs, pour la même raison que les snapshots :
+  // mesuré le 2026-09-15, les huit envois en file d'attente coûtaient 13,8 s
+  // des 33,9 s de la phase MMR — dont le calcul proprement dit ne représente
+  // que 1,9 s. La phase est de l'entrée-sortie à 94 %, et un aller-retour qui
+  // attend le précédent ne recouvre rien.
+  //
+  // Les paquets portent sur des puuid disjoints : deux upserts simultanés ne
+  // peuvent pas se disputer la même ligne.
+  await clock("ecritureClassement", async () => {
+    const chunks: (typeof rows)[] = [];
+    for (let i = 0; i < rows.length; i += UPSERT_CHUNK) chunks.push(rows.slice(i, i + UPSERT_CHUNK));
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(LADDER_WRITERS, chunks.length) }, async () => {
+        for (let i = next++; i < chunks.length; i = next++) {
+          const { error } = await db
+            .from("player_ratings")
+            .upsert(chunks[i], { onConflict: "puuid" });
+          if (error) throw error;
+        }
+      }),
     );
-    if (error) throw error;
-  }
+  });
 
   // Un joueur peut sortir du classement (partie retirée par la règle AFK, ou
   // match supprimé). On efface ce que cette passe n'a pas réécrit, plutôt que
