@@ -390,41 +390,65 @@ grant select on rating_input to service_role;
 -- Range, et rien ne garantit qu'il conserve le tri interne d'une fonction d'une
 -- page à l'autre. Or ici l'ordre N'EST PAS un confort d'affichage : deux pages
 -- mal recollées donnent un classement faux, sans rien signaler.
-create or replace function rating_matches()
-returns table (ord bigint, players integer[], subteams smallint[], placements smallint[])
+-- Révisée le 2026-09-15 : pagination PAR CURSEUR, et lecture d'un cache.
+--
+-- `ord` a disparu avec la pagination par en-tête Range. PostgREST applique
+-- Range APRÈS la requête : chaque page réagrégeait donc les 12 000 matchs pour
+-- n'en garder que mille, treize fois de suite. Le couple
+-- (game_creation, match_id) sert désormais de curseur — il est unique, il est
+-- l'ordre du calcul, et il ne peut pas rendre deux fois la même ligne pendant
+-- que le crawler écrit.
+--
+-- La source n'est plus `rating_input` mais `match_rating_rows`, pré-agrégé par
+-- sync_match_rating_rows() : la composition d'un match ne change plus une fois
+-- ingéré, il n'y a aucune raison de la recalculer toutes les heures.
+create or replace function rating_matches(
+  after_created timestamptz default '-infinity',
+  after_match text default '',
+  page_size integer default 1000
+)
+returns table (
+  game_creation timestamptz,
+  match_id text,
+  players integer[],
+  subteams smallint[],
+  placements smallint[]
+)
 language sql
 stable
 as $$
-  select
-    row_number() over (order by game_creation, match_id) as ord,
-    array_agg(player_idx order by player_idx),
-    array_agg(subteam_id::smallint order by player_idx),
-    array_agg(placement::smallint order by player_idx)
-  from rating_input
-  group by match_id, game_creation
-  order by ord
+  select r.game_creation, r.match_id, r.players, r.subteams, r.placements
+  from match_rating_rows r
+  where (r.game_creation, r.match_id) > (after_created, after_match)
+  order by r.game_creation, r.match_id
+  limit page_size
 $$;
 
-grant execute on function rating_matches() to service_role;
+grant execute on function rating_matches(timestamptz, text, integer) to service_role;
 
 -- L'identité des seuls joueurs qu'on classera : inutile de rapatrier 22 000
 -- puuid pour en afficher un millier.
-create or replace function rating_players(min_games integer)
+-- Révisée le 2026-09-15 : lit `players`, où le compte et le pseudo sont
+-- désormais entretenus par sync_player_counts(), au lieu de les réagréger
+-- depuis les participations à chaque page. Paginée par curseur sur `id` pour
+-- la même raison que rating_matches.
+create or replace function rating_players(
+  min_games integer,
+  after_idx integer default 0,
+  page_size integer default 1000
+)
 returns table (player_idx integer, puuid text, riot_id text, games bigint)
 language sql
 stable
 as $$
-  select
-    player_idx,
-    puuid,
-    (array_agg(riot_id order by game_creation desc))[1] as riot_id,
-    count(*) as games
-  from rating_input
-  group by player_idx, puuid
-  having count(*) >= min_games
+  select pl.id::integer, pl.puuid, coalesce(pl.riot_id, pl.puuid), pl.games::bigint
+  from players pl
+  where pl.games >= min_games and pl.id > after_idx
+  order by pl.id
+  limit page_size
 $$;
 
-grant execute on function rating_players(integer) to service_role;
+grant execute on function rating_players(integer, integer, integer) to service_role;
 
 -- Le classement publié. Réécrit en entier à chaque passe : le crawler découvre
 -- en permanence de vieilles parties, qui s'insèrent AVANT des parties déjà
@@ -471,16 +495,15 @@ as $$
 declare
   promoted integer;
 begin
-  with deep as (
-    select puuid
-    from participants_clean
-    group by puuid
-    having count(*) >= min_games
-  )
+  -- Depuis le 2026-09-15 : `players.games`, entretenu par
+  -- sync_player_counts(), plutôt qu'un group by sur les participations —
+  -- même réponse, sans réagréger 290 000 lignes à chaque heure.
   update crawl_queue q
   set priority = 1
-  from deep
-  where q.puuid = deep.puuid and q.priority = 0;
+  from players pl
+  where q.puuid = pl.puuid
+    and pl.games >= min_games
+    and q.priority = 0;
   get diagnostics promoted = row_count;
   return promoted;
 end;
@@ -594,3 +617,108 @@ grant select, insert, update on players to service_role;
 -- La fenêtre du pseudo est volontairement courte : qui n'a pas joué n'a pas pu
 -- changer de nom dans nos données, et le coût est presque entièrement
 -- proportionnel au nombre de participations à trier.
+
+create or replace function sync_players()
+returns integer
+language plpgsql
+as $$
+declare
+  added integer;
+begin
+  -- `where not exists` et non `on conflict do nothing` : ce dernier fait
+  -- avancer la séquence d'identité AVANT de constater le conflit. Mesuré, ça
+  -- avait porté le plus grand identifiant à 2 043 769 pour 83 208 joueurs.
+  insert into players (puuid)
+  select distinct p.puuid
+  from match_participants p
+  where not exists (select 1 from players pl where pl.puuid = p.puuid);
+  get diagnostics added = row_count;
+  return added;
+end;
+$$;
+
+grant execute on function sync_players() to service_role;
+
+create or replace function sync_match_rating_rows()
+returns integer
+language plpgsql
+as $$
+declare
+  touched integer;
+begin
+  -- Incrémental : seuls les matchs jamais construits, ou réingérés depuis leur
+  -- construction, sont recalculés. La composition d'un match ne change plus une
+  -- fois ingéré.
+  insert into match_rating_rows (match_id, game_creation, players, subteams, placements, built_at)
+  select
+    m.match_id,
+    m.game_creation,
+    array_agg(pl.id::integer order by pl.id),
+    array_agg(p.subteam_id::smallint order by pl.id),
+    array_agg(p.placement::smallint order by pl.id),
+    now()
+  from matches m
+  join participants_clean p on p.match_id = m.match_id
+  join players pl on pl.puuid = p.puuid
+  left join match_rating_rows existing on existing.match_id = m.match_id
+  where m.ingested_at is not null
+    and (existing.match_id is null or existing.built_at < m.ingested_at)
+  group by m.match_id, m.game_creation
+  on conflict (match_id) do update
+    set game_creation = excluded.game_creation,
+        players = excluded.players,
+        subteams = excluded.subteams,
+        placements = excluded.placements,
+        built_at = excluded.built_at;
+  get diagnostics touched = row_count;
+  return touched;
+end;
+$$;
+
+grant execute on function sync_match_rating_rows() to service_role;
+
+create or replace function sync_player_counts(recent_hours integer default 2)
+returns integer
+language plpgsql
+as $$
+declare
+  touched integer;
+begin
+  with compte as (
+    select p as player_id, count(*) as games
+    from match_rating_rows r, unnest(r.players) p
+    group by p
+  )
+  update players pl
+  set games = compte.games
+  from compte
+  where pl.id = compte.player_id and pl.games is distinct from compte.games;
+  get diagnostics touched = row_count;
+
+  -- `match_participants` plutôt que `participants_clean` : un pseudo est un nom
+  -- d'affichage, il n'a aucune raison de passer par l'exclusion des équipes
+  -- AFK. La vue coûtait ici l'anti-jointure ET un second parcours de `matches`,
+  -- puisque la requête joint déjà cette table pour `ingested_at` et
+  -- `game_creation`. Mesuré le 2026-09-15 à instrumentation égale
+  -- (`explain (analyze, timing off)`, l'horloge d'EXPLAIN coûtant sur cette
+  -- instance plus cher que la requête elle-même) :
+  --
+  --   par la vue     796 ms   20 084 buffers
+  --   sans elle      122 ms    5 582 buffers
+  with dernier as (
+    select distinct on (p.puuid) p.puuid, p.riot_id
+    from matches m
+    join match_participants p on p.match_id = m.match_id
+    where m.ingested_at > now() - make_interval(hours => recent_hours)
+    order by p.puuid, m.game_creation desc
+  )
+  update players pl
+  set riot_id = dernier.riot_id
+  from dernier
+  where pl.puuid = dernier.puuid and pl.riot_id is distinct from dernier.riot_id;
+
+  return touched;
+end;
+$$;
+
+grant execute on function sync_player_counts(integer) to service_role;
