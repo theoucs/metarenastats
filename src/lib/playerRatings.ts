@@ -27,10 +27,12 @@ import {
  * ses vieilles parties refait surface.
  */
 
-/** Une ligne de `rating_matches()` : un match, ses joueurs, leurs placements. */
+/** Une ligne de `rating_matches()` : un match, ses joueurs, leurs placements.
+ *  La date et l'identifiant forment le curseur de pagination — et l'ordre du
+ *  calcul, qui EST le calcul : le MMR se construit partie après partie. */
 type MatchRow = {
-  /** Rang chronologique du match. C'est l'ordre du calcul, pas un identifiant. */
-  ord: number;
+  game_creation: string;
+  match_id: string;
   players: number[];
   subteams: number[];
   placements: number[];
@@ -81,7 +83,35 @@ export type RatingReport = {
 export async function refreshPlayerRatings(): Promise<RatingReport> {
   if (!supabaseAdmin) return { matches: 0, players: 0, rated: 0 };
 
-  const matches = await readAll<MatchRow>("rating_matches", "ord");
+  // Les joueurs découverts depuis la dernière passe reçoivent leur index.
+  // AVANT toute lecture : `rating_input` joint `players` en jointure interne,
+  // donc un joueur absent verrait ses parties disparaître du calcul sans le
+  // moindre signal.
+  const { data: added, error: syncError } = await supabaseAdmin.rpc("sync_players");
+  if (syncError) throw syncError;
+  if (added) console.log(`[rating] ${added} joueur(s) indexé(s)`);
+
+  // Pagination PAR CURSEUR chronologique, et non par `Range`.
+  //
+  // PostgREST applique `Range` APRÈS la requête : chaque page réagrégeait donc
+  // les 12 099 matchs pour n'en garder que 1 000, treize fois de suite (5,8 s
+  // la page). Avec un curseur, chaque page ne calcule que sa tranche — 1,0 s,
+  // et ça ne se dégrade pas quand la base grossit.
+  const matches: MatchRow[] = [];
+  let cursor = { created: "-infinity", match: "" };
+  for (let page = 0; page < 1000; page++) {
+    const { data, error } = await supabaseAdmin.rpc("rating_matches", {
+      after_created: cursor.created,
+      after_match: cursor.match,
+      page_size: PAGE_SIZE,
+    });
+    if (error) throw error;
+    const rows = (data ?? []) as MatchRow[];
+    matches.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    const last = rows[rows.length - 1];
+    cursor = { created: last.game_creation, match: last.match_id };
+  }
 
   // Un tableau indexé par `player_idx` plutôt qu'une Map : les index sont
   // denses et contigus par construction (dense_rank), et on les touche
