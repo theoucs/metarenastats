@@ -91,6 +91,21 @@ grant select, insert, update, delete on patch_windows to service_role;
 
 create index if not exists match_participants_champion_idx on match_participants (champion);
 
+-- L'exclusion des équipes AFK coûtait 80 % des accès de `participants_clean`.
+--
+-- Mesuré le 2026-09-15 sur une page de 10 000 lignes du patch 16.17 :
+-- 184 720 buffers lus au total, dont 149 073 pour la seule anti-jointure. Pour
+-- CHAQUE ligne candidate, Postgres relisait les 18 participants de la partie
+-- par `(match_id, puuid)` puis les filtrait sur les objets sentinelles —
+-- « Rows Removed by Filter: 18 », donc 18 lignes lues pour en garder zéro.
+--
+-- L'index partiel ne contient que les lignes réellement AFK, qui sont rares :
+-- la sonde devient une recherche directe sur `(match_id, subteam_id)` dans un
+-- index minuscule. Après : 45 838 buffers, dont 10 285 pour l'anti-jointure.
+create index if not exists match_participants_afk_idx
+  on match_participants (match_id, subteam_id)
+  where items && array[220008, 220009, 220010, 220011];
+
 -- "Automatically expose new tables" étant désactivé sur le projet (bonne pratique),
 -- les tables créées via le SQL Editor ne reçoivent aucun droit par défaut, même pour
 -- service_role. On accède exclusivement via cette clé côté serveur, donc on lui donne
