@@ -49,32 +49,20 @@ type IdentityRow = {
 const PAGE_SIZE = 1000;
 
 /**
- * PostgREST plafonne toute réponse à 1 000 lignes, y compris celle d'un RPC.
+ * Les deux lectures de ce fichier paginent PAR CURSEUR et non par `Range`.
  *
- * `orderBy` n'est pas décoratif : sans tri EXPLICITE, deux pages d'une même
- * lecture peuvent se recouvrir ou se manquer, et on ne l'apprend que par des
- * chiffres faux. Le projet a déjà payé ce bug une fois (voir la pagination des
- * participants dans lib/aggregate.ts).
+ * PostgREST applique `Range` après la requête : chaque page réexécutait donc
+ * l'agrégation complète pour n'en garder que 1 000 lignes. Sur 230 000
+ * participations, c'était 4,3 s par page et une douzaine de pages — pour une
+ * seule des deux lectures.
+ *
+ * Le curseur a un second mérite, découvert en production : il ne peut pas
+ * rendre deux fois la même ligne. Avec un décalage, un joueur franchissant le
+ * seuil de parties pendant la lecture décale les suivants, une ligne revient,
+ * et l'upsert du classement échoue sur « ON CONFLICT DO UPDATE command cannot
+ * affect row a second time » — ce qui faisait tomber tout le job de
+ * publication.
  */
-async function readAll<T>(
-  rpc: string,
-  orderBy: string,
-  args: Record<string, unknown> = {},
-): Promise<T[]> {
-  if (!supabaseAdmin) return [];
-  const out: T[] = [];
-  for (let page = 0; ; page++) {
-    const { data, error } = await supabaseAdmin
-      .rpc(rpc, args)
-      .order(orderBy, { ascending: true })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-    if (error) throw error;
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE_SIZE) return out;
-  }
-}
-
 export type RatingReport = {
   matches: number;
   players: number;
@@ -195,9 +183,25 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
     }
   }
 
-  const identities = await readAll<IdentityRow>("rating_players", "player_idx", {
-    min_games: RATING_MIN_GAMES,
-  });
+  // Curseur, pour la même raison que rating_matches : `Range` s'applique après
+  // la requête, donc chaque page réagrégeait les 230 000 participations (4,3 s
+  // l'une, douze pages). Et un curseur sur un identifiant croissant ne peut pas
+  // rendre deux fois la même ligne, contrairement à un décalage recalculé
+  // pendant que le crawler écrit.
+  const identities: IdentityRow[] = [];
+  let afterIdx = 0;
+  for (let page = 0; page < 1000; page++) {
+    const { data, error } = await supabaseAdmin.rpc("rating_players", {
+      min_games: RATING_MIN_GAMES,
+      after_idx: afterIdx,
+      page_size: PAGE_SIZE,
+    });
+    if (error) throw error;
+    const batch = (data ?? []) as IdentityRow[];
+    identities.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    afterIdx = batch[batch.length - 1].player_idx;
+  }
 
   // Ordre du classement. Les ex æquo sont départagés par le nombre de parties
   // puis par le puuid : sans cela deux passes identiques pourraient rendre deux
