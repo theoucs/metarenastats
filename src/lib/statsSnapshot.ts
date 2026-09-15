@@ -136,6 +136,13 @@ export type RefreshReport = {
   patches: { patch: string; matches: number; participants: number }[];
   /** Le classement recalculé en même temps (voir lib/playerRatings.ts). */
   rated: number;
+  /** Le commit qui a produit ce rapport.
+   *
+   *  Trois fois dans la même journée j'ai mesuré ou validé du travail sans
+   *  savoir si le code déployé était le bon, et deux de ces fois la conclusion
+   *  était fausse. Vercel expose la révision ; la faire remonter coûte une
+   *  ligne et supprime la question. */
+  commit: string;
   /** Millisecondes par phase. Permanent et non temporaire : ce job vit sous une
    *  limite dure de 300 s, et savoir CE QUI coûte est la seule façon de décider
    *  quoi alléger quand il s'en approche. */

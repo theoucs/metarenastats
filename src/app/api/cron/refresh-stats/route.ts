@@ -73,7 +73,10 @@ async function handle(request: Request) {
       typeof error === "object" && error !== null && "timings" in error
         ? (error as { timings: Record<string, number> }).timings
         : undefined;
-    return NextResponse.json({ ok: false, error: message, timings }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: message, commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7), timings },
+      { status: 500 },
+    );
   }
 }
 
