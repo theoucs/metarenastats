@@ -202,7 +202,22 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   // Ordre du classement. Les ex æquo sont départagés par le nombre de parties
   // puis par le puuid : sans cela deux passes identiques pourraient rendre deux
   // classements différents, et un joueur verrait son rang bouger sans raison.
-  const ladder = identities
+  // Dédoublonnage AVANT le classement.
+  //
+  // La lecture de `rating_players` est paginée, et le crawler écrit pendant ce
+  // temps : un joueur qui franchit le seuil de 5 parties entre deux pages
+  // décale les suivants, et une ligne peut revenir deux fois. L'upsert échoue
+  // alors avec « ON CONFLICT DO UPDATE command cannot affect row a second
+  // time », et tout le job de publication tombe — pour une cause invisible
+  // dans le message.
+  const uniqueIdentities = [...new Map(identities.map((row) => [row.puuid, row])).values()];
+  if (uniqueIdentities.length !== identities.length) {
+    console.log(
+      `[rating] ${identities.length - uniqueIdentities.length} doublon(s) de pagination écarté(s)`,
+    );
+  }
+
+  const ladder = uniqueIdentities
     .map((row) => ({ ...row, rating: at(row.player_idx) }))
     .sort(
       (a, b) =>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getItemStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
 import { type StatsRow } from "@/components/StatsTable";
@@ -69,7 +70,19 @@ export default async function ItemsPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
-        <PageHeader eyebrow="Tier list" title="Items" />
+        <PageHeader
+          eyebrow="Tier list"
+          title="Items"
+          description={
+            <>
+              Adjusted for when each item arrives, so late pickups don&apos;t win by default (
+              <Link href="/info#items" className="text-accent hover:underline">
+                how tiers are calculated
+              </Link>
+              ).
+            </>
+          }
+        />
       </PatchSwitch>
     </div>
   );

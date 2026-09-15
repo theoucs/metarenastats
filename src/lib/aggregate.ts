@@ -357,19 +357,207 @@ type ItemCategoryLookup = (itemId: number) => "boots" | "prismatic" | "excluded"
 // the "% of anvil games that got a Shardblade" stat.
 export const SHARDBLADE_ITEM_ID = 220012;
 
+/**
+ * ─── CORRIGER LE BIAIS DE SURVIE DES ITEMS ───────────────────────────────────
+ *
+ * Un item n'arrive dans un build que si la partie a duré assez longtemps. Les
+ * items tardifs héritent donc du placement des équipes qui ont survécu, sans
+ * y être pour rien. Mesuré le 2026-09-15 : le placement moyen passe de 3,90 à
+ * 3 items achetés à 2,48 à 6 — presque une place et demie d'écart due à la
+ * seule longueur du build.
+ *
+ * La correction connue s'appelle l'ANALYSE PAR JALON (landmark analysis, en
+ * épidémiologie) : on ne compare que des sujets ayant atteint le même point du
+ * parcours. Ici chaque acquisition est comparée à la moyenne de son propre
+ * jalon, pas à la moyenne générale.
+ *
+ * Le jalon n'est pas le même selon la façon dont l'item arrive :
+ *
+ *   - ACHETÉ (légendaires, bottes) : le rang de l'achat, lu dans l'ordre
+ *     d'achat reconstitué depuis la timeline. Tout le monde au 4e achat a
+ *     survécu jusqu'au 4e achat.
+ *   - PRISMATIQUE : 94 % d'entre eux ne sont jamais achetés — ils viennent des
+ *     enclumes et des augments, donc n'ont aucun rang d'achat. Leur jalon est
+ *     le NOMBRE de prismatiques obtenus, qui suit la même horloge (les
+ *     enclumes tombent à des manches fixes).
+ *
+ * Effet mesuré, corrélation entre le moment d'acquisition et le placement :
+ *
+ *   prismatiques   -0,492 → -0,067   le biais disparaît
+ *   légendaires    -0,840 → -0,852   inchangé
+ *
+ * Sur les légendaires, quatre jalons différents ont été essayés (rang d'achat,
+ * nombre d'achats, les deux croisés, avec et sans bottes) : aucun ne réduit la
+ * corrélation. Ce n'est donc PAS un biais de survie — un item acheté tard est
+ * réellement meilleur, parce qu'on choisit l'ordre de son build. La correction
+ * réordonne quand même le haut du classement (l'item le plus tardif passe de
+ * 1er à 8e, un item précoce de 10e à 3e), ce qui est exactement la plainte
+ * d'origine ; elle ne prétend simplement pas effacer un effet réel.
+ */
+
+/** Items qui se transforment : l'achat porte sur la base, l'inventaire final
+ *  montre la forme évoluée. Sans cette table, quatre items n'auraient aucun
+ *  rang d'achat — vérifié sur les volumes, qui se correspondent presque
+ *  exactement (Archangel's 10 594 achetés / Seraph's 11 022 en inventaire). */
+const ITEM_BUILT_FROM: Record<number, number> = {
+  223040: 223003, // Seraph's Embrace ← Archangel's Staff
+  223042: 223004, // Muramana        ← Manamune
+  223121: 223119, // Fimbulwinter    ← Winter's Approach
+  222530: 222526, // Diadem of Songs ← sa base
+};
+
+type LandmarkKind = "prismatic" | "bought";
+type Metrics = { placement: number; top3: number; top1: number };
+type MetricSum = Metrics & { n: number };
+
+const emptySum = (): MetricSum => ({ n: 0, placement: 0, top3: 0, top1: 0 });
+
+function addMetrics(sum: MetricSum, placement: number) {
+  sum.n += 1;
+  sum.placement += placement;
+  sum.top3 += placement <= TOP3_PLACEMENT_THRESHOLD ? 1 : 0;
+  sum.top1 += placement === 1 ? 1 : 0;
+}
+
+const meanOf = (sum: MetricSum): Metrics => ({
+  placement: sum.n > 0 ? sum.placement / sum.n : 0,
+  top3: sum.n > 0 ? sum.top3 / sum.n : 0,
+  top1: sum.n > 0 ? sum.top1 / sum.n : 0,
+});
+
+export type LandmarkBaselines = {
+  /** Moyenne du jalon : `${kind}:${landmark}`. */
+  perLandmark: Map<string, Metrics>;
+  /** Moyenne d'ensemble par nature d'item, qui sert de point zéro à l'échelle
+   *  affichée — sans elle on montrerait un écart, pas un placement. */
+  overall: Map<LandmarkKind, Metrics>;
+};
+
+/** Le jalon d'une acquisition, ou `null` quand on ne peut pas le situer. */
+function landmarkFor(
+  row: ParticipantRow,
+  itemId: number,
+  kind: LandmarkKind,
+  prismaticCount: number,
+): number | null {
+  if (kind === "prismatic") return prismaticCount;
+  if (!row.item_order) return null;
+  const direct = row.item_order.indexOf(itemId);
+  if (direct !== -1) return direct + 1;
+  const base = ITEM_BUILT_FROM[itemId];
+  if (base === undefined) return null;
+  const viaBase = row.item_order.indexOf(base);
+  return viaBase === -1 ? null : viaBase + 1;
+}
+
+const kindOf = (itemId: number, categoryOf: ItemCategoryLookup): LandmarkKind =>
+  categoryOf(itemId) === "prismatic" ? "prismatic" : "bought";
+
+/**
+ * Les références, calculées sur TOUT l'échantillon et non par champion : une
+ * page de champion n'a que quelques centaines de parties, et un jalon estimé
+ * là-dessus serait plus bruyant que le biais qu'il corrige.
+ */
+export function buildLandmarkBaselines(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+): LandmarkBaselines {
+  const perLandmark = new Map<string, MetricSum>();
+  const overall = new Map<LandmarkKind, MetricSum>();
+
+  for (const row of rows) {
+    const prismaticCount = row.items.filter((id) => categoryOf(id) === "prismatic").length;
+    for (const itemId of row.items) {
+      if (categoryOf(itemId) === "excluded") continue;
+      const kind = kindOf(itemId, categoryOf);
+      const landmark = landmarkFor(row, itemId, kind, prismaticCount);
+      if (landmark === null) continue;
+
+      const key = `${kind}:${landmark}`;
+      const cell = perLandmark.get(key) ?? emptySum();
+      addMetrics(cell, row.placement);
+      perLandmark.set(key, cell);
+
+      const all = overall.get(kind) ?? emptySum();
+      addMetrics(all, row.placement);
+      overall.set(kind, all);
+    }
+  }
+
+  return {
+    perLandmark: new Map([...perLandmark].map(([k, v]) => [k, meanOf(v)])),
+    overall: new Map([...overall].map(([k, v]) => [k, meanOf(v)])),
+  };
+}
+
+/**
+ * Les stats d'un item, corrigées de son jalon.
+ *
+ * `games` et `playRate` restent BRUTS : ce sont des comptages, pas des
+ * performances, et les corriger n'aurait aucun sens. Seuls placement et taux
+ * de top sont ramenés à la moyenne de leur jalon.
+ */
+export function adjustedItemStats(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+  baselines: LandmarkBaselines,
+  denominator: number,
+  keep: (itemId: number) => boolean,
+): ({ itemId: number } & Stat)[] {
+  const raw = new Map<number, Accumulator>();
+  const deltas = new Map<number, MetricSum>();
+
+  for (const row of rows) {
+    const prismaticCount = row.items.filter((id) => categoryOf(id) === "prismatic").length;
+    for (const itemId of row.items) {
+      if (categoryOf(itemId) === "excluded" || !keep(itemId)) continue;
+      accumulate(raw, itemId, row.placement);
+
+      const kind = kindOf(itemId, categoryOf);
+      const landmark = landmarkFor(row, itemId, kind, prismaticCount);
+      if (landmark === null) continue;
+      const reference = baselines.perLandmark.get(`${kind}:${landmark}`);
+      if (!reference) continue;
+
+      const cell = deltas.get(itemId) ?? emptySum();
+      cell.n += 1;
+      cell.placement += row.placement - reference.placement;
+      cell.top3 += (row.placement <= TOP3_PLACEMENT_THRESHOLD ? 1 : 0) - reference.top3;
+      cell.top1 += (row.placement === 1 ? 1 : 0) - reference.top1;
+      deltas.set(itemId, cell);
+    }
+  }
+
+  return Array.from(raw.entries()).map(([itemId, acc]) => {
+    const rawStat = toStat(acc, denominator);
+    const delta = deltas.get(itemId);
+    const zero = baselines.overall.get(kindOf(itemId, categoryOf));
+    // Sans jalon exploitable — un item jamais situé dans la partie — on garde
+    // le brut plutôt que d'inventer une correction.
+    if (!delta || delta.n === 0 || !zero) return { itemId, ...rawStat };
+
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    return {
+      itemId,
+      ...rawStat,
+      avgPlacement: clamp(zero.placement + delta.placement / delta.n, 1, 6),
+      top3Rate: clamp(zero.top3 + delta.top3 / delta.n, 0, 1),
+      top1Rate: clamp(zero.top1 + delta.top1 / delta.n, 0, 1),
+    };
+  });
+}
+
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
   const totalMatches = countMatches(rows);
-  const byItem = new Map<number, Accumulator>();
-  for (const r of rows) {
-    for (const itemId of r.items) {
-      if (categoryOf(itemId) === "excluded") continue;
-      accumulate(byItem, itemId, r.placement);
-    }
-  }
-  const items = Array.from(byItem.entries())
-    .map(([itemId, s]) => ({ itemId, ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH) }))
-    .sort((a, b) => b.top3Rate - a.top3Rate);
+  const baselines = buildLandmarkBaselines(rows, categoryOf);
+  const items = adjustedItemStats(
+    rows,
+    categoryOf,
+    baselines,
+    totalMatches * PARTICIPANTS_PER_MATCH,
+    () => true,
+  ).sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, items };
 }
 
@@ -590,16 +778,19 @@ function computeTopPrismaticItems(
   rows: ParticipantRow[],
   categoryOf: ItemCategoryLookup,
   denominator: number,
-  topN: number
+  topN: number,
+  /** Références calculées sur tout l'échantillon (voir buildLandmarkBaselines) :
+   *  sans elles, un prismatique tardif remonte ici pour la même raison que sur
+   *  la tier list générale — il n'arrive que dans les parties qui ont duré. */
+  baselines: LandmarkBaselines,
 ): ChampionItemSlotStat[] {
-  const byItem = new Map<number, Accumulator>();
-  for (const r of rows) {
-    for (const itemId of r.items) {
-      if (categoryOf(itemId) !== "prismatic") continue;
-      accumulate(byItem, itemId, r.placement);
-    }
-  }
-  const stats = Array.from(byItem.entries()).map(([itemId, s]) => ({ itemId, ...toStat(s, denominator) }));
+  const stats = adjustedItemStats(
+    rows,
+    categoryOf,
+    baselines,
+    denominator,
+    (itemId) => categoryOf(itemId) === "prismatic",
+  );
   const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.itemId) })));
   stats.sort((a, b) => tierMap.get(String(b.itemId))!.score - tierMap.get(String(a.itemId))!.score);
   return stats.slice(0, topN);
@@ -720,9 +911,21 @@ export async function getChampionDetail(
     itemBuild.push({ slot: i + 1, items });
   });
 
+  // Références du jalon calculées sur TOUT l'échantillon, pas sur les seules
+  // parties de ce champion : quelques centaines de parties ne suffisent pas à
+  // estimer une moyenne par jalon, et une référence bruitée corrigerait de
+  // travers.
+  const baselines = buildLandmarkBaselines(rows, itemCategoryOf);
+
   // Top 6 Prismatic items across this champion's games overall (any
   // playstyle) — sits under the item build slots.
-  const topPrismaticItems = computeTopPrismaticItems(champRows, itemCategoryOf, champGames, 6);
+  const topPrismaticItems = computeTopPrismaticItems(
+    champRows,
+    itemCategoryOf,
+    champGames,
+    6,
+    baselines,
+  );
 
   const anvilRows = champRows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
@@ -737,7 +940,13 @@ export async function getChampionDetail(
   const anvilShardbladeRate = anvilAcc.games > 0 ? anvilShardbladeCount / anvilAcc.games : 0;
 
   // Top 3 Prismatic items among just this champion's anvil-run games.
-  const anvilTopPrismaticItems = computeTopPrismaticItems(anvilRows, itemCategoryOf, anvilAcc.games, 3);
+  const anvilTopPrismaticItems = computeTopPrismaticItems(
+    anvilRows,
+    itemCategoryOf,
+    anvilAcc.games,
+    3,
+    baselines,
+  );
 
   // Top 10 combos per category, scoped to this champion's own games — no
   // minimum games threshold (unlike the site-wide Combos page) since a
