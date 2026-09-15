@@ -347,7 +347,8 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       bytes,
       patches: published,
       rated: rating.rated,
-    timings,
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+      timings,
     };
   } catch (cause) {
     // Les erreurs Supabase ne sont pas des `Error` mais des objets
