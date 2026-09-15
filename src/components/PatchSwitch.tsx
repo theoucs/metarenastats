@@ -41,13 +41,18 @@ export function PatchSwitch({
 }) {
   const [selected, setSelected] = useState(context.defaultPatch ?? "");
 
+  // Dernier filet : si la vue demandée manque, on montre la première qu'on a
+  // plutôt que rien. Une page qui n'affiche que son titre est indiscernable
+  // d'une page cassée, et Next.js la met en cache comme une réussite.
+  const shownView = views[selected] ?? Object.values(views)[0] ?? null;
+
   // Un seul patch connu : pas de bascule à proposer, et surtout pas un
   // sélecteur à une seule option qui donnerait l'illusion d'un choix.
   if (context.options.length < 2) {
     return (
       <>
         {children}
-        {views[selected] ?? null}
+        {shownView}
       </>
     );
   }
@@ -100,7 +105,7 @@ export function PatchSwitch({
       >
         {children}
       </HeadlineRow>
-      {views[selected] ?? null}
+      {shownView}
     </>
   );
 }

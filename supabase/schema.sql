@@ -446,3 +446,33 @@ end;
 $$;
 
 grant execute on function promote_tracked_players(integer) to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Liste des patchs publiables (2026-09-14, révisée le 2026-09-15)
+--
+-- Lue là où elle est bon marché. La première version parcourait les 240 000
+-- participations — anti-jointure AFK et count(distinct match_id) par patch —
+-- alors que le patch est une colonne de `matches`, indexée. Elle est appelée à
+-- CHAQUE régénération de chacune des six tier lists : 1,48 s contre 0,12 s.
+--
+-- Ce n'était pas qu'une question de vitesse. Sous la charge du recalcul horaire
+-- elle dépassait le délai, et sans liste de patchs une page ne construit AUCUNE
+-- vue : il ne restait que le titre, et Next.js gardait cette page vide en cache
+-- une demi-heure. Voir getPatchContext, qui lève désormais plutôt que de rendre
+-- un contexte vide.
+create or replace function patch_options(min_matches integer default 5)
+returns table (patch text, matches bigint, newest timestamptz)
+language sql
+stable
+as $$
+  select m.patch,
+         count(*) as matches,
+         max(m.game_creation) as newest
+  from matches m
+  where m.patch is not null and m.ingested_at is not null
+  group by m.patch
+  having count(*) >= min_matches
+  order by string_to_array(m.patch, '.')::int[] desc
+$$;
+
+grant execute on function patch_options(integer) to service_role;

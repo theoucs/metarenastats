@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase";
 
 /**
@@ -36,7 +37,6 @@ const PATCH_MIN_TO_EXIST = 5;
 export type PatchOption = {
   patch: string;
   matches: number;
-  participants: number;
 };
 
 export type PatchContext = {
@@ -66,23 +66,43 @@ const EMPTY: PatchContext = {
  * Riot déploie par région et en décalé ; nos matchs, eux, portent la version
  * que le serveur avait au moment de la partie.
  */
-export async function getPatchContext(): Promise<PatchContext> {
+export const getPatchContext = cache(async function getPatchContext(): Promise<PatchContext> {
   if (!supabaseAdmin) return EMPTY;
 
-  const { data, error } = await supabaseAdmin.rpc("patch_options", {
-    min_matches: PATCH_MIN_TO_EXIST,
-  });
-  if (error) {
-    console.error("[patch] liste des patchs indisponible :", error.message);
-    return EMPTY;
+  // Une seconde chance avant d'abandonner : l'échec observé est un dépassement
+  // de délai sous la charge du recalcul horaire, pas une panne de fond.
+  let data = null;
+  let lastError = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await supabaseAdmin.rpc("patch_options", { min_matches: PATCH_MIN_TO_EXIST });
+    if (!result.error) {
+      data = result.data;
+      break;
+    }
+    lastError = result.error.message;
+    console.error(`[patch] liste des patchs indisponible (essai ${attempt + 1}) :`, lastError);
+  }
+
+  // On LÈVE plutôt que de rendre un contexte vide.
+  //
+  // Un contexte vide produisait une page « réussie » mais sans tableau : les
+  // vues sont construites à partir des patchs, donc zéro patch donnait zéro
+  // vue, et il ne restait que le titre. Next.js mettait cette page vide en
+  // cache pour trente minutes — ce qui donnait exactement le symptôme observé,
+  // une tier list vide qui se répare toute seule une demi-heure plus tard.
+  //
+  // Une exception, elle, n'est pas mise en cache : la régénération échoue et
+  // le visiteur continue de recevoir la dernière page VALIDE. Échouer bruyamment
+  // sert mieux que réussir à vide.
+  if (data === null) {
+    throw new Error(`Liste des patchs indisponible : ${lastError}`);
   }
 
   const options: PatchOption[] = (data ?? [])
     .slice(0, 2)
-    .map((row: { patch: string; matches: number; participants: number }) => ({
+    .map((row: { patch: string; matches: number }) => ({
       patch: row.patch,
       matches: Number(row.matches),
-      participants: Number(row.participants),
     }));
 
   const [current = null, previous = null] = options;
@@ -100,7 +120,7 @@ export async function getPatchContext(): Promise<PatchContext> {
     defaultPatch: showingPrevious ? previous.patch : current.patch,
     showingPrevious,
   };
-}
+});
 
 /**
  * Clé de snapshot pour un patch donné : « champions@16.18 ».
