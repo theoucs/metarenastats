@@ -106,6 +106,32 @@ create index if not exists match_participants_afk_idx
   on match_participants (match_id, subteam_id)
   where items && array[220008, 220009, 220010, 220011];
 
+-- ─── AUTOVACUUM : garder la carte de visibilité chaude ──────────────────────
+--
+-- Un « index only scan » ne mérite son nom que si la page est marquée
+-- entièrement visible. Sinon Postgres va quand même chercher la ligne dans la
+-- table, et le parcours d'index redevient un parcours de table.
+--
+-- `sync_player_counts` met à jour `players.games` par milliers à chaque heure,
+-- ce qui salit la carte ; l'autovacuum par défaut (20 % de la table, soit
+-- 17 000 lignes ici) ne repassait pas entre deux publications. Mesuré le
+-- 2026-09-15 sur l'anti-jointure de `sync_players` :
+--
+--                        avant       après un VACUUM
+--   heap fetches         157 145           0        (players)
+--                         72 427       4 207        (match_participants)
+--   buffers               99 648       9 474
+--   durée                  6,4 s       2,7 s
+--
+-- Le vacuum tourne en tâche de fond : ce temps ne disparaît pas, il sort du
+-- chemin critique du job.
+alter table players
+  set (autovacuum_vacuum_scale_factor = 0.01, autovacuum_analyze_scale_factor = 0.02);
+alter table match_participants
+  set (autovacuum_vacuum_insert_scale_factor = 0.02, autovacuum_vacuum_scale_factor = 0.05);
+alter table player_ratings
+  set (autovacuum_vacuum_scale_factor = 0.05);
+
 -- "Automatically expose new tables" étant désactivé sur le projet (bonne pratique),
 -- les tables créées via le SQL Editor ne reçoivent aucun droit par défaut, même pour
 -- service_role. On accède exclusivement via cette clé côté serveur, donc on lui donne
