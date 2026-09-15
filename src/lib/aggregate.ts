@@ -293,7 +293,7 @@ type Accumulator = { games: number; top3Wins: number; top1Wins: number; placemen
 
 // `denominator` is what "playRate" is a percentage of — total matches for the
 // site-wide tables, or one champion's game count for stats scoped to that champion.
-function toStat(s: Accumulator, denominator: number): Stat {
+export function toStat(s: Accumulator, denominator: number): Stat {
   return {
     games: s.games,
     top3Rate: s.games > 0 ? s.top3Wins / s.games : 0,

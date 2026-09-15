@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
 import { RankBadge } from "@/components/RankBadge";
 import type { Tier as RankTier } from "@/lib/rating";
@@ -29,6 +29,13 @@ export type StatsRow = {
   /** Le rang Arena du joueur (leaderboard uniquement). Son absence est une
    *  information : le joueur n'a pas encore assez de parties suivies. */
   rankTier?: RankTier;
+  /** Le rang RÉEL de la ligne, quand il ne se déduit pas de sa position.
+   *
+   *  Sur le classement, le numéro affiché doit rester le rang à l'échelle du
+   *  ladder : filtrer sur trois joueurs affichait « 1, 2, 3 » alors qu'ils sont
+   *  57e, 203e et 891e. Les tier lists n'en ont pas — leur numéro EST la
+   *  position dans le tri courant, et c'est ce qu'on veut y lire. */
+  rank?: number;
   /** Item ou augment que représente la ligne : fait apparaître sa description
    *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
    *  ont pas — l'infobulle se réduit alors au nom. */
@@ -282,6 +289,33 @@ export function SortControl<K extends string>({
       </div>
     </div>
   );
+}
+
+/** Ce que renvoie la route de recherche étendue (voir searchBeyondUrl). */
+type LeaderboardSearchRow = {
+  puuid: string;
+  riotId: string;
+  tier: string;
+  position: number;
+  games: number;
+  top3Rate: number;
+  top1Rate: number;
+  avgPlacement: number;
+  playRate: number;
+};
+
+function searchRowToStatsRow(p: LeaderboardSearchRow): StatsRow {
+  return {
+    key: p.puuid,
+    name: p.riotId,
+    rankTier: p.tier as RankTier,
+    rank: p.position,
+    games: p.games,
+    top3Rate: p.top3Rate,
+    top1Rate: p.top1Rate,
+    avgPlacement: p.avgPlacement,
+    playRate: p.playRate,
+  };
 }
 
 /**
@@ -561,7 +595,7 @@ function DataRow({
     >
       <td className="border-l-2 border-l-[color:var(--rail)] py-1.5 pl-[14px] pr-4 transition-[border-width,padding] duration-150 group-hover:border-l-4 group-hover:pl-3">
         {variant === "ranked" ? (
-          <RankCell rank={rank + 1} />
+          <RankCell rank={row.rank ?? rank + 1} />
         ) : (
           <span className="font-mono tabular-nums text-muted">{rank + 1}</span>
         )}
@@ -707,7 +741,7 @@ function MobileCard({
     >
       <div className="flex items-start gap-2.5">
         <span className="mt-1.5 shrink-0 font-mono text-small tabular-nums text-muted">
-          {variant === "ranked" ? <RankCell rank={rank + 1} /> : rank + 1}
+          {variant === "ranked" ? <RankCell rank={row.rank ?? rank + 1} /> : rank + 1}
         </span>
         {linkPrefix ? (
           <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex min-w-0 flex-1">
@@ -768,6 +802,7 @@ export function StatsTable({
   linkSuffix,
   playRateLabel = "% Played",
   filterPlaceholder = "Search\u2026",
+  searchBeyondUrl,
   compact = false,
 }: {
   rows: StatsRow[];
@@ -783,6 +818,11 @@ export function StatsTable({
   /** Ce que le filtre cherche sur CETTE page — « Search a champion », « Search
    *  a player »… Le mot compte : « Filter » seul laisse deviner sur quoi. */
   filterPlaceholder?: string;
+  /** Route qui cherche AU-DELÀ des lignes publiées, quand la page n'en
+   *  transporte qu'une partie (le classement publie 1 000 des 11 294 classés).
+   *  Une URL et non une fonction : une page serveur ne peut pas passer de
+   *  callback à un composant client. */
+  searchBeyondUrl?: string;
   /** For a narrow sidebar column (the player page's Top Champions sits in a
    *  380px track). Drops the 640px floor and the two least important columns
    *  rather than clipping the table mid-cell behind a scrollbar nobody sees. */
@@ -794,6 +834,9 @@ export function StatsTable({
   const [sortBy, setSortBy] = useState<SortKey>(defaultSortKey);
   const [sortDir, setSortDir] = useState<SortDir>("best");
   const [filter, setFilter] = useState("");
+  // Résultats venus du serveur, hors des lignes publiées.
+  const [beyond, setBeyond] = useState<StatsRow[]>([]);
+  const [searchingBeyond, setSearchingBeyond] = useState(false);
   // Mobile-only: see CARD_PAGE_SIZE. Reset from the sort handler rather than an
   // effect — re-sorting reshuffles which rows are "the first 40", so keeping an
   // expanded count would silently change what the button means.
@@ -842,11 +885,75 @@ export function StatsTable({
 
   // Le filtre s'applique APRÈS le tri : l'ordre ne dépend jamais de ce qui est
   // filtré, donc taper puis effacer rend exactement la liste de départ.
-  const visible = useMemo(() => {
+  const matched = useMemo(() => {
     const needle = normalizeForSearch(filter.trim());
     if (!needle) return sorted;
     return sorted.filter((row) => rowHaystack(row).includes(needle));
   }, [sorted, filter]);
+
+  // Les lignes trouvées au-delà du publié viennent s'ajouter, dédoublonnées et
+  // remises dans l'ordre du classement — pas collées à la fin, sinon un joueur
+  // 57e apparaîtrait sous un 900e.
+  const visible = useMemo(() => {
+    // Les résultats étendus ne valent que pour la recherche EN COURS : filtrés
+    // par la longueur plutôt qu'effacés à chaque frappe, ce qui éviterait mal
+    // un setState synchrone dans l'effet.
+    if (beyond.length === 0 || filter.trim().length < 2) return matched;
+    const known = new Set(matched.map((r) => r.key));
+    const extra = beyond.filter((r) => !known.has(r.key));
+    if (extra.length === 0) return matched;
+    return [...matched, ...extra].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+  }, [matched, beyond, filter]);
+
+  useEffect(() => {
+    if (!searchBeyondUrl) return;
+    const query = filter.trim();
+    if (query.length < 2) return;
+    let cancelled = false;
+    // Attendre une pause de frappe : sans ça, « theoucs » part sept fois.
+    // Tous les setState vivent dans ce callback, jamais dans le corps de
+    // l'effet — sinon chaque frappe déclenche un rendu en cascade.
+    const timer = setTimeout(() => {
+      setSearchingBeyond(true);
+      fetch(`${searchBeyondUrl}?q=${encodeURIComponent(query)}`)
+        .then((res) => (res.ok ? res.json() : { players: [] }))
+        .then((data: { players?: LeaderboardSearchRow[] }) => {
+          if (cancelled) return;
+          setBeyond((data.players ?? []).map(searchRowToStatsRow));
+        })
+        // Un échec de recherche ne doit pas vider le tableau déjà affiché.
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setSearchingBeyond(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [filter, searchBeyondUrl]);
+
+  const showBands = variant === "tiers" && sortBy === "tier";
+  // Les lignes qui OUVRENT un bandeau de tier, calculées une fois.
+  //
+  // Le tableau et les cartes suivaient chacun leur propre variable mutée
+  // pendant le rendu — deux fois la même logique, et une mutation que le
+  // compilateur React signale à raison : rien ne garantit qu'un rendu parcoure
+  // la liste une seule fois ni dans l'ordre. Un ensemble de clés se calcule
+  // avant, et se lit sans état.
+  const bandStarts = useMemo(() => {
+    const starts = new Set<string>();
+    if (!showBands) return starts;
+    let previous: Tier | null = null;
+    for (const row of visible) {
+      const tier = tierMap.get(row.key)!.tier;
+      if (tier !== previous) {
+        starts.add(row.key);
+        previous = tier;
+      }
+    }
+    return starts;
+  }, [visible, showBands, tierMap]);
 
   function cycleSort(key: SortKey) {
     setCardLimit(CARD_PAGE_SIZE);
@@ -892,14 +999,10 @@ export function StatsTable({
   const cardsClass = needsWideTable ? "lg:hidden" : "md:hidden";
   const tableClass = needsWideTable ? "hidden lg:block" : "hidden md:block";
 
-  const showBands = variant === "tiers" && sortBy === "tier";
   const colCount =
     (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) + (showRankColumn ? 1 : 0);
   const cellX = compact ? "px-2" : "px-4";
 
-  let lastTier: Tier | null = null;
-
-  let lastMobileTier: Tier | null = null;
 
   const toolbar = (
     // Le tri en pastilles ne sert QUE la vue en cartes : au-dessus du point de
@@ -934,7 +1037,9 @@ export function StatsTable({
       <div>
         {toolbar}
         <div className="rounded-xl border border-dashed border-default bg-raised/30 px-6 py-10 text-center">
-          <p className="text-secondary">No match for “{filter.trim()}”.</p>
+          <p className="text-secondary">
+            {searchingBeyond ? "Searching…" : `No match for “${filter.trim()}”.`}
+          </p>
           <button
             type="button"
             onClick={() => setFilter("")}
@@ -959,8 +1064,7 @@ export function StatsTable({
         <div className="flex flex-col gap-2">
           {visible.slice(0, cardLimit).map((row, i) => {
             const tier = showBands ? tierMap.get(row.key)!.tier : null;
-            const isNewBand = showBands && tier !== lastMobileTier;
-            if (isNewBand) lastMobileTier = tier;
+            const isNewBand = bandStarts.has(row.key);
             return (
               <Fragment key={row.key}>
                 {isNewBand && tier && (
@@ -1081,8 +1185,7 @@ export function StatsTable({
           <tbody>
             {visible.map((row, i) => {
               const tier = showBands ? tierMap.get(row.key)!.tier : null;
-              const isNewBand = showBands && tier !== lastTier;
-              if (isNewBand) lastTier = tier;
+              const isNewBand = bandStarts.has(row.key);
               return (
                 <Fragment key={row.key}>
                   {isNewBand && tier && (

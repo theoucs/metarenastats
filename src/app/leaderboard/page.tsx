@@ -19,6 +19,7 @@ export default async function LeaderboardPage() {
     key: p.puuid,
     name: p.riotId,
     rankTier: (p.tier as StatsRow["rankTier"]) ?? undefined,
+    rank: p.position ?? undefined,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
@@ -50,7 +51,12 @@ export default async function LeaderboardPage() {
           this site (or who played with someone who was) are ranked at all.
         </p>
       </PageHeader>
-      <StatsTable filterPlaceholder="Search a player" rows={rows} variant="ranked" />
+      <StatsTable
+        filterPlaceholder="Search a player"
+        searchBeyondUrl="/api/leaderboard/search"
+        rows={rows}
+        variant="ranked"
+      />
     </div>
   );
 }
