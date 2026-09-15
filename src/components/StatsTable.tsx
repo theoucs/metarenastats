@@ -403,7 +403,11 @@ export function FilterInput({
   total: number;
 }) {
   return (
-    <div className="w-full sm:w-60">
+    // `sm:ml-auto` : sur les pages à tableau, les pastilles de tri sont
+    // masquées, et un `justify-between` à enfant unique collerait le champ à
+    // gauche. Le filtre se retrouvait à droite sur les grilles et à gauche sur
+    // les tableaux — d'un onglet à l'autre, il sautait d'un bord à l'autre.
+    <div className="w-full sm:ml-auto sm:w-60">
       <div className="relative">
         <svg
           viewBox="0 0 20 20"

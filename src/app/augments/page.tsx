@@ -79,8 +79,8 @@ export default async function AugmentsPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
-        <PageHeader eyebrow="Tier list" title="Augments" description="Split by rarity.">
-          <ShowMoreNote>
+        <PageHeader eyebrow="Tier list" title="Augments">
+          <ShowMoreNote label="What Better early / Better late measure">
             <p className="max-w-2xl text-small text-muted">
               Sort by <span className="text-secondary">Better early</span> or{" "}
               <span className="text-secondary">Better late</span> to see which augments change value

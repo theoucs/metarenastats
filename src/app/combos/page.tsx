@@ -54,12 +54,12 @@ export default async function CombosPage() {
           eyebrow="Tier list"
           title="Combos"
           isNew
-          description="Pairs of items/augments picked by the same player in the same game — a good combo shows up often (at least 5 games tracked) and performs well when it does. Top 200 per category."
+          description="Two items or augments taken by the same player in the same game. Needs 5 games; top 200 per category."
         >
-          <p className="mt-1 text-small text-muted">
-            Looking for combos on a specific champion?{" "}
+          <p className="mt-2 text-small text-muted">
+            For combos on one champion, see{" "}
             <Link href="/champions" className="text-accent hover:underline">
-              Head to its champion page
+              its champion page
             </Link>
             .
           </p>

@@ -60,7 +60,7 @@ export default async function AnvilPage() {
           eyebrow="Tier list"
           title="Anvil Run"
           isNew
-          description="Best champions to play a full anvil run on — stat anvils only, no items bought. Click a champion for its full build page."
+          description="Champions played on a full anvil run — stat anvils only, no items bought."
         />
       </PatchSwitch>
     </div>

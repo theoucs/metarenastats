@@ -23,18 +23,13 @@ const TABS: StatsTab[] = [
   { key: "trios", label: "Champion Trios", comingSoon: true },
 ];
 
-const n = (value: number) => value.toLocaleString("en-US");
-
 export default async function CompsPage() {
   const patch = await getPatchContext();
 
-  // La note de couverture bascule avec le tableau : ses chiffres (équipes
-  // suivies, trios distincts) sont propres au patch, donc la laisser dans
-  // l'en-tête afficherait les chiffres d'un patch sous le tableau d'un autre.
   const views = Object.fromEntries(
     await Promise.all(
       patch.options.map(async (option) => {
-        const { totalTeams, archetypes, coverage } = await readSnapshot(
+        const { archetypes } = await readSnapshot(
           "comps",
           () => getCompStats(championRole),
           option.patch,
@@ -53,41 +48,17 @@ export default async function CompsPage() {
 
         return [
           option.patch,
-          <div key={option.patch}>
-            <ShowMoreNote>
-              <p className="max-w-2xl text-small text-muted">
-                Comps are grouped by champion class, because naming specific champions doesn&apos;t
-                work yet: across <span className="text-secondary">{n(totalTeams)}</span> tracked
-                teams there are <span className="text-secondary">{n(coverage.trios.distinct)}</span>{" "}
-                distinct trios, and only{" "}
-                <span className="text-secondary">{n(coverage.trios.repeated)}</span> have been seen
-                more than once. Specific duos aren&apos;t much better —{" "}
-                <span className="text-secondary">{n(coverage.duos.usable)}</span> of{" "}
-                <span className="text-secondary">{n(coverage.duos.distinct)}</span> pairings clear 8
-                games. Both tabs unlock once the sample supports them — ranking either one today
-                would be noise with a tier badge on it.
-              </p>
-              <p className="mt-1.5 max-w-2xl text-small text-muted">
-                A comp needs 20 teams to be listed. Tiers here ignore how often a shape turns up —
-                with 50 of 173 champions classed as Fighters, that measures the roster, not the comp.{" "}
-                <Link href="/info" className="text-accent hover:underline">
-                  How tiers are calculated
-                </Link>
-                .
-              </p>
-            </ShowMoreNote>
-
-            {/* gamesBonus off — see the note above and TierOptions. */}
-            <TieredStatsTabs
-              filterPlaceholder="Search a role"
-              tabs={TABS}
-              rowsByTier={{ archetypes: rows }}
-              display="grid"
-              playRateLabel="% of Teams"
-              unitLabel="teams"
-              gamesBonus={false}
-            />
-          </div>,
+          /* gamesBonus off — voir la note de l'en-tête et TierOptions. */
+          <TieredStatsTabs
+            key={option.patch}
+            filterPlaceholder="Search a role"
+            tabs={TABS}
+            rowsByTier={{ archetypes: rows }}
+            display="grid"
+            playRateLabel="% of Teams"
+            unitLabel="teams"
+            gamesBonus={false}
+          />,
         ] as const;
       }),
     ),
@@ -99,8 +70,25 @@ export default async function CompsPage() {
         <PageHeader
           eyebrow="Tier list"
           title="Team Comps"
-          description="Which three-champion team shapes actually place — measured across every team in every tracked match, not just the one you were on."
-        />
+          description="Three-champion shapes, measured on every team in every match — not just the one you were on. Needs 20 teams."
+        >
+          <ShowMoreNote label="Why shapes, and not champion names">
+            <p className="max-w-2xl text-small text-muted">
+              Naming specific champions doesn&apos;t work yet: nearly every three-champion
+              combination has been seen exactly once, and few pairings clear 8 games. Both tabs
+              unlock when the sample supports them — ranking either one today would be noise with a
+              tier badge on it.
+            </p>
+            <p className="mt-1.5 max-w-2xl text-small text-muted">
+              Tiers here ignore how often a shape turns up: with 50 of 173 champions classed as
+              Fighters, that would measure the roster, not the comp.{" "}
+              <Link href="/info" className="text-accent hover:underline">
+                How tiers are calculated
+              </Link>
+              .
+            </p>
+          </ShowMoreNote>
+        </PageHeader>
       </PatchSwitch>
     </div>
   );
