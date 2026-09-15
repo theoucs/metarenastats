@@ -50,6 +50,9 @@ export type StatsRow = {
    * used by Team Comps, whose "entity" is three champion classes with no art
    * of their own. Takes precedence over name/iconUrl. */
   roles?: string[];
+  /** Métriques corrigées servant au calcul du tier, quand elles diffèrent de
+   *  celles affichées — voir lib/tiers.ts. Les items s'en servent. */
+  tierStat?: { avgPlacement: number; top3Rate: number; top1Rate: number };
   /** Present only on augments with enough picks in each of the first three
    * slots. Unlocks the "Better early"/"Better late" sorts on the grid. */
   timing?: {

@@ -41,27 +41,33 @@ export default function InfoPage() {
         </h2>
         <div className="mt-3 space-y-3 rounded-lg border border-subtle bg-raised/40 p-5 text-secondary">
           <p>
-            An item only reaches your build if the game lasted long enough. Items that arrive late
-            therefore inherit the placement of teams that survived, without having caused it: across
-            tracked games, players who bought 3 items averaged 3.90 while players who bought 6
-            averaged 2.48 — nearly a place and a half, from build length alone.
+            <span className="text-primary">The columns show what happened.</span> Average
+            placement, % Top 3, games: raw numbers, exactly as tracked. The tier is the judgement,
+            and it is the only thing that corrects for the two ways an item can look better than it
+            is. So an S-tier item can show a worse average than an A-tier one — that gap is the
+            correction, and it is the useful part.
           </p>
           <p>
-            So an item isn&apos;t compared to the overall average, but to the average of players who
-            got that far. A prismatic is judged against everyone who obtained the same number of
-            prismatics; a bought item against everyone who made the same purchase. The method is
-            called landmark analysis, and it is the standard fix for this kind of bias.
+            <span className="text-primary">First, surviving.</span> An item only reaches your build
+            if the game lasted: players who bought 3 items averaged 3.90, players who bought 6
+            averaged 2.48. So an item is compared to players who got equally far — to the same
+            purchase for a bought item, to the same number of prismatics for a prismatic, since 94%
+            of those come free from anvils rather than the shop. Checked: the same item bought late
+            no longer scores better than when bought early.
           </p>
           <p>
-            It matters most for prismatics, which mostly come free from anvils and augments: the
-            link between how late they arrive and how well they score drops from −0.49 to −0.07,
-            i.e. it disappears. For bought items it barely moves (−0.84 to −0.85), which is itself a
-            result: buying an item late is a choice, not just survival, and late buys really are
-            stronger. The correction still reshuffles the top — it just doesn&apos;t pretend to
-            erase a real effect.
+            <span className="text-primary">Second, who buys it.</span> Late items are bought by
+            stronger players, who place better whatever they buy. Comparing each purchase to
+            players of similar rank as well cuts the link between how late an item arrives and how
+            it scores from −0.86 to −0.77.
           </p>
-          <p className="text-small text-muted">
-            Games and % Played stay raw — they are counts, not performance.
+          <p>
+            It doesn&apos;t reach zero, and it shouldn&apos;t be forced to: part of what remains is
+            real — buying an item late is a choice, not an accident. The rest we can&apos;t separate,
+            because our own skill rating is too noisy on a single player to subtract cleanly. Rather
+            than pretend otherwise, the Legendary list lets you sort by{" "}
+            <span className="text-secondary">Better early</span> or{" "}
+            <span className="text-secondary">Better late</span> and see the effect item by item.
           </p>
         </div>
       </section>

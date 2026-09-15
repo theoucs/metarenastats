@@ -37,7 +37,17 @@ type TierableRow = {
   top3Rate: number;
   top1Rate: number;
   avgPlacement: number;
+  /** Métriques à utiliser POUR LE SCORE quand elles diffèrent de celles
+   *  affichées. Les items s'en servent : leurs colonnes montrent le brut
+   *  (ce qui s'est passé), leur tier juge sur des chiffres corrigés du moment
+   *  d'acquisition et du niveau des acheteurs. Voir lib/aggregate.ts. */
+  tierStat?: { avgPlacement: number; top3Rate: number; top1Rate: number };
 };
+
+/** Ce sur quoi le score est calculé : le corrigé s'il existe, sinon l'affiché. */
+function scoreBasis<T extends TierableRow>(row: T) {
+  return row.tierStat ?? row;
+}
 
 const AVG_PLACEMENT_WEIGHT = 0.6;
 const TOP1_WEIGHT = 0.2;
@@ -221,13 +231,13 @@ export function computeTiers<T extends TierableRow>(
   // champion's own games.
   const k = Math.max(1, median(rows.map((r) => r.games)));
 
-  const meanPlacement = mean(rows.map((r) => r.avgPlacement));
-  const meanTop1 = mean(rows.map((r) => r.top1Rate));
-  const meanTop3 = mean(rows.map((r) => r.top3Rate));
+  const meanPlacement = mean(rows.map((r) => scoreBasis(r).avgPlacement));
+  const meanTop1 = mean(rows.map((r) => scoreBasis(r).top1Rate));
+  const meanTop3 = mean(rows.map((r) => scoreBasis(r).top3Rate));
 
-  const shrunkPlacement = rows.map((r) => shrink(r.avgPlacement, r.games, meanPlacement, k));
-  const shrunkTop1 = rows.map((r) => shrink(r.top1Rate, r.games, meanTop1, k));
-  const shrunkTop3 = rows.map((r) => shrink(r.top3Rate, r.games, meanTop3, k));
+  const shrunkPlacement = rows.map((r) => shrink(scoreBasis(r).avgPlacement, r.games, meanPlacement, k));
+  const shrunkTop1 = rows.map((r) => shrink(scoreBasis(r).top1Rate, r.games, meanTop1, k));
+  const shrunkTop3 = rows.map((r) => shrink(scoreBasis(r).top3Rate, r.games, meanTop3, k));
   const logGames = rows.map((r) => Math.log(1 + r.games));
 
   // Lower avg placement is better, so invert before normalizing — every

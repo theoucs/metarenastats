@@ -19,6 +19,11 @@ export type ParticipantRow = {
    *  retombe alors sur `items`, comme avant. Ne contient que les achats en
    *  boutique : les prismatiques n'y figurent jamais. */
   item_order: number[] | null;
+  /** Tranche de niveau du joueur au moment du calcul : 1 = apex, 5 = bas de
+   *  ladder, 0 = pas encore classé (moins de 5 parties suivies). Voir la vue
+   *  `participants_clean`. Un smallint, pas le mu : on ne rapatrie pas un
+   *  flottant par ligne sur 240 000 lignes pour en faire cinq paquets. */
+  skill_bucket: number;
 };
 
 // Arena is 6 teams of 3 — top half (placement <= 3) is what we surface as
@@ -99,7 +104,7 @@ const MAX_PAGES = 500;
  * dont le calcul JS a vraiment besoin : **31 o par ligne, 3,5× moins**.
  */
 const PARTICIPANT_COLUMNS =
-  "id, match_id, subteam_id, champion, placement, augments, items, item_order";
+  "id, match_id, subteam_id, champion, placement, augments, items, item_order, skill_bucket";
 
 /**
  * La vue `participants_clean` plutôt que la table brute.
@@ -358,41 +363,42 @@ type ItemCategoryLookup = (itemId: number) => "boots" | "prismatic" | "excluded"
 export const SHARDBLADE_ITEM_ID = 220012;
 
 /**
- * ─── CORRIGER LE BIAIS DE SURVIE DES ITEMS ───────────────────────────────────
+ * ─── DEUX BIAIS DU CLASSEMENT D'ITEMS ────────────────────────────────────────
  *
- * Un item n'arrive dans un build que si la partie a duré assez longtemps. Les
- * items tardifs héritent donc du placement des équipes qui ont survécu, sans
- * y être pour rien. Mesuré le 2026-09-15 : le placement moyen passe de 3,90 à
- * 3 items achetés à 2,48 à 6 — presque une place et demie d'écart due à la
- * seule longueur du build.
+ * 1. LA SURVIE. Un item n'arrive dans un build que si la partie a duré. Les
+ *    items tardifs héritent donc du placement des équipes qui ont survécu, sans
+ *    y être pour rien : le placement moyen passe de 3,90 à 3 items achetés à
+ *    2,48 à 6.
  *
- * La correction connue s'appelle l'ANALYSE PAR JALON (landmark analysis, en
- * épidémiologie) : on ne compare que des sujets ayant atteint le même point du
- * parcours. Ici chaque acquisition est comparée à la moyenne de son propre
- * jalon, pas à la moyenne générale.
+ * 2. LE NIVEAU DES ACHETEURS. Mesuré ensuite : les items achetés tard le sont
+ *    par les MEILLEURS joueurs (corrélation 0,556 entre créneau et MMR moyen
+ *    des acheteurs), et ces joueurs placent mieux quoi qu'ils achètent
+ *    (corrélation -0,720 entre ce MMR et la note de l'item).
  *
- * Le jalon n'est pas le même selon la façon dont l'item arrive :
+ * Le correctif est le même dans les deux cas — l'ANALYSE PAR JALON, correctif
+ * standard de l'immortal time bias en épidémiologie : on ne compare que des
+ * sujets comparables. Ici le jalon a deux dimensions, « où en était le build »
+ * et « quel niveau avait le joueur ».
  *
- *   - ACHETÉ (légendaires, bottes) : le rang de l'achat, lu dans l'ordre
- *     d'achat reconstitué depuis la timeline. Tout le monde au 4e achat a
- *     survécu jusqu'au 4e achat.
- *   - PRISMATIQUE : 94 % d'entre eux ne sont jamais achetés — ils viennent des
- *     enclumes et des augments, donc n'ont aucun rang d'achat. Leur jalon est
- *     le NOMBRE de prismatiques obtenus, qui suit la même horloge (les
- *     enclumes tombent à des manches fixes).
+ * Où en était le build se lit différemment selon la provenance de l'item :
  *
- * Effet mesuré, corrélation entre le moment d'acquisition et le placement :
+ *   - ACHETÉ : le rang de l'achat, depuis l'ordre reconstitué de la timeline.
+ *   - PRISMATIQUE : 94 % ne sont jamais achetés, ils viennent des enclumes et
+ *     des augments. Leur jalon est le NOMBRE de prismatiques obtenus, qui suit
+ *     la même horloge (les enclumes tombent à des manches fixes).
  *
- *   prismatiques   -0,492 → -0,067   le biais disparaît
- *   légendaires    -0,840 → -0,852   inchangé
+ * ─── CE QUE LA CORRECTION TOUCHE, ET CE QU'ELLE NE TOUCHE PAS ────────────────
  *
- * Sur les légendaires, quatre jalons différents ont été essayés (rang d'achat,
- * nombre d'achats, les deux croisés, avec et sans bottes) : aucun ne réduit la
- * corrélation. Ce n'est donc PAS un biais de survie — un item acheté tard est
- * réellement meilleur, parce qu'on choisit l'ordre de son build. La correction
- * réordonne quand même le haut du classement (l'item le plus tardif passe de
- * 1er à 8e, un item précoce de 10e à 3e), ce qui est exactement la plainte
- * d'origine ; elle ne prétend simplement pas effacer un effet réel.
+ * Les colonnes affichées restent BRUTES. Un joueur qui a eu cet item a
+ * réellement fini 2,70 de moyenne ; afficher 2,99 sous l'étiquette « Avg
+ * Placement » serait mentir sur un fait vérifiable. Et si la moyenne affichée
+ * et le tier sortaient du même chiffre corrigé, les deux tris donneraient le
+ * même ordre : on perdrait une information en croyant en gagner une.
+ *
+ * Seul le TIER porte la correction. C'est son rôle — il est là pour juger, les
+ * colonnes sont là pour constater. Conséquence assumée : un item S peut
+ * afficher une moyenne moins bonne qu'un item A, et c'est précisément
+ * l'information utile.
  */
 
 /** Items qui se transforment : l'achat porte sur la base, l'inventaire final
@@ -405,6 +411,10 @@ const ITEM_BUILT_FROM: Record<number, number> = {
   223121: 223119, // Fimbulwinter    ← Winter's Approach
   222530: 222526, // Diadem of Songs ← sa base
 };
+
+/** En dessous, la case (jalon × niveau) est trop mince pour servir de
+ *  référence : on retombe alors sur le jalon seul, moins précis mais solide. */
+const LANDMARK_MIN_CELL = 40;
 
 type LandmarkKind = "prismatic" | "bought";
 type Metrics = { placement: number; top3: number; top1: number };
@@ -425,15 +435,23 @@ const meanOf = (sum: MetricSum): Metrics => ({
   top1: sum.n > 0 ? sum.top1 / sum.n : 0,
 });
 
+function bump(map: Map<string, MetricSum>, key: string, placement: number) {
+  const cell = map.get(key) ?? emptySum();
+  addMetrics(cell, placement);
+  map.set(key, cell);
+}
+
 export type LandmarkBaselines = {
-  /** Moyenne du jalon : `${kind}:${landmark}`. */
-  perLandmark: Map<string, Metrics>;
-  /** Moyenne d'ensemble par nature d'item, qui sert de point zéro à l'échelle
-   *  affichée — sans elle on montrerait un écart, pas un placement. */
-  overall: Map<LandmarkKind, Metrics>;
+  /** `kind:landmark:bucket` — la référence précise. */
+  fine: Map<string, MetricSum>;
+  /** `kind:landmark` — le repli quand la case précise est trop mince. */
+  coarse: Map<string, MetricSum>;
+  /** Moyenne d'ensemble par nature d'item : le point zéro de l'échelle, sans
+   *  lequel on montrerait un écart et non un placement. */
+  overall: Map<LandmarkKind, MetricSum>;
 };
 
-/** Le jalon d'une acquisition, ou `null` quand on ne peut pas le situer. */
+/** Le jalon d'une acquisition, ou `null` quand on ne peut pas la situer. */
 function landmarkFor(
   row: ParticipantRow,
   itemId: number,
@@ -462,7 +480,8 @@ export function buildLandmarkBaselines(
   rows: ParticipantRow[],
   categoryOf: ItemCategoryLookup,
 ): LandmarkBaselines {
-  const perLandmark = new Map<string, MetricSum>();
+  const fine = new Map<string, MetricSum>();
+  const coarse = new Map<string, MetricSum>();
   const overall = new Map<LandmarkKind, MetricSum>();
 
   for (const row of rows) {
@@ -473,29 +492,54 @@ export function buildLandmarkBaselines(
       const landmark = landmarkFor(row, itemId, kind, prismaticCount);
       if (landmark === null) continue;
 
-      const key = `${kind}:${landmark}`;
-      const cell = perLandmark.get(key) ?? emptySum();
-      addMetrics(cell, row.placement);
-      perLandmark.set(key, cell);
-
+      bump(fine, `${kind}:${landmark}:${row.skill_bucket}`, row.placement);
+      bump(coarse, `${kind}:${landmark}`, row.placement);
       const all = overall.get(kind) ?? emptySum();
       addMetrics(all, row.placement);
       overall.set(kind, all);
     }
   }
 
-  return {
-    perLandmark: new Map([...perLandmark].map(([k, v]) => [k, meanOf(v)])),
-    overall: new Map([...overall].map(([k, v]) => [k, meanOf(v)])),
-  };
+  return { fine, coarse, overall };
 }
 
+function referenceFor(
+  baselines: LandmarkBaselines,
+  kind: LandmarkKind,
+  landmark: number,
+  bucket: number,
+): Metrics | null {
+  const precise = baselines.fine.get(`${kind}:${landmark}:${bucket}`);
+  if (precise && precise.n >= LANDMARK_MIN_CELL) return meanOf(precise);
+  const fallback = baselines.coarse.get(`${kind}:${landmark}`);
+  return fallback ? meanOf(fallback) : null;
+}
+
+/** Bandes de créneau pour le tri « Better early / Better late », calquées sur
+ *  celui des augments : tôt = 1er-2e achat, tard = 4e et au-delà. */
+const ITEM_TIMING_BANDS: [label: string, min: number, max: number][] = [
+  ["early", 1, 2],
+  ["mid", 3, 3],
+  ["late", 4, 99],
+];
+/** Minimum d'achats dans CHAQUE bande pour qu'un écart tôt/tard ait un sens. */
+const ITEM_TIMING_MIN = 60;
+
+export type AdjustedItemStat = { itemId: number } & Stat & {
+    /** Métriques corrigées du jalon. Servent AU TIER et à rien d'autre : les
+     *  colonnes affichent les brutes ci-dessus. */
+    tierStat: { avgPlacement: number; top3Rate: number; top1Rate: number };
+    /** Écart de % Top 3 entre un achat tardif et un achat précoce, chacun mesuré
+     *  contre sa propre bande. Absent pour les prismatiques, qui ne sont pas
+     *  achetés, et pour les items trop rares dans une bande. */
+    timing?: { swing: number; rates: number[] };
+  };
+
 /**
- * Les stats d'un item, corrigées de son jalon.
+ * Les stats d'un item : brutes pour l'affichage, corrigées pour le tier.
  *
- * `games` et `playRate` restent BRUTS : ce sont des comptages, pas des
- * performances, et les corriger n'aurait aucun sens. Seuls placement et taux
- * de top sont ramenés à la moyenne de leur jalon.
+ * `games` et `playRate` ne sont jamais corrigés — ce sont des comptages, pas
+ * des performances.
  */
 export function adjustedItemStats(
   rows: ParticipantRow[],
@@ -503,9 +547,11 @@ export function adjustedItemStats(
   baselines: LandmarkBaselines,
   denominator: number,
   keep: (itemId: number) => boolean,
-): ({ itemId: number } & Stat)[] {
+): AdjustedItemStat[] {
   const raw = new Map<number, Accumulator>();
   const deltas = new Map<number, MetricSum>();
+  // Par item puis par bande de créneau, pour le tri tôt/tard.
+  const bands = new Map<number, MetricSum[]>();
 
   for (const row of rows) {
     const prismaticCount = row.items.filter((id) => categoryOf(id) === "prismatic").length;
@@ -516,7 +562,7 @@ export function adjustedItemStats(
       const kind = kindOf(itemId, categoryOf);
       const landmark = landmarkFor(row, itemId, kind, prismaticCount);
       if (landmark === null) continue;
-      const reference = baselines.perLandmark.get(`${kind}:${landmark}`);
+      const reference = referenceFor(baselines, kind, landmark, row.skill_bucket);
       if (!reference) continue;
 
       const cell = deltas.get(itemId) ?? emptySum();
@@ -525,25 +571,67 @@ export function adjustedItemStats(
       cell.top3 += (row.placement <= TOP3_PLACEMENT_THRESHOLD ? 1 : 0) - reference.top3;
       cell.top1 += (row.placement === 1 ? 1 : 0) - reference.top1;
       deltas.set(itemId, cell);
+
+      if (kind === "bought") {
+        const band = ITEM_TIMING_BANDS.findIndex(([, min, max]) => landmark >= min && landmark <= max);
+        if (band !== -1) {
+          const perBand = bands.get(itemId) ?? ITEM_TIMING_BANDS.map(() => emptySum());
+          addMetrics(perBand[band], row.placement);
+          bands.set(itemId, perBand);
+        }
+      }
     }
   }
+
+  // Référence de chaque bande, prise sur les items ÉLIGIBLES au tri et non sur
+  // tous les achats : un écart n'est lu que face aux autres items du même
+  // tableau, c'est donc sur eux qu'il doit être centré. Même raisonnement que
+  // pour le timing des augments.
+  const eligible = [...bands.entries()].filter(([, perBand]) =>
+    perBand.every((b) => b.n >= ITEM_TIMING_MIN),
+  );
+  const bandBaseline = ITEM_TIMING_BANDS.map((_, i) => {
+    let n = 0;
+    let top3 = 0;
+    for (const [, perBand] of eligible) {
+      n += perBand[i].n;
+      top3 += perBand[i].top3;
+    }
+    return n > 0 ? top3 / n : 0;
+  });
+  const timings = new Map<number, { swing: number; rates: number[] }>(
+    eligible.map(([itemId, perBand]) => {
+      const rates = perBand.map((b) => b.top3 / b.n);
+      const swing =
+        rates[rates.length - 1] - bandBaseline[bandBaseline.length - 1] - (rates[0] - bandBaseline[0]);
+      return [itemId, { swing, rates }];
+    }),
+  );
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
   return Array.from(raw.entries()).map(([itemId, acc]) => {
     const rawStat = toStat(acc, denominator);
     const delta = deltas.get(itemId);
     const zero = baselines.overall.get(kindOf(itemId, categoryOf));
-    // Sans jalon exploitable — un item jamais situé dans la partie — on garde
-    // le brut plutôt que d'inventer une correction.
-    if (!delta || delta.n === 0 || !zero) return { itemId, ...rawStat };
+    const timing = timings.get(itemId);
 
-    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-    return {
-      itemId,
-      ...rawStat,
-      avgPlacement: clamp(zero.placement + delta.placement / delta.n, 1, 6),
-      top3Rate: clamp(zero.top3 + delta.top3 / delta.n, 0, 1),
-      top1Rate: clamp(zero.top1 + delta.top1 / delta.n, 0, 1),
-    };
+    // Sans jalon exploitable, le tier se rabat sur le brut plutôt que sur une
+    // correction inventée.
+    const tierStat =
+      !delta || delta.n === 0 || !zero
+        ? {
+            avgPlacement: rawStat.avgPlacement,
+            top3Rate: rawStat.top3Rate,
+            top1Rate: rawStat.top1Rate,
+          }
+        : {
+            avgPlacement: clamp(meanOf(zero).placement + delta.placement / delta.n, 1, 6),
+            top3Rate: clamp(meanOf(zero).top3 + delta.top3 / delta.n, 0, 1),
+            top1Rate: clamp(meanOf(zero).top1 + delta.top1 / delta.n, 0, 1),
+          };
+
+    return { itemId, ...rawStat, tierStat, ...(timing ? { timing } : {}) };
   });
 }
 

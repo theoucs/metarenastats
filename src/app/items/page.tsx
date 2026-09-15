@@ -36,6 +36,10 @@ function toRowsByTier(items: Awaited<ReturnType<typeof getItemStats>>["items"]) 
       top1Rate: entry.top1Rate,
       avgPlacement: entry.avgPlacement,
       playRate: entry.playRate,
+      // Les colonnes ci-dessus sont brutes ; c'est ce champ-là que le tier
+      // consulte, corrigé du moment d'acquisition et du niveau des acheteurs.
+      tierStat: entry.tierStat,
+      timing: entry.timing,
     };
     rowsByTier[isPrismatic ? "prismatic" : "legendary"].push(row);
   }
