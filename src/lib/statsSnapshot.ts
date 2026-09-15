@@ -203,6 +203,11 @@ export async function refreshSiteCounters(): Promise<{ totalMatches: number }> {
   return { totalMatches: site.totalMatches };
 }
 
+/** Snapshots par requête d'écriture, et requêtes simultanées. Quatre flux
+ *  suffisent à recouvrir sérialisation et transfert sans inonder la base. */
+const SNAPSHOT_CHUNK = 24;
+const SNAPSHOT_WRITERS = 4;
+
 export async function refreshSnapshots(): Promise<RefreshReport> {
   const startedAt = Date.now();
   const db = supabaseAdmin;
@@ -308,20 +313,47 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     const bytes = snapshots.reduce((n, r) => n + JSON.stringify(r.payload).length, 0);
     const computedAt = new Date().toISOString();
 
-    const { error } = await clock("ecriture", async () =>
-      db.from("stats_snapshots").upsert(
-        snapshots.map((r) => ({
-          key: r.key,
-          payload: r.payload,
-          computed_at: computedAt,
-          source_matches: site.totalMatches,
-          source_participants: totalParticipants,
-          truncated,
-        })),
-        { onConflict: "key" },
-      ),
-    );
-    if (error) throw error;
+    // Écriture par paquets, et plusieurs paquets en vol.
+    //
+    // Les 362 snapshots partaient en UNE requête de 5 Mo : mesuré 23 s, soit
+    // 200 Ko/s, le temps d'un seul aller-retour qui sérialise, transfère et
+    // insère de bout en bout sans jamais rien recouvrir.
+    //
+    // Le prix payé est l'atomicité : un paquet peut aboutir et le suivant
+    // échouer. C'est sans conséquence ici, chaque clé étant une page
+    // indépendante — au pire deux pages affichent des chiffres calculés à une
+    // heure d'écart, ce qui est déjà le cas entre deux publications. Et le
+    // ménage qui suit ne s'exécute pas si l'une des écritures a échoué, donc
+    // rien n'est supprimé sur la foi d'une publication incomplète.
+    const rowsToWrite = snapshots.map((r) => ({
+      key: r.key,
+      payload: r.payload,
+      computed_at: computedAt,
+      source_matches: site.totalMatches,
+      source_participants: totalParticipants,
+      truncated,
+    }));
+    await clock("ecriture", async () => {
+      const chunks: (typeof rowsToWrite)[] = [];
+      for (let i = 0; i < rowsToWrite.length; i += SNAPSHOT_CHUNK) {
+        chunks.push(rowsToWrite.slice(i, i + SNAPSHOT_CHUNK));
+      }
+      // Un compteur partagé plutôt qu'un découpage en parts égales : les
+      // paquets n'ont pas le même poids (une page de champion pèse mille fois
+      // moins que la tier list des objets), et un partage figé ferait attendre
+      // tout le monde sur la part la plus lourde.
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(SNAPSHOT_WRITERS, chunks.length) }, async () => {
+          for (let i = next++; i < chunks.length; i = next++) {
+            const { error } = await db
+              .from("stats_snapshots")
+              .upsert(chunks[i], { onConflict: "key" });
+            if (error) throw error;
+          }
+        }),
+      );
+    });
 
     // Ménage : tout ce qui n'a pas été réécrit ce tour-ci est périmé.
     //
