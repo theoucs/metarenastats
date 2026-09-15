@@ -96,6 +96,13 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   if (buildError) throw buildError;
   if (built) console.log(`[rating] ${built} partie(s) ajoutée(s) au cache de calcul`);
 
+  // Volume de parties et pseudo, APRÈS le cache puisqu'ils s'en déduisent. Le
+  // compte tiré du cache coûte 0,5 s contre 4,0 s tiré des participations, et
+  // le pseudo n'est relu que pour les joueurs vus dans les dernières heures —
+  // qui n'a pas joué n'a pas pu changer de nom dans nos données.
+  const { error: countError } = await supabaseAdmin.rpc("sync_player_counts", {});
+  if (countError) throw countError;
+
   // Pagination PAR CURSEUR chronologique, et non par `Range`.
   //
   // PostgREST applique `Range` APRÈS la requête : chaque page réagrégeait donc

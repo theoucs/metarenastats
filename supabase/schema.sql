@@ -532,3 +532,24 @@ grant select, insert, update on players to service_role;
 --
 --   alter role authenticator set pgrst.db_max_rows = '20000';
 --   notify pgrst, 'reload config';
+
+-- Découpage de la synchronisation des joueurs (2026-09-15).
+--
+--   sync_players()        identifiants des nouveaux joueurs — AVANT le cache,
+--                         qui en a besoin.
+--   sync_match_rating_rows()  le cache lui-même, incrémental.
+--   sync_player_counts()  volume de parties et pseudo — APRÈS le cache, dont
+--                         ils se déduisent.
+--
+-- Deux mesures ont guidé ce découpage :
+--
+--   compter les parties par les participations  4,0 s  (jointure + anti-jointure
+--                                                       AFK + débordement disque)
+--   le même compte sur le cache                 0,5 s
+--
+--   relire le pseudo sur 3 h de matchs ingérés  13,0 s
+--   sur 1 h                                      0,6 s
+--
+-- La fenêtre du pseudo est volontairement courte : qui n'a pas joué n'a pas pu
+-- changer de nom dans nos données, et le coût est presque entièrement
+-- proportionnel au nombre de participations à trier.
