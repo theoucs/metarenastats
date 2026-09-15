@@ -343,7 +343,16 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     timings,
     };
   } catch (cause) {
-    const error = cause instanceof Error ? cause : new Error(String(cause));
+    // Les erreurs Supabase ne sont pas des `Error` mais des objets
+    // { message, details, hint, code } : un String() dessus donne
+    // « [object Object] » et masque complètement la cause.
+    const message =
+      cause instanceof Error
+        ? cause.message
+        : typeof cause === "object" && cause !== null && "message" in cause
+          ? String((cause as { message: unknown }).message)
+          : String(cause);
+    const error = cause instanceof Error ? cause : new Error(message);
     throw Object.assign(error, { timings });
   }
 }

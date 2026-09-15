@@ -519,3 +519,5 @@ create index if not exists match_rating_rows_chrono_idx
   on match_rating_rows (game_creation, match_id);
 
 grant select, insert, update, delete on match_rating_rows to service_role;
+
+grant select, insert, update on players to service_role;
