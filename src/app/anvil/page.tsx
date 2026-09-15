@@ -46,6 +46,7 @@ export default async function AnvilPage() {
             linkPrefix="/champions/"
             linkSuffix={option.patch === patch.defaultPatch ? undefined : `?patch=${option.patch}`}
             playRateLabel="% Anvil Run"
+            filterPlaceholder="Search a champion"
           />,
         ] as const;
       }),

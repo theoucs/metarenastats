@@ -472,6 +472,7 @@ export default async function ChampionDetailPage({
                     tabs={COMBO_TABS}
                     rowsByTier={comboRowsByTier}
                     defaultTab="item-augment"
+                    filterPlaceholder="Search an item or augment"
                   />
                 </div>
               </section>
