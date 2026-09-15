@@ -73,16 +73,31 @@ export type RatingReport = {
   matches: number;
   players: number;
   rated: number;
+  /** Durée de chaque étape, en ms. Remontée dans le rapport du job : une phase
+   *  de 41 s dont on ne sait pas à quoi elle les passe ne s'optimise pas. */
+  timings: Record<string, number>;
 };
 
 export async function refreshPlayerRatings(): Promise<RatingReport> {
-  if (!supabaseAdmin) return { matches: 0, players: 0, rated: 0 };
+  const timings: Record<string, number> = {};
+  const clock = async <T,>(label: string, run: () => PromiseLike<T>): Promise<T> => {
+    const at = Date.now();
+    try {
+      return await run();
+    } finally {
+      timings[label] = (timings[label] ?? 0) + (Date.now() - at);
+    }
+  };
+  if (!supabaseAdmin) return { matches: 0, players: 0, rated: 0, timings };
+  const db = supabaseAdmin;
 
   // Les joueurs découverts depuis la dernière passe reçoivent leur index.
   // AVANT toute lecture : `rating_input` joint `players` en jointure interne,
   // donc un joueur absent verrait ses parties disparaître du calcul sans le
   // moindre signal.
-  const { data: added, error: syncError } = await supabaseAdmin.rpc("sync_players");
+  const { data: added, error: syncError } = await clock("syncPlayers", () =>
+    db.rpc("sync_players"),
+  );
   if (syncError) throw syncError;
   if (added) console.log(`[rating] ${added} joueur(s) indexé(s) ou mis à jour`);
 
@@ -92,7 +107,9 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   //
   // Sans ce cache, la lecture réagrégeait les 240 000 participations à chaque
   // page — 1,6 s l'une, quatorze pages, à chaque heure. Avec : 0,34 s la page.
-  const { data: built, error: buildError } = await supabaseAdmin.rpc("sync_match_rating_rows");
+  const { data: built, error: buildError } = await clock("syncMatchRows", () =>
+    db.rpc("sync_match_rating_rows"),
+  );
   if (buildError) throw buildError;
   if (built) console.log(`[rating] ${built} partie(s) ajoutée(s) au cache de calcul`);
 
@@ -100,7 +117,9 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   // compte tiré du cache coûte 0,5 s contre 4,0 s tiré des participations, et
   // le pseudo n'est relu que pour les joueurs vus dans les dernières heures —
   // qui n'a pas joué n'a pas pu changer de nom dans nos données.
-  const { error: countError } = await supabaseAdmin.rpc("sync_player_counts", {});
+  const { error: countError } = await clock("syncCounts", () =>
+    db.rpc("sync_player_counts", {}),
+  );
   if (countError) throw countError;
 
   // Pagination PAR CURSEUR chronologique, et non par `Range`.
@@ -112,11 +131,13 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   const matches: MatchRow[] = [];
   let cursor = { created: "-infinity", match: "" };
   for (let page = 0; page < 1000; page++) {
-    const { data, error } = await supabaseAdmin.rpc("rating_matches", {
-      after_created: cursor.created,
-      after_match: cursor.match,
-      page_size: PAGE_SIZE,
-    });
+    const { data, error } = await clock("lectureMatchs", () =>
+      db.rpc("rating_matches", {
+        after_created: cursor.created,
+        after_match: cursor.match,
+        page_size: PAGE_SIZE,
+      }),
+    );
     if (error) throw error;
     const rows = (data ?? []) as MatchRow[];
     matches.push(...rows);
@@ -164,6 +185,7 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   // de test, ce qui n'est pas une mesure mais une coïncidence.
   const PASSES = 3;
 
+  const passesStartedAt = Date.now();
   for (let pass = 0; pass < PASSES; pass++) {
     // On garde ce qu'on a appris (mu) mais on rouvre l'incertitude : le joueur
     // retraverse son histoire avec ce qu'on a fini par savoir de lui.
@@ -205,6 +227,7 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
       });
     }
   }
+  timings.passes = Date.now() - passesStartedAt;
 
   // Curseur, pour la même raison que rating_matches : `Range` s'applique après
   // la requête, donc chaque page réagrégeait les 230 000 participations (4,3 s
@@ -214,11 +237,13 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   const identities: IdentityRow[] = [];
   let afterIdx = 0;
   for (let page = 0; page < 1000; page++) {
-    const { data, error } = await supabaseAdmin.rpc("rating_players", {
-      min_games: RATING_MIN_GAMES,
-      after_idx: afterIdx,
-      page_size: PAGE_SIZE,
-    });
+    const { data, error } = await clock("lectureJoueurs", () =>
+      db.rpc("rating_players", {
+        min_games: RATING_MIN_GAMES,
+        after_idx: afterIdx,
+        page_size: PAGE_SIZE,
+      }),
+    );
     if (error) throw error;
     const batch = (data ?? []) as IdentityRow[];
     identities.push(...batch);
@@ -272,9 +297,11 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   }));
 
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-    const { error } = await supabaseAdmin
-      .from("player_ratings")
-      .upsert(rows.slice(i, i + UPSERT_CHUNK), { onConflict: "puuid" });
+    const { error } = await clock("ecritureClassement", () =>
+      db
+        .from("player_ratings")
+        .upsert(rows.slice(i, i + UPSERT_CHUNK), { onConflict: "puuid" }),
+    );
     if (error) throw error;
   }
 
@@ -286,15 +313,17 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   // de 78 caractères dans une URL, c'est 80 Ko, et PostgREST refuse sans même
   // renvoyer de message d'erreur.
   if (rows.length > 0) {
-    const { error, count } = await supabaseAdmin
-      .from("player_ratings")
-      .delete({ count: "exact" })
-      .lt("updated_at", stamp);
+    const { error, count } = await clock("sortants", () =>
+      db
+        .from("player_ratings")
+        .delete({ count: "exact" })
+        .lt("updated_at", stamp),
+    );
     if (error) throw error;
     if (count) console.log(`[rating] ${count} joueur(s) sorti(s) du classement`);
   }
 
-  return { matches: matches.length, players: ratings.length, rated: rows.length };
+  return { matches: matches.length, players: ratings.length, rated: rows.length, timings };
 }
 
 /** Le seuil à partir duquel un joueur passe en « suivi » dans la file de crawl.

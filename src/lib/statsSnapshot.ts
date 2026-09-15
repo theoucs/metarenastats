@@ -226,6 +226,9 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
 
     // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
     const rating = await clock("mmr", () => refreshPlayerRatings());
+    // Le détail de la phase MMR, préfixé pour rester lisible à côté des phases
+    // du job : `mmr` reste le total, `mmr.passes` dit ce qu'il contient.
+    for (const [step, ms] of Object.entries(rating.timings)) timings[`mmr.${step}`] = ms;
     console.log(
       `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
     );
