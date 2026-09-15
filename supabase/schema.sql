@@ -476,3 +476,46 @@ as $$
 $$;
 
 grant execute on function patch_options(integer) to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Cache de calcul du MMR (2026-09-15)
+--
+-- CONTRAINTE STRUCTURANTE : toute requête passant par l'API PostgREST est
+-- coupée à 8 secondes (`authenticator` porte statement_timeout=8s). Ce n'est
+-- pas la limite de 300 s de la fonction serverless qui borne le job de
+-- publication, c'est celle-ci, requête par requête. Le rôle applicatif a été
+-- relevé à 30 s — au-delà, une requête trop longue est un défaut de conception
+-- et doit casser bruyamment :
+--
+--   alter role service_role set statement_timeout = '30s';
+
+-- `players` porte l'identité et le volume de parties, rafraîchis une fois par
+-- passe. Avant, `rating_players` réagrégeait les 240 000 participations à
+-- chaque page : 2 s l'une, une douzaine de pages.
+alter table players add column if not exists riot_id text;
+alter table players add column if not exists games integer not null default 0;
+create index if not exists players_games_idx on players (games desc, id);
+
+-- Les parties, pré-agrégées sous la forme exacte que le calcul consomme.
+--
+-- Le MMR doit rejouer TOUTE l'histoire à chaque passe — seule façon d'obtenir
+-- un classement reproductible quand le crawler découvre en permanence de
+-- vieilles parties qui s'insèrent avant des parties déjà notées. Mais rien
+-- n'oblige à RECALCULER cette forme : la composition d'un match ne change plus
+-- une fois qu'il est ingéré.
+--
+-- `built_at` comparé à `matches.ingested_at` : un match réingéré (le crawler
+-- répare les matchs incomplets) voit sa ligne reconstruite.
+create table if not exists match_rating_rows (
+  match_id text primary key references matches (match_id) on delete cascade,
+  game_creation timestamptz not null,
+  players integer[] not null,
+  subteams smallint[] not null,
+  placements smallint[] not null,
+  built_at timestamptz not null default now()
+);
+
+create index if not exists match_rating_rows_chrono_idx
+  on match_rating_rows (game_creation, match_id);
+
+grant select, insert, update, delete on match_rating_rows to service_role;
