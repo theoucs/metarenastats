@@ -1083,28 +1083,38 @@ export async function getChampionDetail(
       accumulate(bySlot[PRISMATIC_SLOT + i], legendaries[i], r.placement);
     }
   }
-  // Un item ne peut apparaître que dans UN seul slot, et les slots se servent
-  // dans l'ordre du build.
+  // Seul l'item PRINCIPAL d'un slot est retiré des slots suivants.
   //
-  // Sans cette règle, chaque slot choisissait ses trois items indépendamment des
-  // autres — et comme un même légendaire est acheté en 1er par certains joueurs
-  // et en 2e par d'autres, il ressortait en tête de plusieurs slots d'affilée.
-  // Mesuré avant correction : les **173 champions** étaient concernés, avec par
-  // exemple Death's Dance en tête des slots 3, 4, 5 et 6 chez Fiora.
+  // La règle d'origine retirait tout ce qui avait été montré, alternatives
+  // comprises. Elle répondait à un vrai défaut : chaque slot choisissait ses
+  // trois items indépendamment des autres, et comme un même légendaire est
+  // acheté en 1er par certains joueurs et en 2e par d'autres, il ressortait en
+  // tête de plusieurs slots d'affilée. Mesuré avant correction, les
+  // **173 champions** étaient concernés — Death's Dance en tête des slots 3, 4,
+  // 5 et 6 chez Fiora. Le chiffre n'était pas faux, mais un build qui répète
+  // quatre fois le même item se lit comme un bug, pas comme une recommandation.
   //
-  // Le chiffre n'était pas faux — ces joueurs l'ont bien acheté à ces
-  // positions-là — mais un build affiché quatre fois le même item se lit comme
-  // un bug, pas comme une recommandation. On sert donc les slots de gauche à
-  // droite en retirant ce qui a déjà été montré : le slot 3 prend ses trois
-  // meilleurs, le slot 4 les trois meilleurs de ce qu'il reste, etc.
+  // Elle allait trop loin dans l'autre sens. Un item classé 2e ou 3e d'un slot
+  // n'est pas ce qu'on recommande à ce slot-là : c'est une variante. Le retirer
+  // de toute la suite du build privait les slots suivants d'items que beaucoup
+  // de joueurs achètent vraiment à ce moment-là, et ce qui restait à afficher
+  // devenait de plus en plus marginal à mesure qu'on avançait dans le build.
+  //
+  // La règle est donc asymétrique, et c'est voulu :
+  //   · item PRINCIPAL d'un slot   → il n'apparaît plus ensuite ;
+  //   · item secondaire ou tertiaire → il reste disponible pour la suite, et
+  //     peut très bien devenir le principal d'un slot ultérieur.
+  //
+  // Ce qui suffit à empêcher la répétition qu'on corrigeait : c'est la ligne des
+  // principaux qui se lit comme LE build, et elle n'a plus de doublon.
   //
   // Ne concerne en pratique que les slots légendaires : les bottes (slot 1) et
   // les prismatiques (slot 2) ont leurs propres catégories, exclues des autres.
   const itemBuild: ChampionItemSlot[] = [];
-  const alreadyShown = new Set<number>();
+  const alreadyPrimary = new Set<number>();
   bySlot.forEach((slotMap, i) => {
     const items = Array.from(slotMap.entries())
-      .filter(([itemId]) => !alreadyShown.has(itemId))
+      .filter(([itemId]) => !alreadyPrimary.has(itemId))
       .map(([itemId, s]) => ({ itemId, ...toStat(s, champGames) }))
       // Départage explicite des ex æquo. Sans lui, deux items à égalité de
       // parties étaient classés dans l'ordre où les lignes étaient arrivées de
@@ -1115,7 +1125,8 @@ export async function getChampionDetail(
       .sort((a, b) => b.games - a.games || a.itemId - b.itemId)
       .slice(0, ALTS_PER_SLOT);
     if (items.length === 0) return;
-    for (const item of items) alreadyShown.add(item.itemId);
+    // Le principal seulement — voir la note ci-dessus.
+    alreadyPrimary.add(items[0].itemId);
     itemBuild.push({ slot: i + 1, items });
   });
 
