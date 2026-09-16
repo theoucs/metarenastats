@@ -1414,18 +1414,27 @@ export type ComboCategory = "item-item" | "augment-augment" | "item-augment";
 type ComboPick = { type: "item" | "augment"; id: number };
 export type ComboStat = { a: ComboPick; b: ComboPick } & Stat;
 
-// Canonical order so a pair always accumulates under one key regardless of
-// which of the two participant slots each half came from: items before
-// augments, and lower id first within the same type.
-function orderComboPick(x: ComboPick, y: ComboPick): [ComboPick, ComboPick] {
-  if (x.type !== y.type) return x.type === "item" ? [x, y] : [y, x];
-  return x.id <= y.id ? [x, y] : [y, x];
-}
+/**
+ * Un choix encodé en entier, pour servir de clé sans passer par une chaîne.
+ *
+ * Le drapeau de type est AU-DESSUS de l'identifiant, et pas en bit de poids
+ * faible : c'est ce qui fait que l'ordre des entiers reproduit exactement
+ * l'ordre canonique d'`orderComboPick` — tous les objets avant tous les
+ * augments, puis l'identifiant. Avec le drapeau en bas, un objet d'identifiant
+ * 200 000 se serait classé après un augment d'identifiant 900, et la paire
+ * affichée aurait changé de sens.
+ *
+ * L'écart laisse deux millions d'identifiants possibles ; les objets montent
+ * aujourd'hui à ~450 000. Une paire vaut donc au plus 2^46, loin du plus grand
+ * entier exact de JavaScript (2^53).
+ */
+const PICK_TYPE_OFFSET = 1 << 22;
+const PICK_PAIR_BASE = 1 << 23;
 
-function comboCategory(a: ComboPick, b: ComboPick): ComboCategory {
-  if (a.type === "item" && b.type === "item") return "item-item";
-  if (a.type === "augment" && b.type === "augment") return "augment-augment";
-  return "item-augment";
+function decodePick(code: number): ComboPick {
+  return code >= PICK_TYPE_OFFSET
+    ? { type: "augment", id: code - PICK_TYPE_OFFSET }
+    : { type: "item", id: code };
 }
 
 // Shared by the site-wide Combos tier list and the per-champion mini combo
@@ -1438,38 +1447,62 @@ function computeCombos(
   minGames: number,
   maxPerCategory: number
 ): Record<ComboCategory, ComboStat[]> {
-  type ComboAcc = Accumulator & { a: ComboPick; b: ComboPick; category: ComboCategory };
-  const combos = new Map<string, ComboAcc>();
+  // Clé NUMÉRIQUE, et non `${a.type}:${a.id}|${b.type}:${b.id}`.
+  //
+  // C'est la boucle la plus chaude du calcul : chaque participation forme une
+  // douzaine de choix, donc une soixantaine de paires, et il y a 228 000
+  // participations — plus de quinze millions de clés, construites puis hachées
+  // comme chaînes. Profilé le 2026-09-16, `combos` pesait 28 % de l'agrégation
+  // du site, sans compter sa part dans les pages de champion, qui appellent la
+  // même fonction.
+  //
+  // Un choix tient dans un entier (voir `pickCode`), une paire dans un autre,
+  // et l'ordre des entiers reproduit exactement l'ordre canonique de
+  // `orderComboPick` : le drapeau de type est au-dessus de l'identifiant, donc
+  // tous les objets se classent avant tous les augments, et à type égal c'est
+  // l'identifiant qui tranche. Ce qui est affiché en `a` reste donc ce qui
+  // l'était.
+  type ComboAcc = Accumulator & { code: number; category: ComboCategory };
+  const combos = new Map<number, ComboAcc>();
+  const picks: number[] = [];
 
   for (const r of rows) {
-    const picks: ComboPick[] = [
-      ...r.items
-        .filter((id) => {
-          const category = itemCategoryOf(id);
-          return category !== "excluded" && category !== "boots";
-        })
-        .map((id) => ({ type: "item" as const, id })),
-      ...r.augments.map((id) => ({ type: "augment" as const, id })),
-    ];
+    picks.length = 0;
+    for (const id of r.items) {
+      const category = itemCategoryOf(id);
+      if (category === "excluded" || category === "boots") continue;
+      picks.push(id);
+    }
+    for (const id of r.augments) picks.push(PICK_TYPE_OFFSET + id);
 
     for (let i = 0; i < picks.length; i++) {
       for (let j = i + 1; j < picks.length; j++) {
-        const [a, b] = orderComboPick(picks[i], picks[j]);
-        const key = `${a.type}:${a.id}|${b.type}:${b.id}`;
-        const entry = combos.get(key) ?? {
-          a,
-          b,
-          category: comboCategory(a, b),
-          games: 0,
-          top3Wins: 0,
-          top1Wins: 0,
-          placementSum: 0,
-        };
+        const x = picks[i];
+        const y = picks[j];
+        const lo = x <= y ? x : y;
+        const hi = x <= y ? y : x;
+        const key = lo * PICK_PAIR_BASE + hi;
+        let entry = combos.get(key);
+        if (!entry) {
+          entry = {
+            code: key,
+            category:
+              hi < PICK_TYPE_OFFSET
+                ? "item-item"
+                : lo >= PICK_TYPE_OFFSET
+                  ? "augment-augment"
+                  : "item-augment",
+            games: 0,
+            top3Wins: 0,
+            top1Wins: 0,
+            placementSum: 0,
+          };
+          combos.set(key, entry);
+        }
         entry.games += 1;
         entry.placementSum += r.placement;
         if (r.placement <= TOP3_PLACEMENT_THRESHOLD) entry.top3Wins += 1;
         if (r.placement === 1) entry.top1Wins += 1;
-        combos.set(key, entry);
       }
     }
   }
@@ -1481,7 +1514,13 @@ function computeCombos(
   };
   for (const entry of combos.values()) {
     if (entry.games < minGames) continue;
-    byCategory[entry.category].push({ a: entry.a, b: entry.b, ...toStat(entry, denominator) });
+    const lo = Math.floor(entry.code / PICK_PAIR_BASE);
+    const hi = entry.code - lo * PICK_PAIR_BASE;
+    byCategory[entry.category].push({
+      a: decodePick(lo),
+      b: decodePick(hi),
+      ...toStat(entry, denominator),
+    });
   }
 
   // Same tier score as everywhere else, used here purely to pick the best
