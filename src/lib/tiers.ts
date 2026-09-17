@@ -10,7 +10,10 @@ export const TIER_ORDER: Tier[] = ["S", "A", "B", "C", "D"];
  * 1. Shrinkage — avg placement, %top1 and %top3 are each pulled toward this
  *    batch's own mean, proportionally to how few games back them up (a
  *    Bayesian/"weighted rating" fix, same idea as IMDB's weighted score), so
- *    a 2-game 100%-top1 outlier doesn't outrank a proven 500-game pick.
+ *    a 2-game 100%-top1 outlier doesn't outrank a proven 500-game pick. Voir
+ *    MIN_CONFIDENCE_GAMES : la force de ce rétrécissement suit le lot, mais
+ *    jamais en dessous d'un plancher, sinon les petits lots (les augments d'un
+ *    seul champion) se calibrent sur leur propre petitesse.
  * 2. Base score — the shrunk metrics are min-max normalized to [0, 1] and
  *    combined as 60% avg placement + 20% %top1 + 20% %top3: avg placement
  *    dominates, the two rates split the rest evenly.
@@ -55,6 +58,36 @@ const TOP3_WEIGHT = 0.2;
 
 // Max share of the final score that sample size alone can contribute.
 const GAMES_BONUS_CAP = 0.2;
+
+// Ancre de confiance du rétrécissement, avec un PLANCHER.
+//
+// La médiane du lot seule se calibrait sur ce qu'elle était censée corriger.
+// Sur une tier list globale elle vaut 1 100 à 4 300 parties et protège bien ;
+// sur les augments d'un seul champion, le même calcul donne 4 à 17 — et une
+// ligne à 2 parties garde alors un quart de sa propre mesure au lieu d'un
+// millième. Résultat mesuré sur le patch 16.18 : « Back To Basics » (Lux,
+// 2 parties, 1,00 de moyenne) montait 2e des prismatiques, « Defensive
+// Maneuvers » (Zaahen, 2 parties) 2e des gold, et ainsi de suite sur presque
+// tous les champions.
+//
+// L'erreur de raisonnement était de rendre RELATIF ce qui est absolu. La
+// normalisation doit se calibrer sur le lot — elle sert à comparer des lignes
+// entre elles. La confiance, non : deux parties restent deux parties, que le
+// voisinage soit large ou étroit.
+//
+// Le plancher est estimé, pas choisi au jugé. Le k qui minimise l'erreur
+// (DerSimonian-Laird : variance vraie entre entités, une fois retiré le bruit
+// d'échantillonnage) a été mesuré lot par lot sur le patch 16.18 — médiane
+// ~60 sur le placement, ~90 sur le % top 3 des lots par champion. 50 est donc
+// volontairement en deçà de l'optimum : il coupe les coups de chance sans
+// écraser les écarts réels. Vérifié en faisant varier le seuil : à 25 des
+// lignes à 3 parties tiennent encore la tête, à 100 le volume commence à
+// battre la qualité (Tank Engine, 235 parties / 3,02, passait devant Apex
+// Inventor, 50 parties / 2,64).
+//
+// Les lots globaux ont tous une médiane très au-dessus : le plancher n'y
+// change rien, et c'est voulu — ils n'avaient pas le défaut.
+const MIN_CONFIDENCE_GAMES = 50;
 
 function mean(values: number[]): number {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -225,11 +258,8 @@ export function computeTiers<T extends TierableRow>(
   const tierMap = new Map<string, TierInfo>();
   if (rows.length === 0) return tierMap;
 
-  // Confidence anchor for the shrinkage step: how many games count as "a
-  // solid sample" is relative to this batch, not a hardcoded number — so it
-  // self-calibrates whether `rows` is every item site-wide or just one
-  // champion's own games.
-  const k = Math.max(1, median(rows.map((r) => r.games)));
+  // Voir MIN_CONFIDENCE_GAMES.
+  const k = Math.max(MIN_CONFIDENCE_GAMES, median(rows.map((r) => r.games)));
 
   const meanPlacement = mean(rows.map((r) => scoreBasis(r).avgPlacement));
   const meanTop1 = mean(rows.map((r) => scoreBasis(r).top1Rate));
