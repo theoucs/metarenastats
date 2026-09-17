@@ -5,9 +5,7 @@ import { computeTiers } from "@/lib/tiers";
 import { augmentCategory, canonicalItemId } from "@/lib/gameData";
 
 export type ParticipantRow = {
-  /** Curseur de pagination (voir readParticipantSet), jamais lu par les
-   *  agrégateurs eux-mêmes. */
-  id: number;
+  /** Sert aussi de curseur de pagination — voir readParticipantSet. */
   match_id: string;
   subteam_id: number;
   champion: string;
@@ -130,11 +128,10 @@ const MAX_PAGES = 60;
  * qu'aucun agrégateur ne voit jamais ces alias.
  */
 const PARTICIPANT_COLUMNS =
-  "a:id, b:match_id, c:subteam_id, d:champion, e:placement, f:augments, g:items, h:item_order, i:skill_bucket";
+  "b:match_id, c:subteam_id, d:champion, e:placement, f:augments, g:items, h:item_order, i:skill_bucket";
 
 /** La ligne telle qu'elle arrive, sous alias. */
 type CompactRow = {
-  a: number;
   b: string;
   c: number;
   d: string;
@@ -175,7 +172,6 @@ function mergeEvolvedItems(ids: number[]): number[] {
 
 function expandRow(row: CompactRow): ParticipantRow {
   return {
-    id: row.a,
     match_id: row.b,
     subteam_id: row.c,
     champion: row.d,
@@ -215,23 +211,46 @@ const PARTICIPANT_SOURCE = "participants_clean";
  * pages, one-at-a-time round trips added up to several seconds per page load
  * and occasionally tipped over the platform's request timeout.
  *
- * ⚠️ `.order("id")` n'est PAS cosmétique. Un `.range()` sans tri laisse
- * Postgres libre de renvoyer les lignes dans l'ordre qu'il veut, et ces pages
- * partent en parallèle : rien ne garantit que deux requêtes voient le même
- * ordre. Des pages se recouvrent, d'autres lignes ne sont jamais lues.
+ * ⚠️ Le tri n'est PAS cosmétique. Un `.range()` sans tri laisse Postgres libre
+ * de renvoyer les lignes dans l'ordre qu'il veut : des pages se recouvrent,
+ * d'autres lignes ne sont jamais lues. Le défaut existait déjà sur la table
+ * brute, où l'ordre du disque le masquait ; le passage à une vue avec jointure
+ * l'a révélé immédiatement — 2 051 matchs agrégés au lieu de 2 087, et des
+ * chiffres faux sur 172 champions sur 173.
  *
- * Le défaut existait déjà sur la table brute, où l'ordre du disque le masquait.
- * Le passage à une vue avec jointure l'a révélé immédiatement : 2 051 matchs
- * agrégés au lieu de 2 087, et des chiffres faux sur 172 champions sur 173.
+ * ─── POURQUOI LE CURSEUR EST `match_id` ET NON `id` ──────────────────────────
+ *
+ * Trier par `id` paraissait naturel : c'est la clé primaire. Mais le patch, lui,
+ * vit dans `matches`. Postgres n'a donc aucun index qui donne « les lignes de ce
+ * patch, dans l'ordre des id » — il doit lire tout le reste de la table depuis
+ * le curseur, jeter les autres patchs, puis TRIER le reste pour en prendre
+ * 10 000. Le `limit` ne s'arrête plus tôt : le tri doit d'abord tout consommer.
+ * Le coût d'une page suit alors la taille de la table, et la lecture entière
+ * devient quadratique.
+ *
+ * Invisible tant que la base était petite. À 800 000 lignes, une page dépassait
+ * le délai maximum d'une requête et la publication échouait (17/09, 13h35).
+ *
+ * Trier par `match_id` change la nature du plan. L'index (patch, match_id) sur
+ * `matches` donne directement les matchs du patch dans l'ordre, et chacun tire
+ * ses 18 participants par la clé (match_id, puuid). Postgres s'arrête dès qu'il
+ * a ses 10 000 lignes : une page ne coûte plus que ce qu'elle rend, quelle que
+ * soit la taille de la base. Mesuré à profondeur et cache égaux sur le patch
+ * 16.17 : 3 693 ms et 136 063 buffers par `id`, 85 ms et 31 377 buffers par
+ * `match_id`.
+ *
+ * `id` reste le tri secondaire, côté serveur seulement : il rend l'ordre des
+ * lignes d'un même match reproductible d'une lecture à l'autre.
  */
-function fetchParticipantPage(afterId: number, patch: string | null) {
+function fetchParticipantPage(afterMatchId: string | null, patch: string | null) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
   let query = supabaseAdmin
     .from(PARTICIPANT_SOURCE)
     .select(PARTICIPANT_COLUMNS)
+    .order("match_id", { ascending: true })
     .order("id", { ascending: true })
-    .gt("id", afterId)
     .limit(PAGE_SIZE);
+  if (afterMatchId !== null) query = query.gt("match_id", afterMatchId);
   // Le filtre part en SQL : on ne lit que les lignes du patch demandé au lieu
   // de tout charger pour trier ensuite. Découper par patch coûte donc moins
   // d'egress qu'avant, pas plus. `patch` n'est jamais dans les colonnes
@@ -297,17 +316,39 @@ const readParticipantSet = cache(async function readParticipantSet(
   // publication dépassait le délai maximum et le site ne se mettait plus à jour.
   //
   // Par clé, chaque page est un parcours d'index borné. La lecture redevient
-  // séquentielle — on a besoin du dernier `id` pour demander le suivant — mais
+  // séquentielle — on a besoin du dernier match pour demander le suivant — mais
   // chaque requête est si courte que le total est plus rapide qu'en parallèle,
   // sans saturer la base.
   const rows: ParticipantRow[] = [];
-  let afterId = 0;
+  let afterMatchId: string | null = null;
   let pages = 0;
   for (; pages < MAX_PAGES; pages++) {
-    const page = await fetchParticipantPage(afterId, patch);
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    afterId = page[page.length - 1].id;
+    const page = await fetchParticipantPage(afterMatchId, patch);
+    if (page.length < PAGE_SIZE) {
+      rows.push(...page);
+      break;
+    }
+
+    // Le `limit` tombe au milieu d'un match : ses 18 lignes sont à cheval sur
+    // deux pages. Comme le curseur est le match_id, demander « après ce match »
+    // ferait disparaître la moitié restée de l'autre côté. On coupe donc la
+    // page au dernier match COMPLET et on laisse le match entamé à la page
+    // suivante, qui le relira en entier. Au plus 17 lignes relues par page.
+    const lastMatchId = page[page.length - 1].match_id;
+    let cut = page.length;
+    while (cut > 0 && page[cut - 1].match_id === lastMatchId) cut -= 1;
+
+    // Une page entière sur un seul match voudrait dire 10 000 participants pour
+    // une partie : impossible (18), mais avancer quand même évite une boucle
+    // infinie si la donnée devenait absurde.
+    if (cut === 0) {
+      rows.push(...page);
+      afterMatchId = lastMatchId;
+      continue;
+    }
+
+    rows.push(...page.slice(0, cut));
+    afterMatchId = page[cut - 1].match_id;
   }
   const truncated = pages >= MAX_PAGES;
 

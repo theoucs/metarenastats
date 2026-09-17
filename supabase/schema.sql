@@ -106,6 +106,40 @@ create index if not exists match_participants_afk_idx
   on match_participants (match_id, subteam_id)
   where items && array[220008, 220009, 220010, 220011];
 
+-- ─── PAGINER PAR MATCH, ET NON PAR id ──────────────────────────────────────
+--
+-- La lecture des participants d'un patch avance par curseur. Le curseur était
+-- `match_participants.id`, ce qui paraissait naturel — c'est la clé primaire.
+-- Mais le patch vit dans `matches` : aucun index ne donne « les lignes de ce
+-- patch, dans l'ordre des id ». Postgres lisait donc tout le reste de la table
+-- depuis le curseur, jetait les autres patchs, puis TRIAIT le reste pour en
+-- prendre 10 000 — le `limit` ne pouvant plus s'arrêter tôt, une page coûtait
+-- la taille de la table et la lecture entière devenait quadratique.
+--
+-- Sans conséquence tant que la base était petite. À 800 000 lignes, une page
+-- dépassait le `statement_timeout` et la publication échouait (17/09, 13h35).
+--
+-- Cet index rend l'autre ordre possible : les matchs du patch arrivent triés
+-- par match_id, et chacun tire ses 18 participants par `(match_id, puuid)`.
+-- Postgres s'arrête dès qu'il a ses 10 000 lignes. Mesuré à profondeur et
+-- cache égaux sur le patch 16.17 :
+--
+--                    par id          par match_id
+--   durée            3 693 ms            85 ms
+--   buffers          136 063          31 377
+--
+-- Et surtout, le coût d'une page ne dépend plus de la taille de la base.
+create index if not exists matches_patch_match_id_idx on matches (patch, match_id);
+
+-- Le `skill_bucket` de la vue vient d'une jointure sur `player_ratings`, soit
+-- une sonde par ligne lue. `player_ratings_pkey` porte le puuid seul : chaque
+-- sonde descendait dans l'index PUIS allait chercher `tier` dans la table.
+-- En embarquant `tier`, la sonde ne quitte plus l'index — mesuré sur une page
+-- de 10 000 lignes, 27 356 buffers pour cette jointure contre 22 215 après,
+-- et le nœud cesse d'être le poste dominant de la requête.
+create index if not exists player_ratings_puuid_tier_idx
+  on player_ratings (puuid) include (tier);
+
 -- ─── AUTOVACUUM : garder la carte de visibilité chaude ──────────────────────
 --
 -- Un « index only scan » ne mérite son nom que si la page est marquée
