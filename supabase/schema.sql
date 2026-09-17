@@ -311,6 +311,86 @@ where not exists (
 
 grant select on participants_clean to service_role;
 
+-- ─── LA TABLE MATÉRIALISÉE DES PATCHS PUBLIÉS ──────────────────────────────
+--
+-- `participants_clean` est une vue à trois jointures : le patch vient de
+-- `matches`, le `skill_bucket` de `player_ratings`, l'exclusion des équipes AFK
+-- est une anti-jointure. Une lecture COMPLÈTE les paie une fois — mesuré à
+-- 34 000 buffers pour un patch entier. Mais la lecture du job est paginée, et
+-- chacune des 23 pages d'un patch refaisait les trois :
+--
+--   par page, depuis la vue                31 377 buffers, 3 nœuds de jointure
+--   par page, depuis cette table            7 666 buffers, une plage d'index
+--   le patch entier en une passe           34 000 buffers
+--
+-- Soit 720 000 buffers pour lire ce qui en coûte 34 000. Vingt fois le travail,
+-- pour la même donnée.
+--
+-- Ne contenir QUE les deux patchs publiés n'est pas une économie de place, c'est
+-- ce qui rend la chose durable : `match_participants` grossit sans fin (27 000
+-- matchs le 16/09, 44 000 le 17/09), mais ce qu'on publie restera deux patchs.
+-- Les patchs périmés cessent de peser sur la lecture.
+--
+-- Le `limit 2` reproduit exactement `patch_options` (voir lib/patches.ts) : si
+-- les deux divergeaient, le site demanderait un patch que la table n'aurait pas.
+-- Le code client sait retomber sur la vue dans ce cas — ce qui arrive une fois
+-- par changement de patch, avant le premier rafraîchissement.
+create materialized view if not exists participants_published as
+select pc.id,
+       pc.match_id,
+       pc.subteam_id,
+       pc.placement,
+       pc.champion,
+       pc.augments,
+       pc.items,
+       pc.item_order,
+       pc.skill_bucket,
+       pc.patch
+from participants_clean pc
+where pc.patch in (
+  select m.patch
+  from matches m
+  where m.patch is not null and m.ingested_at is not null
+  group by m.patch
+  having count(*) >= 5
+  order by string_to_array(m.patch, '.')::int[] desc
+  limit 2
+);
+
+-- L'unique est ce qui autorise `refresh ... concurrently`, donc un
+-- rafraîchissement sans verrou pour les lecteurs. Mesuré : 19,2 s en simple,
+-- 18,6 s en concurrent — le concurrent ne coûte rien de plus ici, la plupart
+-- des lignes étant inchangées d'une passe à l'autre.
+create unique index if not exists participants_published_id_idx
+  on participants_published (id);
+-- L'ordre exact de la pagination du job : (patch, match_id, id).
+create index if not exists participants_published_page_idx
+  on participants_published (patch, match_id, id);
+
+grant select on participants_published to service_role;
+
+-- Le rafraîchissement passe par une fonction pour deux raisons : PostgREST ne
+-- sait pas lancer un `refresh`, et le `statement_timeout` de service_role (30 s)
+-- est trop court pour une opération qui dure déjà 19 s et grossit avec la base.
+-- On le relève ICI seulement — le plafond des requêtes ordinaires doit rester
+-- court pour que les lenteurs se voient.
+--
+-- Appelé par le job APRÈS la passe MMR, qui vient de réécrire `player_ratings` :
+-- la table fige le `skill_bucket`, elle doit figer le plus récent.
+create or replace function refresh_published_participants()
+returns void
+language plpgsql
+security definer
+set search_path = public
+set statement_timeout = '180s'
+as $$
+begin
+  refresh materialized view concurrently participants_published;
+end;
+$$;
+
+grant execute on function refresh_published_participants() to service_role;
+
 -- Les trois compteurs de l'accueil, comptés en base.
 --
 -- `total_players` était la dernière raison de faire sortir `puuid` de Postgres

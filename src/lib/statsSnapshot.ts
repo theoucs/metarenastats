@@ -4,6 +4,7 @@ import { getPatchContext, patchedKey } from "@/lib/patches";
 import { promoteTrackedPlayers, refreshPlayerRatings } from "@/lib/playerRatings";
 import {
   readParticipantSetForPatch,
+  refreshPublishedParticipants,
   withParticipantSet,
   getAnvilChampionStats,
   getAugmentStats,
@@ -266,6 +267,11 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     // `id` pour demander la page suivante), donc elle passe son temps à
     // attendre. Deux flux, ce n'est pas la lecture parallèle en soixante-cinq
     // requêtes qui avait saturé la base — c'est exactement deux.
+    // APRÈS la passe MMR, qui vient de réécrire `player_ratings` : la table
+    // matérialisée fige le `skill_bucket`, elle doit donc figer le tout dernier.
+    // Et AVANT la lecture, évidemment — c'est elle qu'on va lire.
+    await clock("materialisation", () => refreshPublishedParticipants());
+
     const sets = await clock("lectureParticipants", () =>
       Promise.all(context.options.map((option) => readParticipantSetForPatch(option.patch))),
     );

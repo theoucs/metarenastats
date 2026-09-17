@@ -206,6 +206,42 @@ function expandRow(row: CompactRow): ParticipantRow {
 const PARTICIPANT_SOURCE = "participants_clean";
 
 /**
+ * La table matérialisée des deux patchs publiés.
+ *
+ * `participants_clean` est une vue à trois jointures : le patch vient de
+ * `matches`, le `skill_bucket` de `player_ratings`, et l'exclusion des équipes
+ * AFK est une anti-jointure. Une lecture complète les paie UNE fois — mesuré à
+ * 34 000 buffers pour un patch entier. Mais la lecture est paginée : chacune des
+ * 23 pages d'un patch refaisait les trois, soit 31 377 buffers × 23 ≈ 720 000.
+ * Vingt fois le travail nécessaire, pour la même donnée.
+ *
+ * La vue matérialisée fige ce résultat. Une page redevient ce qu'elle aurait
+ * toujours dû être — une plage d'index sur une table plate, sans jointure :
+ * 7 666 buffers, un seul nœud dans le plan.
+ *
+ * Elle ne contient que les deux patchs publiés, choisis exactement comme
+ * `patch_options` les choisit (voir lib/patches.ts). C'est ce qui la rend
+ * durable : `match_participants` grossit sans fin, mais ce qu'on publie reste
+ * deux patchs. Les patchs périmés ne coûtent plus rien à la lecture.
+ *
+ * Le prix est un rafraîchissement, ~19 s, en `concurrently` — donc sans verrou
+ * pour les lecteurs. Il est déclenché par le job, juste avant de lire.
+ */
+const PUBLISHED_SOURCE = "participants_published";
+
+/**
+ * Remet la table matérialisée en phase avec la base.
+ *
+ * Lève en cas d'échec plutôt que de laisser lire des données figées : publier
+ * en silence les chiffres d'il y a une heure serait pire qu'un job rouge.
+ */
+export async function refreshPublishedParticipants(): Promise<void> {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin.rpc("refresh_published_participants");
+  if (error) throw new Error(`Rafraîchissement de participants_published impossible : ${error.message}`);
+}
+
+/**
  * Fetches one page. Split out from fetchAllParticipants so pages can be
  * requested with Promise.all instead of a sequential loop — at ~13k rows/14
  * pages, one-at-a-time round trips added up to several seconds per page load
@@ -242,10 +278,10 @@ const PARTICIPANT_SOURCE = "participants_clean";
  * `id` reste le tri secondaire, côté serveur seulement : il rend l'ordre des
  * lignes d'un même match reproductible d'une lecture à l'autre.
  */
-function fetchParticipantPage(afterMatchId: string | null, patch: string | null) {
+function fetchParticipantPage(afterMatchId: string | null, patch: string | null, source: string) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
   let query = supabaseAdmin
-    .from(PARTICIPANT_SOURCE)
+    .from(source)
     .select(PARTICIPANT_COLUMNS)
     .order("match_id", { ascending: true })
     .order("id", { ascending: true })
@@ -301,29 +337,31 @@ export async function fetchParticipantSet(patch: string | null = null): Promise<
   return participantSetStore.getStore() ?? readParticipantSet(patch);
 }
 
-const readParticipantSet = cache(async function readParticipantSet(
+/**
+ * Toutes les pages d'une source, du début à la fin.
+ *
+ * Pagination PAR CLÉ, et non par offset. `.range(60000, 60999)` oblige Postgres
+ * à parcourir puis jeter les 60 000 lignes précédentes — le coût d'une page
+ * croît avec sa profondeur. Mesuré au 2026-09-15 sur 65 000 lignes : 1,42 s
+ * pour la page 60 en offset contre 0,21 s par clé, et constant. Et comme ces
+ * pages partaient toutes EN PARALLÈLE, la base recevait 65 parcours complets
+ * d'un coup : le job de publication dépassait le délai maximum et le site ne se
+ * mettait plus à jour.
+ *
+ * Par clé, chaque page est un parcours d'index borné. La lecture redevient
+ * séquentielle — on a besoin du dernier match pour demander le suivant — mais
+ * chaque requête est si courte que le total est plus rapide qu'en parallèle,
+ * sans saturer la base.
+ */
+async function readAllPages(
+  source: string,
   patch: string | null,
-): Promise<ParticipantSet> {
-  if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
-
-  // Pagination PAR CLÉ, et non par offset.
-  //
-  // `.range(60000, 60999)` oblige Postgres à parcourir puis jeter les 60 000
-  // lignes précédentes — le coût d'une page croît avec sa profondeur. Mesuré au
-  // 2026-09-15 sur 65 000 lignes : 1,42 s pour la page 60 en offset contre
-  // 0,21 s par clé, et constant. Et comme ces pages partaient toutes EN
-  // PARALLÈLE, la base recevait 65 parcours complets d'un coup : le job de
-  // publication dépassait le délai maximum et le site ne se mettait plus à jour.
-  //
-  // Par clé, chaque page est un parcours d'index borné. La lecture redevient
-  // séquentielle — on a besoin du dernier match pour demander le suivant — mais
-  // chaque requête est si courte que le total est plus rapide qu'en parallèle,
-  // sans saturer la base.
+): Promise<{ rows: ParticipantRow[]; truncated: boolean }> {
   const rows: ParticipantRow[] = [];
   let afterMatchId: string | null = null;
   let pages = 0;
   for (; pages < MAX_PAGES; pages++) {
-    const page = await fetchParticipantPage(afterMatchId, patch);
+    const page = await fetchParticipantPage(afterMatchId, patch, source);
     if (page.length < PAGE_SIZE) {
       rows.push(...page);
       break;
@@ -350,9 +388,32 @@ const readParticipantSet = cache(async function readParticipantSet(
     rows.push(...page.slice(0, cut));
     afterMatchId = page[cut - 1].match_id;
   }
-  const truncated = pages >= MAX_PAGES;
+  return { rows, truncated: pages >= MAX_PAGES };
+}
 
-  if (truncated) {
+const readParticipantSet = cache(async function readParticipantSet(
+  patch: string | null,
+): Promise<ParticipantSet> {
+  if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
+
+  // Sans patch, la vue : la table matérialisée ne connaît que les deux patchs
+  // publiés, elle répondrait à côté de la question.
+  let read = await readAllPages(patch ? PUBLISHED_SOURCE : PARTICIPANT_SOURCE, patch);
+
+  // Le seul moment où la table matérialisée peut ignorer un patch légitime :
+  // celui où un nouveau patch vient d'entrer dans les deux publiés et où le job
+  // n'a pas encore rafraîchi. Une page afficherait alors des tier lists vides,
+  // et Next.js les garderait en cache une demi-heure. Le repli sur la vue coûte
+  // une lecture lente une fois tous les quinze jours ; une page vide coûte plus.
+  if (patch && read.rows.length === 0) {
+    console.warn(
+      `[aggregate] patch "${patch}" absent de ${PUBLISHED_SOURCE} — repli sur ${PARTICIPANT_SOURCE}. ` +
+        `Attendu juste après un changement de patch, anormal sinon.`,
+    );
+    read = await readAllPages(PARTICIPANT_SOURCE, patch);
+  }
+
+  if (read.truncated) {
     console.error(
       `[aggregate] TRONCATURE : lecture arrêtée à ${MAX_PAGES * PAGE_SIZE} lignes. ` +
         `Les stats calculées sont partielles — il faut passer l'agrégation en SQL (phase 3 du plan).`,
@@ -362,7 +423,11 @@ const readParticipantSet = cache(async function readParticipantSet(
   // `totalRows` vaut ce qu'on a lu : le comptage exact qui le fournissait
   // coûtait jusqu'à 8 s sur la vue (anti-jointure AFK sur chaque ligne) pour
   // une information que la lecture donne gratuitement.
-  return { rows: dropExcludedAugments(rows), totalRows: rows.length, truncated };
+  return {
+    rows: dropExcludedAugments(read.rows),
+    totalRows: read.rows.length,
+    truncated: read.truncated,
+  };
 });
 
 export async function fetchAllParticipants(): Promise<ParticipantRow[]> {
