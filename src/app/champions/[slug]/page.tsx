@@ -360,7 +360,7 @@ export default async function ChampionDetailPage({
                 ) : (
                   <span>Arena build summary</span>
                 )}
-                {patch && <PatchBadge patch={patch} matches={shown?.matches} />}
+                {patch && <PatchBadge patch={patch} games={detail?.games} />}
               </p>
             </div>
           </div>
@@ -400,7 +400,6 @@ export default async function ChampionDetailPage({
                   value={`${(detail.top3Rate * 100).toFixed(1)}%`}
                   colorClass={top3Color(detail.top3Rate)}
                 />
-                <StatPill label="Games" value={String(detail.games)} />
                 <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
               </div>
 
