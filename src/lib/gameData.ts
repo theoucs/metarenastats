@@ -45,6 +45,59 @@ export function resolveAugment(id: number) {
 }
 
 /**
+ * Les quatre items qui se transforment tout seuls.
+ *
+ * On les achète sous leur forme de base ; deux manches plus tard ils deviennent
+ * leur forme évoluée, sans que le joueur ait rien à faire ni rien à payer. Le
+ * couple ne décrit donc pas deux choix de build : c'est un seul item, observé à
+ * deux moments de sa vie.
+ *
+ * Les compter séparément coupait chaque échantillon en deux, et donnait deux
+ * chiffres également faux. La base n'est encore là qu'en cas d'élimination
+ * précoce — elle héritait des mauvais placements ; la forme évoluée n'apparaît
+ * que dans les parties assez longues pour l'atteindre — elle héritait des bons.
+ * Les volumes se correspondent presque exactement (Archangel's Staff :
+ * 10 594 achetés, Seraph's Embrace : 11 022 en inventaire), ce qui confirme
+ * qu'on regarde bien le même item.
+ *
+ * Tout est donc fusionné sous l'identité de la BASE : c'est elle que le joueur
+ * achète, elle qui figure dans l'ordre d'achat du timeline (la transformation
+ * n'émet aucun achat), et donc la seule des deux qui ait un sens comme
+ * recommandation.
+ */
+const ITEM_EVOLUTION: Record<number, number> = {
+  223003: 223040, // Archangel's Staff  → Seraph's Embrace
+  223004: 223042, // Manamune           → Muramana
+  223119: 223121, // Winter's Approach  → Fimbulwinter
+  222526: 222530, // Whispering Circlet → Diadem of Songs
+};
+
+const ITEM_BASE_FORM: Record<number, number> = Object.fromEntries(
+  Object.entries(ITEM_EVOLUTION).map(([base, evolved]) => [evolved, Number(base)]),
+);
+
+/** L'identité sous laquelle un item est agrégé : sa base pour les quatre items
+ *  qui se transforment, lui-même pour tous les autres. */
+export function canonicalItemId(id: number): number {
+  return ITEM_BASE_FORM[id] ?? id;
+}
+
+/**
+ * Le nom à afficher au-dessus de chiffres fusionnés : « Manamune (Muramana) ».
+ *
+ * La parenthèse est là pour le lecteur qui cherche Muramana et ne le trouve
+ * pas — sans elle, une ligne manquerait sans qu'on sache pourquoi. Réservé aux
+ * pages de stats : l'inventaire d'une partie réelle (MatchCard) doit montrer
+ * l'item que le joueur avait vraiment, pas cette étiquette.
+ */
+export function itemStatName(id: number): string {
+  const name = resolveItem(id)?.name ?? `Item ${id}`;
+  const evolved = ITEM_EVOLUTION[id];
+  if (evolved === undefined) return name;
+  return `${name} (${resolveItem(evolved)?.name ?? `Item ${evolved}`})`;
+}
+
+/**
  * Data Dragon skin numbers keyed by champion id, used everywhere a champion's
  * splash art is shown (homepage hero, champion pages). There's no usage data
  * to pick a "most popular" skin from — match_participants doesn't track which
@@ -287,7 +340,7 @@ export function resolveComboPick(pick: { type: "item" | "augment"; id: number })
   if (pick.type === "item") {
     const info = resolveItem(pick.id);
     const rarity = itemCategory(pick.id) === "prismatic" ? "prismatic" : undefined;
-    return { name: info?.name ?? `Item ${pick.id}`, iconUrl: info?.iconUrl, rarity };
+    return { name: itemStatName(pick.id), iconUrl: info?.iconUrl, rarity };
   }
   const info = resolveAugment(pick.id);
   return { name: info?.name ?? `Augment ${pick.id}`, iconUrl: info?.iconUrl, rarity: info?.tier };

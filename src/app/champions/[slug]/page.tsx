@@ -7,7 +7,7 @@ import {
   type ChampionItemSlotStat,
   type Stat,
 } from "@/lib/aggregate";
-import { resolveChampion, resolveItem, resolveAugment, heroSplashUrl } from "@/lib/gameData";
+import { resolveChampion, resolveItem, itemStatName, resolveAugment, heroSplashUrl } from "@/lib/gameData";
 import { readChampionDetailSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import { getPatchContext } from "@/lib/patches";
 import { PatchBadge } from "@/components/PatchBadge";
@@ -120,10 +120,12 @@ function PrismaticItemCard({ stat }: { stat: ChampionItemSlotStat }) {
   return (
     <div className="rounded-lg border border-subtle bg-raised/40 p-3">
       <div className="flex items-center gap-2.5">
-        <EntityTooltip entity={{ type: "item", id: stat.itemId }} name={info.name}>
+        <EntityTooltip entity={{ type: "item", id: stat.itemId }} name={itemStatName(stat.itemId)}>
           <EntityIcon iconUrl={info.iconUrl} rarity="prismatic" />
         </EntityTooltip>
-        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">
+          {itemStatName(stat.itemId)}
+        </span>
       </div>
       <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
         <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
@@ -197,7 +199,7 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
         <>
           <EntityTooltip
             entity={{ type: "item", id: primary.itemId }}
-            name={primaryInfo.name}
+            name={itemStatName(primary.itemId)}
             extra={<StatTooltipContent stat={primary} />}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -220,7 +222,7 @@ function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
               <EntityTooltip
                 key={alt.itemId}
                 entity={{ type: "item", id: alt.itemId }}
-                name={info.name}
+                name={itemStatName(alt.itemId)}
                 extra={<StatTooltipContent stat={alt} />}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

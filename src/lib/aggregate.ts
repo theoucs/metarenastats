@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { computeTiers } from "@/lib/tiers";
-import { augmentCategory } from "@/lib/gameData";
+import { augmentCategory, canonicalItemId } from "@/lib/gameData";
 
 export type ParticipantRow = {
   /** Curseur de pagination (voir readParticipantSet), jamais lu par les
@@ -145,6 +145,34 @@ type CompactRow = {
   i: number | null;
 };
 
+/**
+ * Ramène les formes évoluées à leur base (voir `canonicalItemId`), une fois
+ * pour toutes, à l'entrée du domaine.
+ *
+ * Ici et pas dans chaque agrégateur : l'inventaire final est lu par la tier
+ * list, les combos, les slots de build et les pages de champion, et un seul
+ * oubli suffirait à faire coexister deux chiffres contradictoires pour le même
+ * item. Après cette fonction, aucune forme évoluée ne circule plus.
+ *
+ * Rend le tableau reçu tel quel quand il n'y a rien à fusionner, c'est-à-dire
+ * l'immense majorité des lignes — on en lit 230 000 par publication.
+ */
+function mergeEvolvedItems(ids: number[]): number[] {
+  let i = 0;
+  while (i < ids.length && canonicalItemId(ids[i]) === ids[i]) i += 1;
+  if (i === ids.length) return ids;
+
+  const merged = ids.slice(0, i);
+  for (; i < ids.length; i += 1) {
+    const canonical = canonicalItemId(ids[i]);
+    // Les deux formes ne peuvent pas coexister dans un inventaire — la
+    // transformation consomme la base — mais un doublon compterait l'item deux
+    // fois, et ça coûte moins cher de l'empêcher que de le diagnostiquer.
+    if (!merged.includes(canonical)) merged.push(canonical);
+  }
+  return merged;
+}
+
 function expandRow(row: CompactRow): ParticipantRow {
   return {
     id: row.a,
@@ -153,8 +181,11 @@ function expandRow(row: CompactRow): ParticipantRow {
     champion: row.d,
     placement: row.e,
     augments: row.f ?? [],
-    items: row.g ?? [],
-    item_order: row.h,
+    items: mergeEvolvedItems(row.g ?? []),
+    // L'ordre d'achat ne contient déjà que des bases (la transformation n'est
+    // pas un achat), mais le passer au même filtre rend l'invariant vrai des
+    // deux tableaux, sans quoi il faudrait le rétablir plus loin au cas par cas.
+    item_order: row.h && mergeEvolvedItems(row.h),
     skill_bucket: row.i ?? 0,
   };
 }
@@ -521,17 +552,6 @@ export const SHARDBLADE_ITEM_ID = 220012;
  * l'information utile.
  */
 
-/** Items qui se transforment : l'achat porte sur la base, l'inventaire final
- *  montre la forme évoluée. Sans cette table, quatre items n'auraient aucun
- *  rang d'achat — vérifié sur les volumes, qui se correspondent presque
- *  exactement (Archangel's 10 594 achetés / Seraph's 11 022 en inventaire). */
-const ITEM_BUILT_FROM: Record<number, number> = {
-  223040: 223003, // Seraph's Embrace ← Archangel's Staff
-  223042: 223004, // Muramana        ← Manamune
-  223121: 223119, // Fimbulwinter    ← Winter's Approach
-  222530: 222526, // Diadem of Songs ← sa base
-};
-
 /** En dessous, la case (jalon × niveau) est trop mince pour servir de
  *  référence : on retombe alors sur le jalon seul, moins précis mais solide. */
 const LANDMARK_MIN_CELL = 40;
@@ -580,12 +600,12 @@ function landmarkFor(
 ): number | null {
   if (kind === "prismatic") return prismaticCount;
   if (!row.item_order) return null;
-  const direct = row.item_order.indexOf(itemId);
-  if (direct !== -1) return direct + 1;
-  const base = ITEM_BUILT_FROM[itemId];
-  if (base === undefined) return null;
-  const viaBase = row.item_order.indexOf(base);
-  return viaBase === -1 ? null : viaBase + 1;
+  // Les deux tableaux parlent des mêmes identités : les formes évoluées ont été
+  // ramenées à leur base dès la lecture (voir mergeEvolvedItems). Sans ça les
+  // quatre items qui se transforment n'auraient aucun rang d'achat, puisque
+  // l'inventaire les montre évolués et le timeline ne connaît que la base.
+  const rank = row.item_order.indexOf(itemId);
+  return rank === -1 ? null : rank + 1;
 }
 
 const kindOf = (itemId: number, categoryOf: ItemCategoryLookup): LandmarkKind =>

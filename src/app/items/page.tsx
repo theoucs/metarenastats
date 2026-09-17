@@ -6,7 +6,7 @@ import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { PatchSwitch } from "@/components/PatchSwitch";
 import { getPatchContext } from "@/lib/patches";
-import { resolveItem, itemCategory } from "@/lib/gameData";
+import { resolveItem, itemStatName, itemCategory } from "@/lib/gameData";
 
 // Stats servies depuis un snapshot pré-calculé (lib/statsSnapshot.ts) : la page
 // est mise en cache et régénérée périodiquement au lieu d'agréger toute la base
@@ -28,7 +28,9 @@ function toRowsByTier(items: Awaited<ReturnType<typeof getItemStats>>["items"]) 
     const row: StatsRow = {
       key: String(entry.itemId),
       entity: { type: "item", id: entry.itemId },
-      name: info?.name ?? `Item ${entry.itemId}`,
+      // Les quatre items qui se transforment n'ont qu'une ligne, sous leur base,
+      // et le nom le dit : « Manamune (Muramana) » (voir itemStatName).
+      name: itemStatName(entry.itemId),
       iconUrl: info?.iconUrl,
       rarity: isPrismatic ? "prismatic" : undefined,
       games: entry.games,
