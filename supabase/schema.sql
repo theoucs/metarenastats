@@ -696,6 +696,13 @@ create table if not exists match_rating_rows (
 create index if not exists match_rating_rows_chrono_idx
   on match_rating_rows (game_creation, match_id);
 
+-- La fenêtre de la reprise incrémentale de sync_player_counts() : « quels
+-- joueurs ont vu une de leurs parties (re)bâtie depuis la dernière passe ».
+-- Cet index existait en base sans figurer ici — la reprise en dépend désormais,
+-- donc il est déclaré.
+create index if not exists match_rating_rows_built_idx
+  on match_rating_rows (built_at);
+
 grant select, insert, update, delete on match_rating_rows to service_role;
 
 grant select, insert, update on players to service_role;
@@ -732,21 +739,81 @@ grant select, insert, update on players to service_role;
 -- changer de nom dans nos données, et le coût est presque entièrement
 -- proportionnel au nombre de participations à trier.
 
+-- ─── REPRISE INCRÉMENTALE (2026-09-18) ──────────────────────────────────────
+--
+-- Ces trois fonctions reparcouraient TOUTE la base à chaque heure pour trouver
+-- quelques centaines de nouveautés. Sans conséquence à 240 000 participations ;
+-- à 1 074 690, la phase MMR pesait 85 s et la publication a fini par dépasser
+-- les 300 s de Vercel (échecs des 18/09 00h26 et 11h22).
+--
+-- Mesuré à cette taille, avant / après :
+--
+--                            buffers              durée
+--   sync_players           276 143 → 35 104    12,9 s → 1,7 s   (10 nouveaux)
+--   sync_match_rating_rows  57 722 → 15 772     4,6 s → 0,2 s   (120 matchs)
+--   sync_player_counts     867 680 → 115 756    6,4 s → 3,7 s   (0 modifié)
+--
+-- Chacune garde une passe COMPLÈTE toutes les six heures. C'est ce qui rend la
+-- reprise acceptable : le mode de panne redouté — un joueur absent de
+-- `players`, dont les parties disparaissent en silence de la jointure interne
+-- de `rating_input` — ne survit alors pas à la demi-journée.
+--
+-- La marge de deux heures sur la fenêtre existe parce qu'`ingested_at` est posé
+-- à l'écriture mais devient visible à la validation : une ligne datée T peut
+-- apparaître après qu'on a lu max(ingested_at) > T. Deux heures pour un job
+-- horaire ne se franchissent qu'avec une transaction bloquée aussi longtemps,
+-- et la passe complète rattraperait même ce cas.
+create table if not exists rating_sync_state (
+  what text primary key,
+  watermark timestamptz not null default '-infinity',
+  full_swept_at timestamptz not null default '-infinity'
+);
+
+grant select, insert, update on rating_sync_state to service_role;
+
 create or replace function sync_players()
 returns integer
 language plpgsql
 as $$
 declare
   added integer;
+  wm timestamptz;
+  swept timestamptz;
+  full_sweep boolean;
+  started timestamptz := clock_timestamp();
 begin
-  -- `where not exists` et non `on conflict do nothing` : ce dernier fait
-  -- avancer la séquence d'identité AVANT de constater le conflit. Mesuré, ça
-  -- avait porté le plus grand identifiant à 2 043 769 pour 83 208 joueurs.
-  insert into players (puuid)
-  select distinct p.puuid
-  from match_participants p
-  where not exists (select 1 from players pl where pl.puuid = p.puuid);
+  insert into rating_sync_state (what) values ('players') on conflict (what) do nothing;
+  -- `for update` sérialise deux passes qui se chevaucheraient : sans lui, les
+  -- deux se croiraient chargées de la passe complète.
+  select watermark, full_swept_at into wm, swept
+  from rating_sync_state where what = 'players' for update;
+  full_sweep := started - swept > interval '6 hours';
+
+  -- Deux requêtes et non une avec un `or` : un booléen de plpgsql dans le WHERE
+  -- est un paramètre pour le planificateur, qui renonce alors à l'index sur
+  -- `ingested_at` et reparcourt tout — ce qu'on essaie précisément d'éviter.
+  if full_sweep then
+    insert into players (puuid)
+    select distinct p.puuid
+    from match_participants p
+    where not exists (select 1 from players pl where pl.puuid = p.puuid)
+    on conflict (puuid) do nothing;
+  else
+    insert into players (puuid)
+    select distinct p.puuid
+    from matches m
+    join match_participants p on p.match_id = m.match_id
+    where m.ingested_at > wm
+      and not exists (select 1 from players pl where pl.puuid = p.puuid)
+    on conflict (puuid) do nothing;
+  end if;
   get diagnostics added = row_count;
+
+  update rating_sync_state
+  set watermark = started - interval '2 hours',
+      full_swept_at = case when full_sweep then started else full_swept_at end
+  where what = 'players';
+
   return added;
 end;
 $$;
@@ -759,25 +826,51 @@ language plpgsql
 as $$
 declare
   touched integer;
+  wm timestamptz;
+  swept timestamptz;
+  full_sweep boolean;
+  started timestamptz := clock_timestamp();
 begin
-  -- Incrémental : seuls les matchs jamais construits, ou réingérés depuis leur
-  -- construction, sont recalculés. La composition d'un match ne change plus une
-  -- fois ingéré.
+  insert into rating_sync_state (what) values ('match_rows') on conflict (what) do nothing;
+  select watermark, full_swept_at into wm, swept
+  from rating_sync_state where what = 'match_rows' for update;
+  full_sweep := started - swept > interval '6 hours';
+
+  -- La liste des matchs à bâtir passe par une table temporaire ANALYSÉE.
+  --
+  -- En sous-requête, le planificateur l'estimait à 20 065 lignes pour 120
+  -- réelles, et choisissait donc de hacher les 1 074 690 participations et les
+  -- 216 910 joueurs au lieu de sonder par match_id. Avec la vraie taille, il
+  -- déroule des boucles imbriquées : 15 772 buffers au lieu de 57 722.
+  if full_sweep then
+    create temp table todo_matches on commit drop as
+    select m.match_id, m.game_creation
+    from matches m
+    left join match_rating_rows existing on existing.match_id = m.match_id
+    where m.ingested_at is not null
+      and (existing.match_id is null or existing.built_at < m.ingested_at);
+  else
+    create temp table todo_matches on commit drop as
+    select m.match_id, m.game_creation
+    from matches m
+    left join match_rating_rows existing on existing.match_id = m.match_id
+    where m.ingested_at > wm
+      and (existing.match_id is null or existing.built_at < m.ingested_at);
+  end if;
+  analyze todo_matches;
+
   insert into match_rating_rows (match_id, game_creation, players, subteams, placements, built_at)
   select
-    m.match_id,
-    m.game_creation,
+    t.match_id,
+    t.game_creation,
     array_agg(pl.id::integer order by pl.id),
     array_agg(p.subteam_id::smallint order by pl.id),
     array_agg(p.placement::smallint order by pl.id),
     now()
-  from matches m
-  join participants_clean p on p.match_id = m.match_id
+  from todo_matches t
+  join participants_clean p on p.match_id = t.match_id
   join players pl on pl.puuid = p.puuid
-  left join match_rating_rows existing on existing.match_id = m.match_id
-  where m.ingested_at is not null
-    and (existing.match_id is null or existing.built_at < m.ingested_at)
-  group by m.match_id, m.game_creation
+  group by t.match_id, t.game_creation
   on conflict (match_id) do update
     set game_creation = excluded.game_creation,
         players = excluded.players,
@@ -785,6 +878,14 @@ begin
         placements = excluded.placements,
         built_at = excluded.built_at;
   get diagnostics touched = row_count;
+
+  drop table todo_matches;
+
+  update rating_sync_state
+  set watermark = started - interval '2 hours',
+      full_swept_at = case when full_sweep then started else full_swept_at end
+  where what = 'match_rows';
+
   return touched;
 end;
 $$;
@@ -797,28 +898,73 @@ language plpgsql
 as $$
 declare
   touched integer;
+  wm timestamptz;
+  swept timestamptz;
+  full_sweep boolean;
+  started timestamptz := clock_timestamp();
 begin
-  with compte as (
-    select p as player_id, count(*) as games
-    from match_rating_rows r, unnest(r.players) p
-    group by p
-  )
-  update players pl
-  set games = compte.games
-  from compte
-  where pl.id = compte.player_id and pl.games is distinct from compte.games;
+  insert into rating_sync_state (what) values ('player_counts') on conflict (what) do nothing;
+  select watermark, full_swept_at into wm, swept
+  from rating_sync_state where what = 'player_counts' for update;
+  full_sweep := started - swept > interval '6 hours';
+
+  -- Ce n'est PAS l'agrégation qui coûtait, c'est la sonde.
+  --
+  -- Compter les parties de tout le monde ne lit que `match_rating_rows`, soit
+  -- 1 991 buffers — négligeable. Mais comparer le résultat à `players` sondait
+  -- l'index primaire 216 421 fois, une par joueur existant : 860 183 buffers
+  -- pour, la plupart du temps, ne rien modifier.
+  --
+  -- On ne compte donc, et on ne sonde, que les joueurs dont une partie vient
+  -- d'être (re)bâtie. Le compte d'un joueur ne peut pas changer autrement : il
+  -- est le nombre de lignes de `match_rating_rows` qui le citent, et toute
+  -- écriture y pose `built_at`.
+  --
+  -- Le filtre sert deux fois. Il évite les sondes inutiles, et il ramène
+  -- l'agrégation de 216 421 groupes à 28 421 : sous ce seuil elle tient en
+  -- mémoire, alors qu'elle débordait sur disque (5 lots, 7,5 Mo) — ce
+  -- débordement était l'essentiel des secondes, pas les buffers.
+  if full_sweep then
+    with compte as (
+      select p as player_id, count(*) as games
+      from match_rating_rows r, unnest(r.players) p
+      group by p
+    )
+    update players pl
+    set games = compte.games
+    from compte
+    where pl.id = compte.player_id and pl.games is distinct from compte.games;
+  else
+    with touched_players as materialized (
+      select distinct p as player_id
+      from match_rating_rows r, unnest(r.players) p
+      where r.built_at > wm
+    ),
+    compte as (
+      select p as player_id, count(*) as games
+      from match_rating_rows r, unnest(r.players) p
+      where p in (select player_id from touched_players)
+      group by p
+    )
+    update players pl
+    set games = compte.games
+    from compte
+    where pl.id = compte.player_id and pl.games is distinct from compte.games;
+  end if;
   get diagnostics touched = row_count;
 
-  -- `match_participants` plutôt que `participants_clean` : un pseudo est un nom
-  -- d'affichage, il n'a aucune raison de passer par l'exclusion des équipes
-  -- AFK. La vue coûtait ici l'anti-jointure ET un second parcours de `matches`,
-  -- puisque la requête joint déjà cette table pour `ingested_at` et
-  -- `game_creation`. Mesuré le 2026-09-15 à instrumentation égale
-  -- (`explain (analyze, timing off)`, l'horloge d'EXPLAIN coûtant sur cette
-  -- instance plus cher que la requête elle-même) :
+  -- Deux heures et non trois : le job tourne toutes les heures, donc deux
+  -- couvrent la marge. Mesuré, le coût est très sensible à cette fenêtre —
+  -- 0,63 s sur une heure, 13 s sur trois — parce qu'elle décide du nombre de
+  -- participations à trier.
   --
-  --   par la vue     796 ms   20 084 buffers
-  --   sans elle      122 ms    5 582 buffers
+  -- Et `match_participants` plutôt que `participants_clean` : un pseudo est un
+  -- nom d'affichage, il n'a aucune raison de passer par l'exclusion des
+  -- équipes AFK. La vue coûtait ici l'anti-jointure ET un second parcours de
+  -- `matches`, puisque la requête joignait déjà cette table pour `ingested_at`
+  -- et `game_creation`. Mesuré le 2026-09-15 à instrumentation égale
+  -- (`explain (analyze, timing off)`) : 796 ms et 20 084 buffers par la vue,
+  -- 122 ms et 5 582 buffers sans elle.
   with dernier as (
     select distinct on (p.puuid) p.puuid, p.riot_id
     from matches m
@@ -831,8 +977,14 @@ begin
   from dernier
   where pl.puuid = dernier.puuid and pl.riot_id is distinct from dernier.riot_id;
 
+  update rating_sync_state
+  set watermark = started - interval '2 hours',
+      full_swept_at = case when full_sweep then started else full_swept_at end
+  where what = 'player_counts';
+
   return touched;
 end;
 $$;
 
 grant execute on function sync_player_counts(integer) to service_role;
+
