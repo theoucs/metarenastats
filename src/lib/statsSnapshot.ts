@@ -94,6 +94,28 @@ export async function readSnapshot<K extends keyof SnapshotPayloads>(
   return withParticipantSet(await readParticipantSetForPatch(patch), compute);
 }
 
+/**
+ * Un snapshot écrit par une version précédente du job.
+ *
+ * Les listes longues des onglets (voir ChampionDetail) sont arrivées après coup.
+ * Entre le déploiement et le premier passage du job — une demi-heure au pire —
+ * les snapshots en base sont ceux d'avant et n'ont pas ces champs. Les combler
+ * ici plutôt que de les rendre optionnels partout : le type dit ce que le job
+ * produit aujourd'hui, et seule cette frontière connaît le décalage.
+ */
+function withMissingLists(
+  detail: NonNullable<Awaited<ReturnType<typeof getChampionDetail>>>,
+): NonNullable<Awaited<ReturnType<typeof getChampionDetail>>> {
+  return {
+    ...detail,
+    allAugments: detail.allAugments ?? [],
+    allItems: detail.allItems ?? [],
+    allCombos: detail.allCombos ?? { "item-item": [], "item-augment": [], "augment-augment": [] },
+    anvilItems: detail.anvilItems ?? [],
+    anvilAugments: detail.anvilAugments ?? [],
+  };
+}
+
 /** Même repli, pour les pages de détail d'un champion (clé dynamique). */
 export async function readChampionDetailSnapshot(
   championIdLower: string,
@@ -102,7 +124,9 @@ export async function readChampionDetailSnapshot(
   const base = championDetailKey(championIdLower);
   const storageKey = patch ? patchedKey(base, patch) : base;
   const stored = await readSnapshotRaw(storageKey);
-  if (stored !== null) return stored as Awaited<ReturnType<typeof getChampionDetail>>;
+  if (stored !== null) {
+    return withMissingLists(stored as NonNullable<Awaited<ReturnType<typeof getChampionDetail>>>);
+  }
   console.warn(`[stats] snapshot champion "${storageKey}" absent — calcul direct`);
   const compute = () => getChampionDetail(championIdLower, augmentRarity, itemCategory);
   if (!patch) return compute();

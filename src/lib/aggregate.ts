@@ -565,6 +565,86 @@ export function toStat(s: Accumulator, denominator: number): Stat {
   };
 }
 
+/**
+ * ─── LES LISTES LONGUES VOYAGENT EN COMPTEURS, PAS EN TAUX ───────────────────
+ *
+ * Les onglets d'une page de champion publient des listes entières : ~115
+ * augments et ~79 items par champion et par patch, contre 5 et 6 avant. Écrits
+ * comme le reste du site, en objets nommés à taux flottants, ils pèseraient
+ * 21 Mo de snapshots là où le job en écrit 5,6 aujourd'hui.
+ *
+ * L'essentiel de ce poids ne porte aucune information. `"top3Rate":
+ * 0.5121951219512195` occupe 30 caractères pour une valeur affichée à deux
+ * décimales — et ce n'est même pas la donnée d'origine, seulement un quotient.
+ *
+ * On transporte donc le NUMÉRATEUR : quatre entiers dont les quatre taux se
+ * redéduisent exactement, par le même `toStat` que partout ailleurs. La ligne
+ * passe de ~165 octets à ~25, et gagne en précision au passage puisque plus
+ * rien n'est arrondi en route.
+ *
+ * Réservé aux listes longues. Les payloads courts restent en objets nommés :
+ * un tableau positionnel se lit mal, et l'économie n'y vaut pas la relecture.
+ */
+export type PackedStat = [
+  id: number,
+  games: number,
+  top1: number,
+  top3: number,
+  placementSum: number,
+];
+
+function packStat(id: number, a: Accumulator): PackedStat {
+  return [id, a.games, a.top1Wins, a.top3Wins, a.placementSum];
+}
+
+export function unpackStat(packed: PackedStat, denominator: number): { id: number } & Stat {
+  const [id, games, top1Wins, top3Wins, placementSum] = packed;
+  return { id, ...toStat({ games, top1Wins, top3Wins, placementSum }, denominator) };
+}
+
+/** Idem, plus les trois métriques corrigées du jalon, qui elles ne se déduisent
+ *  de rien (voir adjustedItemStats). Arrondies au dix-millième : elles ne
+ *  servent qu'à ordonner des tiers, jamais à être affichées. */
+export type PackedItemStat = [
+  ...PackedStat,
+  tierAvgPlacement: number,
+  tierTop3Rate: number,
+  tierTop1Rate: number,
+];
+
+const round4 = (v: number) => Math.round(v * 1e4) / 1e4;
+
+export function unpackItemStat(
+  packed: PackedItemStat,
+  denominator: number,
+): { itemId: number } & Stat & { tierStat: { avgPlacement: number; top3Rate: number; top1Rate: number } } {
+  const [id, games, top1Wins, top3Wins, placementSum, tierAvg, tierTop3, tierTop1] = packed;
+  return {
+    itemId: id,
+    ...toStat({ games, top1Wins, top3Wins, placementSum }, denominator),
+    tierStat: { avgPlacement: tierAvg, top3Rate: tierTop3, top1Rate: tierTop1 },
+  };
+}
+
+/** Une paire, ses deux choix encodés comme dans computeCombos (voir pickCode). */
+export type PackedCombo = [
+  a: number,
+  b: number,
+  games: number,
+  top1: number,
+  top3: number,
+  placementSum: number,
+];
+
+export function unpackCombo(packed: PackedCombo, denominator: number): ComboStat {
+  const [a, b, games, top1Wins, top3Wins, placementSum] = packed;
+  return {
+    a: decodePick(a),
+    b: decodePick(b),
+    ...toStat({ games, top1Wins, top3Wins, placementSum }, denominator),
+  };
+}
+
 function accumulate(map: Map<string | number, Accumulator>, key: string | number, placement: number) {
   const entry = map.get(key) ?? { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
   entry.games += 1;
@@ -1074,6 +1154,50 @@ export type ChampionAugmentStat = { augmentId: number } & Stat;
 export type ChampionItemSlotStat = { itemId: number } & Stat;
 export type ChampionItemSlot = { slot: number; items: ChampionItemSlotStat[] };
 
+/**
+ * ─── LES SEUILS DES ONGLETS D'UN CHAMPION ────────────────────────────────────
+ *
+ * Un champion a quelques centaines de parties sur un patch, pas 27 000. Sous ce
+ * nombre de parties, une ligne ne dit plus rien : elle occupe une place dans un
+ * tableau, elle se fait classer, et le lecteur la lit comme une information
+ * alors qu'elle n'est que du bruit. Le plancher de confiance des tiers (voir
+ * lib/tiers.ts) l'empêche déjà de REMONTER ; le seuil, lui, l'empêche d'exister.
+ *
+ * Mesuré sur le patch 16.18 : un champion voit 182 augments et 121 items au
+ * moins une fois. À partir de cinq parties il en reste 115 et 79 — on perd des
+ * lignes à une ou deux parties, jamais un vrai choix de build.
+ *
+ * Le seuil s'applique AVANT le calcul des tiers, et donc aussi au top 5 du
+ * résumé : les deux vues doivent classer le même lot, sinon un augment serait
+ * A sur une page et B sur l'autre.
+ */
+const CHAMPION_LIST_MIN_GAMES = 5;
+
+/** Les enclumes sont un style de jeu minoritaire : le même seuil y couperait
+ *  presque tout. Plus bas, donc, et l'onglet affiche son échantillon. */
+const CHAMPION_ANVIL_MIN_GAMES = 3;
+
+/**
+ * Les paires demandent un seuil PLUS HAUT que les listes simples, et pour une
+ * raison qui n'est pas le volume de données.
+ *
+ * Un champion forme des centaines de paires — 674 au-dessus de cinq parties
+ * chez Sett — là où il ne voit que 182 augments. Or plus on teste de candidats,
+ * plus le plus extrême d'entre eux paraît extrême, même quand rien de réel ne
+ * le distingue : c'est le problème des comparaisons multiples, et il ne se
+ * corrige pas en regardant chaque ligne isolément. À cinq parties, la tête du
+ * classement était occupée par des paires vues dix fois à 90 % de top 1.
+ *
+ * Doubler le seuil ne supprime pas le phénomène, il le rend beaucoup moins
+ * probable, et il reste de quoi remplir la liste : 379 paires objet-objet chez
+ * Sett au-dessus de dix parties.
+ */
+const CHAMPION_COMBO_MIN_GAMES = 10;
+
+/** On publie les meilleures paires par catégorie, pas toutes : au-delà, on ne
+ *  classe plus que du hasard. */
+const CHAMPION_COMBO_MAX = 60;
+
 export type ChampionDetail = {
   champion: string; // canonical id as stored (Riot casing) — caller resolves display info
   totalMatches: number;
@@ -1090,6 +1214,20 @@ export type ChampionDetail = {
     anvilTopPrismaticItems: ChampionItemSlotStat[];
     /** Top 10 combos per category, scoped to this champion's own games. */
     championCombos: Record<ComboCategory, ComboStat[]>;
+
+    // ── Ce que les onglets affichent, et que le résumé ne montre qu'en extrait.
+    //    Empaqueté (voir PackedStat) : ce sont les seules listes longues du site.
+
+    /** Tous les augments vus sur ce champion, au-dessus du seuil. */
+    allAugments: PackedStat[];
+    /** Tous les items vus sur ce champion, au-dessus du seuil, tier compris. */
+    allItems: PackedItemStat[];
+    /** Les meilleures paires par catégorie, au-dessus du seuil. */
+    allCombos: Record<ComboCategory, PackedCombo[]>;
+    /** Les prismatiques des parties « enclume » de ce champion. */
+    anvilItems: PackedItemStat[];
+    /** Les augments des parties « enclume » de ce champion. */
+    anvilAugments: PackedStat[];
   };
 
 // A participant is playing an "anvil run" if every item in their final
@@ -1164,9 +1302,14 @@ export async function getChampionDetail(
     for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
   }
   const augmentsByRarity: ChampionDetail["augmentsByRarity"] = { silver: [], gold: [], prismatic: [] };
+  const allAugments: PackedStat[] = [];
   for (const [augmentId, s] of byAugment.entries()) {
+    // Le seuil AVANT le tier, pour que le top 5 du résumé et l'onglet classent
+    // exactement le même lot — voir CHAMPION_LIST_MIN_GAMES.
+    if (s.games < CHAMPION_LIST_MIN_GAMES) continue;
     const rarity = rarityOf(augmentId);
     if (!rarity) continue;
+    allAugments.push(packStat(augmentId, s));
     augmentsByRarity[rarity].push({ augmentId, ...toStat(s, champGames) });
   }
   for (const rarity of Object.keys(augmentsByRarity) as (keyof typeof augmentsByRarity)[]) {
@@ -1293,10 +1436,73 @@ export async function getChampionDetail(
     baselines,
   );
 
-  // Top 10 combos per category, scoped to this champion's own games — no
-  // minimum games threshold (unlike the site-wide Combos page) since a
-  // single champion's sample is already much smaller.
-  const championCombos = computeCombos(champRows, itemCategoryOf, champGames, 1, 10);
+  // Les paires de ce champion. Le seuil remplace l'absence de seuil d'avant :
+  // le résumé n'en montrait que dix, et une paire à deux parties y passait
+  // inaperçue ; un onglet qui en montre soixante ne peut pas se le permettre.
+  // Voir CHAMPION_COMBO_MIN_GAMES pour le choix du nombre.
+  const packedCombos = computeCombos(
+    champRows,
+    itemCategoryOf,
+    CHAMPION_COMBO_MIN_GAMES,
+    CHAMPION_COMBO_MAX,
+  );
+  const championCombos = Object.fromEntries(
+    Object.entries(packedCombos).map(([category, list]) => [
+      category,
+      list.slice(0, 10).map((combo) => unpackCombo(combo, champGames)),
+    ]),
+  ) as Record<ComboCategory, ComboStat[]>;
+
+  // Tous les items de ce champion, tier compris — le même calcul que la tier
+  // list générale, mais sur les seules parties de ce champion et avec les
+  // références de jalon de tout l'échantillon (voir buildLandmarkBaselines).
+  //
+  // Les compteurs sont reconstitués depuis les taux. C'est exact et non
+  // approché : `top1Rate` vaut `top1Wins / games` et les deux sont des entiers
+  // bien en deçà de la précision d'un flottant — le produit retombe sur
+  // l'entier de départ. L'alternative serait de faire ressortir l'accumulateur
+  // d'`adjustedItemStats`, pour élargir sa signature au profit d'un seul appel.
+  const allItems = adjustedItemStats(champRows, itemCategoryOf, baselines, champGames, () => true)
+    .filter((i) => i.games >= CHAMPION_LIST_MIN_GAMES)
+    .map<PackedItemStat>((i) => [
+      i.itemId,
+      i.games,
+      Math.round(i.top1Rate * i.games),
+      Math.round(i.top3Rate * i.games),
+      Math.round(i.avgPlacement * i.games),
+      round4(i.tierStat.avgPlacement),
+      round4(i.tierStat.top3Rate),
+      round4(i.tierStat.top1Rate),
+    ]);
+
+  const anvilItems = adjustedItemStats(
+    anvilRows,
+    itemCategoryOf,
+    baselines,
+    anvilAcc.games,
+    (itemId) => itemCategoryOf(itemId) === "prismatic",
+  )
+    .filter((i) => i.games >= CHAMPION_ANVIL_MIN_GAMES)
+    .map<PackedItemStat>((i) => [
+      i.itemId,
+      i.games,
+      Math.round(i.top1Rate * i.games),
+      Math.round(i.top3Rate * i.games),
+      Math.round(i.avgPlacement * i.games),
+      round4(i.tierStat.avgPlacement),
+      round4(i.tierStat.top3Rate),
+      round4(i.tierStat.top1Rate),
+    ]);
+
+  const anvilByAugment = new Map<number, Accumulator>();
+  for (const r of anvilRows) {
+    for (const augmentId of r.augments) accumulate(anvilByAugment, augmentId, r.placement);
+  }
+  const anvilAugments: PackedStat[] = [];
+  for (const [augmentId, acc] of anvilByAugment) {
+    if (acc.games < CHAMPION_ANVIL_MIN_GAMES) continue;
+    anvilAugments.push(packStat(augmentId, acc));
+  }
 
   return {
     champion: champRows[0].champion,
@@ -1309,6 +1515,11 @@ export async function getChampionDetail(
     anvilShardbladeRate,
     anvilTopPrismaticItems,
     championCombos,
+    allAugments,
+    allItems,
+    allCombos: packedCombos,
+    anvilItems,
+    anvilAugments,
   };
 }
 
@@ -1569,10 +1780,9 @@ function decodePick(code: number): ComboPick {
 function computeCombos(
   rows: ParticipantRow[],
   itemCategoryOf: ItemCategoryLookup,
-  denominator: number,
   minGames: number,
   maxPerCategory: number
-): Record<ComboCategory, ComboStat[]> {
+): Record<ComboCategory, PackedCombo[]> {
   // Clé NUMÉRIQUE, et non `${a.type}:${a.id}|${b.type}:${b.id}`.
   //
   // C'est la boucle la plus chaude du calcul : chaque participation forme une
@@ -1633,7 +1843,7 @@ function computeCombos(
     }
   }
 
-  const byCategory: Record<ComboCategory, ComboStat[]> = {
+  const byCategory: Record<ComboCategory, PackedCombo[]> = {
     "item-item": [],
     "augment-augment": [],
     "item-augment": [],
@@ -1642,22 +1852,32 @@ function computeCombos(
     if (entry.games < minGames) continue;
     const lo = Math.floor(entry.code / PICK_PAIR_BASE);
     const hi = entry.code - lo * PICK_PAIR_BASE;
-    byCategory[entry.category].push({
-      a: decodePick(lo),
-      b: decodePick(hi),
-      ...toStat(entry, denominator),
-    });
+    byCategory[entry.category].push([
+      lo,
+      hi,
+      entry.games,
+      entry.top1Wins,
+      entry.top3Wins,
+      entry.placementSum,
+    ]);
   }
 
   // Same tier score as everywhere else, used here purely to pick the best
   // combos per category — computeTiers is called again on just the ones kept
   // wherever they're displayed, so the S–D bands shown reflect the real gaps
   // in what's actually on screen, not the full unfiltered pool.
+  //
+  // Le dénominateur n'entre pas ici : le score ne regarde que parties, placement
+  // moyen et taux de top, jamais le playRate. Chaque appelant appliquera le sien
+  // au dépaquetage.
   for (const category of Object.keys(byCategory) as ComboCategory[]) {
-    const keyed = byCategory[category].map((combo, i) => ({ ...combo, key: String(i) }));
+    const keyed = byCategory[category].map((packed, i) => {
+      const [, , games, top1Wins, top3Wins, placementSum] = packed;
+      return { key: String(i), packed, ...toStat({ games, top1Wins, top3Wins, placementSum }, 1) };
+    });
     const tierMap = computeTiers(keyed);
     keyed.sort((x, y) => tierMap.get(y.key)!.score - tierMap.get(x.key)!.score);
-    byCategory[category] = keyed.slice(0, maxPerCategory).map(({ key: _key, ...combo }) => combo);
+    byCategory[category] = keyed.slice(0, maxPerCategory).map((k) => k.packed);
   }
 
   return byCategory;
@@ -1669,6 +1889,12 @@ export async function getComboStats(
   const rows = await fetchAllParticipants();
   const totalMatches = matchCountOf(rows);
   const denominator = totalMatches * PARTICIPANTS_PER_MATCH;
-  const byCategory = computeCombos(rows, itemCategoryOf, denominator, COMBO_MIN_GAMES, COMBO_MAX_ROWS);
+  const packed = computeCombos(rows, itemCategoryOf, COMBO_MIN_GAMES, COMBO_MAX_ROWS);
+  const byCategory = Object.fromEntries(
+    Object.entries(packed).map(([category, list]) => [
+      category,
+      list.map((combo) => unpackCombo(combo, denominator)),
+    ]),
+  ) as Record<ComboCategory, ComboStat[]>;
   return { totalMatches, byCategory };
 }
