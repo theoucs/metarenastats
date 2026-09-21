@@ -665,6 +665,75 @@ export async function getChampionStats() {
   return { totalMatches, champions };
 }
 
+/**
+ * Les quatre augments « stat anvil » du pool courant, dans leur ordre de
+ * rareté : Stats! (silver), Stats on Stats! (gold), Stats on Stats on Stats!
+ * (prismatic), Gamba Anvil (prismatic).
+ *
+ * Ce sont les seuls augments qui donnent des enclumes de stats, donc les seuls
+ * dont la présence en PREMIER pick annonce vraiment une partie sans boutique.
+ * Vérifié en base : les autres identifiants qui portent ces noms (1402-1404,
+ * ainsi que « Gain Stat Anvil » 340/355) n'apparaissent en premier pick sur
+ * aucune partie suivie — ils ne sont plus dans le pool.
+ */
+export const ANVIL_OPENER_AUGMENTS = [226, 227, 228, 234] as const;
+
+const ANVIL_OPENER_SET = new Set<number>(ANVIL_OPENER_AUGMENTS);
+
+/**
+ * Parties requises avant qu'un champion entre dans une tier list filtrée.
+ *
+ * Bien plus haut que les seuils voisins (5 pour les listes de champion, 3 pour
+ * l'onglet enclume) parce que le lot est bien plus mince : filtrer sur un
+ * premier augment ne garde que 3 000 à 5 500 parties pour ~173 champions, et le
+ * mieux fourni d'entre eux plafonne à 35 sur un patch.
+ *
+ * À 10 parties l'erreur type du placement moyen vaut encore ~0,5 — c'est dit
+ * sur la page, et c'est pourquoi le bandeau de comparaison, lui, porte le
+ * message : il s'appuie sur le lot entier, pas sur une case.
+ *
+ * Descendre à 5 doublerait le nombre de lignes affichées sans ajouter une
+ * seule information : on montrerait du bruit avec un rang devant.
+ */
+const ANVIL_OPENER_MIN_GAMES = 10;
+
+/** Ce qu'a donné un lot de parties, sans `playRate` : la part n'a pas de sens
+ *  pour une ouverture, qui se compare à elle-même d'un style de jeu à l'autre. */
+export type AnvilOutcome = Omit<Stat, "playRate">;
+
+export type AnvilOpenerStats = {
+  augmentId: number;
+  /** Les parties ouvertes par cet augment qui SONT parties en enclumes. */
+  anvil: AnvilOutcome;
+  /**
+   * Les parties ouvertes par cet augment où le joueur a quand même acheté.
+   *
+   * C'est la moitié de la comparaison qui manquait : sans elle, la page
+   * laisserait croire que ces augments rendent l'anvil run meilleur, alors
+   * qu'ils rendent la PARTIE meilleure. Mesuré sur 16.17+16.18, le placement
+   * moyen est même un peu MEILLEUR en achetant (3,11 contre 3,20 sur Gamba
+   * Anvil) — c'est le Top 1 qui bascule dans l'autre sens (29,6 % contre
+   * 23,4 %). L'enclume est un pari, pas un raccourci.
+   */
+  bought: AnvilOutcome;
+  /** Stats par champion sur les anvil runs ouverts par cet augment, au-dessus
+   *  de ANVIL_OPENER_MIN_GAMES. `playRate` se rapporte ici aux anvil runs du
+   *  champion, pas à ses parties totales. */
+  champions: ({ champion: string } & Stat)[];
+};
+
+const EMPTY_ACCUMULATOR: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+
+function outcomeOf(s: Accumulator | undefined): AnvilOutcome {
+  const stat = toStat(s ?? EMPTY_ACCUMULATOR, 0);
+  return {
+    games: stat.games,
+    top3Rate: stat.top3Rate,
+    top1Rate: stat.top1Rate,
+    avgPlacement: stat.avgPlacement,
+  };
+}
+
 // Same shape as getChampionStats, scoped to participants playing an "anvil
 // run" (see isAnvilBuild below) — powers the dedicated Anvil Run tier list.
 // playRate here is "% of this champion's own games (any playstyle) that were
@@ -672,22 +741,73 @@ export async function getChampionStats() {
 // the anvilStat.playRate shown on the champion detail page.
 export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) {
   const rows = await fetchAllParticipants();
+
+  // UNE passe sur les lignes, pas deux.
+  //
+  // `isAnvilBuild` parcourt l'inventaire de chaque ligne, et les ouvertures
+  // ci-dessous ont besoin exactement du même verdict pour trancher entre
+  // « parti en enclumes » et « a acheté ». Le recalculer dans une seconde
+  // boucle ferait deux fois le travail sur 300 000 lignes pour obtenir deux
+  // fois la même réponse.
   const totalGamesByChampion = new Map<string, number>();
+  const anvilRows: ParticipantRow[] = [];
+  const openerAnvil = new Map<number, Accumulator>();
+  const openerBought = new Map<number, Accumulator>();
+  const openerByChampion = new Map<number, Map<string, Accumulator>>();
+
   for (const r of rows) {
     totalGamesByChampion.set(r.champion, (totalGamesByChampion.get(r.champion) ?? 0) + 1);
+    const anvil = isAnvilBuild(r.items, itemCategoryOf);
+    if (anvil) anvilRows.push(r);
+
+    // `augments[0]` EST le premier pick : les `playerAugment1..6` de Riot
+    // arrivent dans l'ordre où ils ont été choisis (voir TIMING_SLOTS).
+    const opener = r.augments[0];
+    if (opener === undefined || !ANVIL_OPENER_SET.has(opener)) continue;
+    accumulate(anvil ? openerAnvil : openerBought, opener, r.placement);
+    if (!anvil) continue;
+    let byChamp = openerByChampion.get(opener);
+    if (!byChamp) openerByChampion.set(opener, (byChamp = new Map()));
+    accumulate(byChamp, r.champion, r.placement);
   }
 
-  const anvilRows = rows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const totalMatches = countMatches(anvilRows);
   const byChampion = new Map<string, Accumulator>();
-  for (const r of anvilRows) accumulate(byChampion, r.champion, r.placement);
+  // Le point zéro du bandeau de comparaison. Accumulé ici plutôt que
+  // reconstitué en sommant `champions` : une moyenne de moyennes pondérée se
+  // recalcule juste, mais elle se recalcule FAUX au premier oubli du poids.
+  const overall = new Map<string, Accumulator>();
+  for (const r of anvilRows) {
+    accumulate(byChampion, r.champion, r.placement);
+    accumulate(overall, "all", r.placement);
+  }
   const champions = Array.from(byChampion.entries())
     .map(([champion, s]) => ({
       champion,
       ...toStat(s, totalGamesByChampion.get(champion) ?? 0),
     }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
-  return { totalMatches, champions };
+
+  const openers: AnvilOpenerStats[] = ANVIL_OPENER_AUGMENTS.map((augmentId) => ({
+    augmentId,
+    anvil: outcomeOf(openerAnvil.get(augmentId)),
+    bought: outcomeOf(openerBought.get(augmentId)),
+    champions: Array.from(openerByChampion.get(augmentId) ?? [])
+      .filter(([, s]) => s.games >= ANVIL_OPENER_MIN_GAMES)
+      // Dénominateur : les anvil runs DE CE CHAMPION. Sous filtre, la colonne
+      // répond « sur ses parties d'enclume, combien ont commencé par cet
+      // augment » — une part lisible, là où la rapporter à ses parties totales
+      // donnait des dixièmes de pour cent.
+      .map(([champion, s]) => ({
+        champion,
+        ...toStat(s, byChampion.get(champion)?.games ?? 0),
+      }))
+      // Le placement moyen mène, comme partout ailleurs sur le site. Le tableau
+      // retrie par tier à l'affichage ; cet ordre est celui du repli.
+      .sort((a, b) => a.avgPlacement - b.avgPlacement),
+  }));
+
+  return { totalMatches, overall: outcomeOf(overall.get("all")), champions, openers };
 }
 
 // "excluded" items (quest-only rewards like Shardblade, or auto-granted ones
