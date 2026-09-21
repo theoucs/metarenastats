@@ -94,6 +94,10 @@ export async function readSnapshot<K extends keyof SnapshotPayloads>(
   return withParticipantSet(await readParticipantSetForPatch(patch), compute);
 }
 
+/** Zéro partie : le bloc « Opening augment » ne s'affiche alors pas du tout,
+ *  ce qui est la bonne réponse tant que le job n'a pas republié. */
+const EMPTY_OUTCOME = { games: 0, top3Rate: 0, top1Rate: 0, avgPlacement: 0 };
+
 /**
  * Un snapshot écrit par une version précédente du job.
  *
@@ -113,6 +117,7 @@ function withMissingLists(
     allCombos: detail.allCombos ?? { "item-item": [], "item-augment": [], "augment-augment": [] },
     anvilItems: detail.anvilItems ?? [],
     anvilAugments: detail.anvilAugments ?? [],
+    anvilOpening: detail.anvilOpening ?? { statAnvil: EMPTY_OUTCOME, other: EMPTY_OUTCOME },
   };
 }
 

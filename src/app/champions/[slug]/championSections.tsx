@@ -1,8 +1,11 @@
 import Link from "next/link";
 import {
+  ANVIL_OPENER_AUGMENTS,
   SHARDBLADE_ITEM_ID,
   unpackStat,
   unpackItemStat,
+  type AnvilOutcome,
+  type ChampionAnvilOpening,
   type ChampionAugmentStat,
   type ChampionItemSlot,
   type ChampionItemSlotStat,
@@ -118,6 +121,128 @@ export function ShardbladeRateBlock({ rate }: { rate: number }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Les anvil runs de ce champion, selon l'augment qui les a ouverts.
+ *
+ * Les quatre augments d'enclume sont regroupés en une seule ligne — voir le
+ * commentaire dans `getChampionDetail`. Séparés, la plupart des champions
+ * n'auraient pas dix parties par augment ; regroupés, l'écart se lit, et il
+ * vaut environ une demi-place sur tous les champions mesurés.
+ *
+ * Même forme de tableau que le bandeau de /anvil, volontairement : c'est la
+ * même question posée à deux échelles, elle doit se lire pareil.
+ */
+export function AnvilOpeningBlock({ opening }: { opening: ChampionAnvilOpening }) {
+  return (
+    <div className="mt-4 rounded-xl border border-subtle bg-raised/40 p-3 shadow-[var(--elev-1)]">
+      <h3 className="text-small font-semibold uppercase tracking-wide text-muted">
+        Opening augment
+      </h3>
+
+      <table className="mt-2 w-full border-collapse text-small">
+        <thead>
+          <tr className="text-micro uppercase tracking-wide text-muted">
+            <th className="pb-1.5 text-left font-medium">
+              {/* Le libellé entier passait à la ligne à 390 px et volait sa
+                  largeur aux colonnes de chiffres. */}
+              <span className="sm:hidden">Started on</span>
+              <span className="hidden sm:inline">Anvil runs that started on</span>
+            </th>
+            <th className="pb-1.5 pl-2 text-right font-medium">Avg</th>
+            <th className="pb-1.5 pl-2 text-right font-medium">Top 1</th>
+            <th className="pb-1.5 pl-2 text-right font-medium">Top 3</th>
+            <th className="pb-1.5 pl-2 text-right font-medium">Games</th>
+          </tr>
+        </thead>
+        <tbody>
+          <OpeningRow label={<StatAnvilLabel />} outcome={opening.statAnvil} emphasis />
+          <OpeningRow label="Anything else" outcome={opening.other} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Les quatre icônes plutôt que leurs quatre noms : côte à côte les noms font
+ *  trois lignes, et l'infobulle de chaque icône dit déjà lequel est lequel. */
+function StatAnvilLabel() {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className="flex items-center gap-1">
+        {ANVIL_OPENER_AUGMENTS.map((id) => {
+          const info = resolveAugment(id);
+          if (!info) return null;
+          return (
+            <EntityTooltip key={id} entity={{ type: "augment", id }} name={info.name}>
+              <EntityIcon
+                iconUrl={info.iconUrl}
+                rarity={info.tier as "silver" | "gold" | "prismatic" | undefined}
+                sizeClass="h-5 w-5"
+              />
+            </EntityTooltip>
+          );
+        })}
+      </span>
+      <span className="font-medium text-primary">A stat anvil</span>
+    </span>
+  );
+}
+
+function OpeningRow({
+  label,
+  outcome,
+  emphasis = false,
+}: {
+  label: React.ReactNode;
+  outcome: AnvilOutcome;
+  emphasis?: boolean;
+}) {
+  // Zéro partie se lit « — » : un placement moyen de 0,00 passerait pour un
+  // résultat parfait alors que c'est une absence de données.
+  const empty = outcome.games === 0;
+  return (
+    <tr className={`border-t border-subtle ${emphasis ? "bg-overlay/40" : ""}`}>
+      <td className={`py-2 pr-2 ${emphasis ? "text-primary" : "text-secondary"}`}>{label}</td>
+      <OpeningCell
+        value={empty ? "—" : outcome.avgPlacement.toFixed(2)}
+        colorClass={empty ? undefined : avgPlacementColor(outcome.avgPlacement)}
+        emphasis={emphasis}
+      />
+      <OpeningCell
+        value={empty ? "—" : `${(outcome.top1Rate * 100).toFixed(1)}%`}
+        colorClass={empty ? undefined : top1Color(outcome.top1Rate)}
+      />
+      <OpeningCell
+        value={empty ? "—" : `${(outcome.top3Rate * 100).toFixed(1)}%`}
+        colorClass={empty ? undefined : top3Color(outcome.top3Rate)}
+      />
+      <OpeningCell value={String(outcome.games)} />
+    </tr>
+  );
+}
+
+function OpeningCell({
+  value,
+  colorClass,
+  emphasis = false,
+}: {
+  value: string;
+  colorClass?: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <td className="py-2 pl-2 text-right">
+      <span
+        className={`font-mono [font-variant-numeric:tabular-nums] ${
+          emphasis ? "font-semibold" : ""
+        } ${colorClass ?? "text-secondary"}`}
+      >
+        {value}
+      </span>
+    </td>
   );
 }
 

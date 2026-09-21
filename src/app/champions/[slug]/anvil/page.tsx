@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { StatsGrid } from "@/components/StatsGrid";
 import { loadChampionPage, ChampionShell, TabHeading } from "../championPage";
 import {
+  AnvilOpeningBlock,
   AnvilStatRow,
   ShardbladeRateBlock,
   augmentRowsByRarity,
@@ -9,6 +11,26 @@ import {
 } from "../championSections";
 
 export const revalidate = 1800;
+
+/**
+ * Parties requises sur l'ouverture avant d'afficher le bloc « Opening augment ».
+ *
+ * Bien plus haut que le seuil 3 du reste de l'onglet, parce que ce bloc ne
+ * classe pas des augments entre eux — il rend un verdict sur une façon de
+ * jouer, et une demi-place annoncée sur une poignée de parties serait du bruit
+ * présenté comme un conseil.
+ *
+ * 20 et non 10 : à 10, Soraka sortait à 4,50 sur 14 parties contre 3,98
+ * autrement, soit l'inverse exact de ce que donnent les 76 000 parties de la
+ * tier list. Un écart de cette taille rentre entièrement dans l'erreur type à
+ * cet effectif (±0,43). Le prix est de 6 champions sur 173 masqués sur le
+ * patch 16.18, 1 sur 16.17 — les moins joués, ceux dont on n'avait de toute
+ * façon rien à dire.
+ *
+ * Ça ne rend pas le bloc certain pour autant : à 20 parties l'erreur type vaut
+ * encore ~0,36, d'où la ligne de mise en garde sous le tableau.
+ */
+const OPENING_MIN_GAMES = 20;
 
 const AUGMENT_TABS = [
   { key: "prismatic", label: "Prismatic" },
@@ -48,6 +70,18 @@ export default async function ChampionAnvilPage({
               <div className="mt-4 max-w-md">
                 <AnvilStatRow stat={detail.anvilStat} />
                 <ShardbladeRateBlock rate={detail.anvilShardbladeRate} />
+                {detail.anvilOpening.statAnvil.games >= OPENING_MIN_GAMES && (
+                  <>
+                    <AnvilOpeningBlock opening={detail.anvilOpening} />
+                    <p className="mt-2 text-micro text-muted">
+                      Same split, measured on every champion at once, sits on the{" "}
+                      <Link href="/anvil" className="text-accent hover:underline">
+                        Anvil Run tier list
+                      </Link>{" "}
+                      — a hundred times the sample, so trust that one when the two disagree.
+                    </p>
+                  </>
+                )}
               </div>
 
               <TabHeading title="Prismatic Items">

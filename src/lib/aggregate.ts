@@ -701,6 +701,10 @@ const ANVIL_OPENER_MIN_GAMES = 10;
  *  pour une ouverture, qui se compare à elle-même d'un style de jeu à l'autre. */
 export type AnvilOutcome = Omit<Stat, "playRate">;
 
+/** Les deux moitiés d'un champion : anvil runs ouverts sur un augment
+ *  d'enclume, et tous les autres. */
+export type ChampionAnvilOpening = { statAnvil: AnvilOutcome; other: AnvilOutcome };
+
 export type AnvilOpenerStats = {
   augmentId: number;
   /** Les parties ouvertes par cet augment qui SONT parties en enclumes. */
@@ -1328,6 +1332,9 @@ export type ChampionDetail = {
     topPrismaticItems: ChampionItemSlotStat[];
     /** Stats for the "anvil run" playstyle (stat anvils instead of items) — see isAnvilBuild. */
     anvilStat: Stat;
+    /** Les anvil runs de ce champion selon qu'ils ont commencé, ou non, par un
+     *  des quatre augments d'enclume — voir ANVIL_OPENER_AUGMENTS. */
+    anvilOpening: ChampionAnvilOpening;
     /** % of this champion's anvil-run games (not all games) where Shardblade was obtained. */
     anvilShardbladeRate: number;
     /** Top 3 Prismatic items among this champion's anvil-run games, ranked by tier score. */
@@ -1537,6 +1544,14 @@ export async function getChampionDetail(
 
   const anvilRows = champRows.filter((r) => isAnvilBuild(r.items, itemCategoryOf));
   const anvilAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+  // Les quatre augments d'enclume sont REGROUPÉS ici, alors que la tier list
+  // les sépare. Ce n'est pas une simplification, c'est ce que l'échantillon
+  // autorise : séparés, 34 champions sur 173 seulement atteignent 10 parties
+  // sur « Stats! ». Regroupés, les 173 y sont, avec une médiane de 36 parties
+  // par champion et par patch. Et l'écart mesuré est le même d'un champion à
+  // l'autre — environ une demi-place — donc la distinction se paierait en
+  // bruit sans rien apprendre de plus.
+  const openedOnAnvil = new Map<string, Accumulator>();
   let anvilShardbladeCount = 0;
   for (const r of anvilRows) {
     anvilAcc.games += 1;
@@ -1544,8 +1559,15 @@ export async function getChampionDetail(
     if (r.placement <= TOP3_PLACEMENT_THRESHOLD) anvilAcc.top3Wins += 1;
     if (r.placement === 1) anvilAcc.top1Wins += 1;
     if (r.items.includes(SHARDBLADE_ITEM_ID)) anvilShardbladeCount += 1;
+    const opener = r.augments[0];
+    const key = opener !== undefined && ANVIL_OPENER_SET.has(opener) ? "stat" : "other";
+    accumulate(openedOnAnvil, key, r.placement);
   }
   const anvilShardbladeRate = anvilAcc.games > 0 ? anvilShardbladeCount / anvilAcc.games : 0;
+  const anvilOpening: ChampionAnvilOpening = {
+    statAnvil: outcomeOf(openedOnAnvil.get("stat")),
+    other: outcomeOf(openedOnAnvil.get("other")),
+  };
 
   // Top 3 Prismatic items among just this champion's anvil-run games.
   const anvilTopPrismaticItems = computeTopPrismaticItems(
@@ -1632,6 +1654,7 @@ export async function getChampionDetail(
     itemBuild,
     topPrismaticItems,
     anvilStat: toStat(anvilAcc, champGames),
+    anvilOpening,
     anvilShardbladeRate,
     anvilTopPrismaticItems,
     championCombos,
