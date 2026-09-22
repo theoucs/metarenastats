@@ -365,15 +365,32 @@ export async function persistMatches(matches: MatchResult[]) {
 
 /** Best-effort lookup of a previously-seen player by their exact Riot ID, used
  * as a fallback when a live Riot API call fails (e.g. expired key) but we
- * already have this player's data from a past search. */
+ * already have this player's data from a past search.
+ *
+ * Interrogé sur `players`, et non sur `match_participants`.
+ *
+ * Les deux portent le pseudo, mais l'un a une ligne par JOUEUR et l'autre une
+ * ligne par PARTICIPATION : 245 000 contre 1 290 000, et surtout 36 Mo contre
+ * 413 Mo à parcourir, aucune des deux tables n'ayant d'index sur le pseudo.
+ * Mesuré le 2026-09-22, clé Riot expirée — donc sur le chemin que TOUT visiteur
+ * empruntait : 47 s pour la page d'un joueur via les participations, 4,6 s via
+ * les joueurs. `players.riot_id` est par ailleurs le pseudo le plus récent
+ * (sync_player_counts le réécrit), là où une participation porte celui du jour
+ * de la partie.
+ *
+ * 4,6 s reste trop : c'est un parcours complet. Le vrai correctif est un index
+ * sur `lower(riot_id)` — il attend que la base ait de la place (voir le disque
+ * saturé du 2026-09-22).
+ */
 export async function findKnownPlayerByRiotId(
   riotId: string
 ): Promise<{ puuid: string; riotId: string } | null> {
   if (!supabaseAdmin) return null;
   const { data } = await supabaseAdmin
-    .from("match_participants")
+    .from("players")
     .select("puuid, riot_id")
     .ilike("riot_id", riotId)
+    .not("riot_id", "is", null)
     .limit(1);
   return data && data[0] ? { puuid: data[0].puuid, riotId: data[0].riot_id } : null;
 }
