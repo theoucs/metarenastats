@@ -301,18 +301,24 @@ export async function fetchSummonerProfile(puuid: string): Promise<SummonerProfi
 }
 
 /**
- * Écrit des matchs et leurs participants, en trois temps.
+ * Écrit des matchs et leurs participants, en quatre temps.
  *
- * L'ordre n'est pas un choix : la clé étrangère de `match_participants` impose
- * que la ligne `matches` existe d'abord. Le risque, c'est qu'un échec après
- * cette première écriture laisse un match enregistré *à vide* — 161 matchs sur
- * 913 étaient dans cet état, hérités d'une version « fire-and-forget » dont la
- * promesse était tuée à l'envoi de la réponse.
+ * L'ordre n'est pas un choix : les clés étrangères de `match_participants`
+ * imposent que la ligne `matches` ET la ligne `players` existent d'abord. Le
+ * risque, c'est qu'un échec après la première écriture laisse un match
+ * enregistré *à vide* — 161 matchs sur 913 étaient dans cet état, hérités d'une
+ * version « fire-and-forget » dont la promesse était tuée à l'envoi de la
+ * réponse.
  *
- * D'où le troisième temps : `ingested_at` n'est posé qu'une fois les
- * participants écrits. Un match resté à NULL est incomplet par définition, et
- * le crawler le reprend au passage suivant. L'incomplétude devient visible et
- * réparable au lieu d'être silencieuse.
+ * D'où le dernier temps : `ingested_at` n'est posé qu'une fois les participants
+ * écrits. Un match resté à NULL est incomplet par définition, et le crawler le
+ * reprend au passage suivant. L'incomplétude devient visible et réparable au
+ * lieu d'être silencieuse.
+ *
+ * Le temps n° 2 est né de la compression du 2026-09-22 : la participation porte
+ * désormais un `player_id` entier au lieu d'un puuid de 79 octets, qu'il faut
+ * donc résoudre à l'écriture. C'est le prix de 415 Mo rendus à la base — et il
+ * se paie en deux requêtes par paquet de dix matchs, pas par ligne.
  */
 export async function persistMatches(matches: MatchResult[]) {
   if (!supabaseAdmin || matches.length === 0) return;
@@ -331,12 +337,71 @@ export async function persistMatches(matches: MatchResult[]) {
   );
   if (matchesError) throw matchesError;
 
-  // 2. Les participants.
+  // 2. Les joueurs, pour obtenir leur identifiant entier.
+  //
+  //    `ignoreDuplicates` et non un upsert qui met à jour : un upsert réécrirait
+  //    la ligne de CHAQUE joueur croisé, soit ~250 000 réécritures par jour sur
+  //    une table de 245 000 lignes. Postgres ne modifie pas une ligne en place,
+  //    il en écrit une nouvelle et marque l'ancienne morte — la table doublerait
+  //    de volume entre deux passages de l'autovacuum, pour ne rien changer dans
+  //    l'immense majorité des cas. On insère donc les absents, et on ne corrige
+  //    que les pseudos qui ont réellement changé (temps 2c).
+  const seen = new Map<string, string>();
+  for (const m of matches) {
+    for (const p of m.participants) seen.set(p.puuid, p.riotId);
+  }
+  const puuids = [...seen.keys()];
+
+  // 2a. Créer les manquants.
+  const { error: newPlayersError } = await supabaseAdmin
+    .from("players")
+    .upsert(
+      puuids.map((puuid) => ({ puuid, riot_id: seen.get(puuid) })),
+      { onConflict: "puuid", ignoreDuplicates: true }
+    );
+  if (newPlayersError) throw newPlayersError;
+
+  // 2b. Relire les identifiants. Séparé de 2a parce qu'`ignoreDuplicates` ne
+  //     rend que les lignes réellement insérées — pas celles qui existaient.
+  const { data: playerRows, error: playersError } = await supabaseAdmin
+    .from("players")
+    .select("id, puuid, riot_id")
+    .in("puuid", puuids);
+  if (playersError) throw playersError;
+
+  const idByPuuid = new Map<string, number>();
+  const renamed: { puuid: string; riot_id: string }[] = [];
+  for (const row of playerRows ?? []) {
+    idByPuuid.set(row.puuid as string, row.id as number);
+    const fresh = seen.get(row.puuid as string);
+    if (fresh && fresh !== row.riot_id) renamed.push({ puuid: row.puuid as string, riot_id: fresh });
+  }
+
+  // Un joueur vu à l'instant mais absent de la relecture ne peut venir que
+  // d'une écriture concurrente perdue. Échouer ici est bien meilleur que de
+  // poser `ingested_at` sur un match amputé de ce joueur : le match reste
+  // incomplet, donc réparable au passage suivant.
+  const missing = puuids.filter((puuid) => !idByPuuid.has(puuid));
+  if (missing.length > 0) {
+    throw new Error(`${missing.length} joueur(s) sans identifiant après insertion — match laissé incomplet.`);
+  }
+
+  // 2c. Les pseudos qui ont changé. Presque toujours zéro ligne : un joueur
+  //     change de nom une fois par an, pas une fois par partie. C'est ce qui
+  //     remplace le bloc de rattrapage que `sync_player_counts()` faisait
+  //     toutes les heures — l'information arrive maintenant à la source.
+  if (renamed.length > 0) {
+    const { error: renameError } = await supabaseAdmin
+      .from("players")
+      .upsert(renamed, { onConflict: "puuid" });
+    if (renameError) throw renameError;
+  }
+
+  // 3. Les participants.
   const participantRows = matches.flatMap((m) =>
     m.participants.map((p) => ({
       match_id: m.matchId,
-      puuid: p.puuid,
-      riot_id: p.riotId,
+      player_id: idByPuuid.get(p.puuid),
       subteam_id: p.subteamId,
       placement: p.placement,
       champion: p.champion,
@@ -349,10 +414,10 @@ export async function persistMatches(matches: MatchResult[]) {
   );
   const { error: participantsError } = await supabaseAdmin
     .from("match_participants")
-    .upsert(participantRows, { onConflict: "match_id,puuid" });
+    .upsert(participantRows, { onConflict: "match_id,player_id" });
   if (participantsError) throw participantsError;
 
-  // 3. Marquer complets — jamais atteint si l'étape 2 a échoué.
+  // 4. Marquer complets — jamais atteint si l'étape 2 a échoué.
   const { error: markError } = await supabaseAdmin
     .from("matches")
     .update({ ingested_at: new Date().toISOString() })

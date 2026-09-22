@@ -269,14 +269,17 @@ export async function refreshPublishedParticipants(): Promise<void> {
  *
  * Trier par `match_id` change la nature du plan. L'index (patch, match_id) sur
  * `matches` donne directement les matchs du patch dans l'ordre, et chacun tire
- * ses 18 participants par la clé (match_id, puuid). Postgres s'arrête dès qu'il
- * a ses 10 000 lignes : une page ne coûte plus que ce qu'elle rend, quelle que
- * soit la taille de la base. Mesuré à profondeur et cache égaux sur le patch
+ * ses 18 participants par la clé (match_id, player_id). Postgres s'arrête dès
+ * qu'il a ses 10 000 lignes : une page ne coûte plus que ce qu'elle rend, quelle
+ * que soit la taille de la base. Mesuré à profondeur et cache égaux sur le patch
  * 16.17 : 3 693 ms et 136 063 buffers par `id`, 85 ms et 31 377 buffers par
  * `match_id`.
  *
- * `id` reste le tri secondaire, côté serveur seulement : il rend l'ordre des
- * lignes d'un même match reproductible d'une lecture à l'autre.
+ * `player_id` est le tri secondaire, côté serveur seulement : il rend l'ordre
+ * des lignes d'un même match reproductible d'une lecture à l'autre. C'était
+ * `id`, une colonne bigint que la compression du 2026-09-22 a supprimée — son
+ * index coûtait 42 Mo pour zéro lecture, et (match_id, player_id) est
+ * désormais la clé primaire, donc cet ordre est celui d'un index qui existe.
  */
 function fetchParticipantPage(afterMatchId: string | null, patch: string | null, source: string) {
   if (!supabaseAdmin) return Promise.resolve<ParticipantRow[]>([]);
@@ -284,7 +287,7 @@ function fetchParticipantPage(afterMatchId: string | null, patch: string | null,
     .from(source)
     .select(PARTICIPANT_COLUMNS)
     .order("match_id", { ascending: true })
-    .order("id", { ascending: true })
+    .order("player_id", { ascending: true })
     .limit(PAGE_SIZE);
   if (afterMatchId !== null) query = query.gt("match_id", afterMatchId);
   // Le filtre part en SQL : on ne lit que les lignes du patch demandé au lieu
@@ -1228,13 +1231,28 @@ export type PlayerProfile = {
 async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
   if (!supabaseAdmin) return [];
 
+  // Le puuid ne vit plus sur la participation depuis la compression du
+  // 2026-09-22 : 79 octets par ligne, répétés 1,29 M de fois, pour une
+  // information que `players` porte déjà une fois par joueur. Une sonde sur
+  // `players_puuid_key` le traduit en entier ; c'est une lecture d'index, et
+  // elle remplace le transport de 79 octets sur chaque ligne lue ensuite.
+  const { data: player, error: playerError } = await supabaseAdmin
+    .from("players")
+    .select("id")
+    .eq("puuid", puuid)
+    .maybeSingle();
+  if (playerError) throw playerError;
+  // Joueur jamais croisé en partie : zéro ligne est la bonne réponse, et c'est
+  // ce que la page affiche déjà quand un joueur n'a aucune partie connue.
+  if (!player) return [];
+
   const rows: ParticipantRow[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error } = await supabaseAdmin
       .from(PARTICIPANT_SOURCE)
       .select(PARTICIPANT_COLUMNS)
-      .eq("puuid", puuid)
-      .order("id", { ascending: true })
+      .eq("player_id", player.id)
+      .order("match_id", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (error) throw error;
     rows.push(...((data ?? []) as unknown as CompactRow[]).map(expandRow));

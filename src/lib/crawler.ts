@@ -472,15 +472,34 @@ export async function runTimelineCrawl({
       // la latence Vercel → Supabase les faisait durer ~7,8 s par match, et
       // 6 matchs sur 8 finissaient en erreur. La parallélisation supprime ce
       // cumul, et `retryDb` absorbe les à-coups.
+      // Le timeline de Riot désigne les joueurs par leur puuid ; la
+      // participation, elle, porte un `player_id` entier depuis la compression
+      // du 2026-09-22. Une lecture indexée sur `players` fait la traduction —
+      // une par match, pas une par participant.
+      const puuids = [...order.keys()];
+      const idByPuuid = await retryDb("résolution des joueurs", async () => {
+        const { data, error } = await db()
+          .from("players")
+          .select("id, puuid")
+          .in("puuid", puuids);
+        if (error) throw error;
+        return new Map((data ?? []).map((r) => [r.puuid as string, r.id as number]));
+      });
+
       await retryDb("écriture des ordres d'achat", async () => {
         const results = await Promise.all(
-          Array.from(order, ([puuid, items]) =>
-            db()
+          Array.from(order, ([puuid, items]) => {
+            const playerId = idByPuuid.get(puuid);
+            // Joueur inconnu de `players` : la participation n'existe pas non
+            // plus, il n'y a rien à mettre à jour. Sauter plutôt qu'échouer —
+            // le reste du match a un ordre d'achat parfaitement valable.
+            if (playerId === undefined) return Promise.resolve({ error: null });
+            return db()
               .from("match_participants")
               .update({ item_order: items })
               .eq("match_id", matchId)
-              .eq("puuid", puuid),
-          ),
+              .eq("player_id", playerId);
+          }),
         );
         const failed = results.find((r) => r.error);
         if (failed?.error) throw failed.error;
