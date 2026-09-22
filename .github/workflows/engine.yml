@@ -189,21 +189,33 @@ jobs:
           # Recalcule les snapshots que le site sert. Jamais fatal : un site
           # qui affiche des chiffres d'il y a une heure vaut mieux qu'un moteur
           # arrêté, qui n'en produirait plus du tout.
+          # Deux phases, pas une : leur somme ne tient plus dans les 300 s d'une
+          # seule fonction (voir refresh-stats.yml pour les mesures). L'ordre
+          # compte — la publication fige le `skill_bucket` que le classement
+          # vient d'écrire.
           last_refresh=0
-          publish() {
-            local code
+          refresh_phase() {
+            local only="$1" code
             code=$(curl --silent --show-error \
               --max-time 290 \
               --request POST \
               --header "Authorization: Bearer ${CRON_SECRET}" \
-              --output /tmp/refresh.json \
+              --output "/tmp/refresh-${only}.json" \
               --write-out "%{http_code}" \
-              "${SITE_URL%/}/api/cron/refresh-stats") || true
-            if [ "$code" = "200" ]; then
-              echo "· publié — $(sed -n 's/.*"sourceMatches":\([0-9]*\).*/\1/p' /tmp/refresh.json) matchs, $(sed -n 's/.*"rated":\([0-9]*\).*/\1/p' /tmp/refresh.json) joueurs classés"
+              "${SITE_URL%/}/api/cron/refresh-stats?only=${only}") || true
+            [ "$code" = "200" ] && return 0
+            echo "::warning::Phase ${only} échouée (HTTP ${code}) : $(cat "/tmp/refresh-${only}.json" 2>/dev/null)"
+            return 1
+          }
+
+          publish() {
+            # Le classement n'est pas fatal à la publication : des tier lists
+            # fraîches avec un classement d'il y a une heure valent mieux que
+            # rien de frais du tout.
+            refresh_phase ratings || true
+            if refresh_phase snapshots; then
+              echo "· publié — $(sed -n 's/.*"sourceMatches":\([0-9]*\).*/\1/p' /tmp/refresh-snapshots.json) matchs"
               last_refresh=$(date +%s)
-            else
-              echo "::warning::Publication échouée (HTTP ${code}) : $(cat /tmp/refresh.json 2>/dev/null)"
             fi
           }
 

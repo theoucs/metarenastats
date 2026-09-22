@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { refreshSiteCounters, refreshSnapshots } from "@/lib/statsSnapshot";
+import { refreshRatings, refreshSiteCounters, refreshSnapshots } from "@/lib/statsSnapshot";
 
 /**
  * Recalcule tous les snapshots de stats (voir lib/statsSnapshot.ts).
@@ -32,16 +32,40 @@ async function handle(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const only = new URL(request.url).searchParams.get("only");
+
   // `?only=counters` ne rafraîchit que les compteurs de l'accueil : une seule
   // fonction SQL, donc assez bon marché pour tourner à chaque cycle du moteur.
-  // Le recalcul complet, lui, relit tous les participants et reste horaire.
-  if (new URL(request.url).searchParams.get("only") === "counters") {
+  if (only === "counters") {
     const { totalMatches } = await refreshSiteCounters();
     console.log(`[cron] compteurs rafraîchis — ${totalMatches} matchs`);
     return NextResponse.json({ ok: true, only: "counters", totalMatches });
   }
 
+  // `?only=ratings` et `?only=snapshots` découpent le recalcul en deux
+  // invocations (voir refreshRatings) : la somme des deux phases ne tient plus
+  // dans les 300 s d'une seule fonction. Appelés l'un après l'autre, dans cet
+  // ordre — la publication fige le `skill_bucket` que le classement vient
+  // d'écrire.
+  //
+  // Sans paramètre, la route fait toujours les deux à la suite : c'est ce qui
+  // permet de relancer un recalcul complet à la main, et ce que fait le filet
+  // horaire quand il a le temps.
+  if (only === "ratings") {
+    try {
+      const report = await refreshRatings();
+      console.log(
+        `[cron] classement recalculé en ${report.durationMs} ms — ${report.rated} joueurs, ` +
+          `${report.promoted} promu(s)`,
+      );
+      return NextResponse.json(report);
+    } catch (error) {
+      return NextResponse.json(failure(error), { status: 500 });
+    }
+  }
+
   try {
+    if (only !== "snapshots") await refreshRatings();
     const report = await refreshSnapshots();
     console.log(
       `[cron] ${report.snapshots} snapshots écrits en ${report.durationMs} ms ` +
@@ -56,28 +80,38 @@ async function handle(request: Request) {
     }
     return NextResponse.json(report);
   } catch (error) {
-    // Les erreurs Supabase ne sont pas des `Error` : ce sont des objets
-    // { message, details, hint, code }. Un String() dessus donne
-    // "[object Object]" et masque complètement la cause.
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "object" && error !== null && "message" in error
-          ? String((error as { message: unknown }).message)
-          : String(error);
-    console.error("[cron] échec du rafraîchissement :", message);
-    // Les mesures de phase accompagnent l'erreur (voir refreshSnapshots) : sans
-    // elles, la seule exécution qui mérite d'être analysée est la seule dont on
-    // ne saurait rien.
-    const timings =
-      typeof error === "object" && error !== null && "timings" in error
-        ? (error as { timings: Record<string, number> }).timings
-        : undefined;
-    return NextResponse.json(
-      { ok: false, error: message, commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7), timings },
-      { status: 500 },
-    );
+    return NextResponse.json(failure(error), { status: 500 });
   }
+}
+
+/**
+ * Le corps d'une réponse d'échec.
+ *
+ * Les erreurs Supabase ne sont pas des `Error` : ce sont des objets
+ * { message, details, hint, code }. Un String() dessus donne « [object Object] »
+ * et masque complètement la cause.
+ */
+function failure(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String((error as { message: unknown }).message)
+        : String(error);
+  console.error("[cron] échec du rafraîchissement :", message);
+  // Les mesures de phase accompagnent l'erreur (voir refreshSnapshots) : sans
+  // elles, la seule exécution qui mérite d'être analysée est la seule dont on
+  // ne saurait rien.
+  const timings =
+    typeof error === "object" && error !== null && "timings" in error
+      ? (error as { timings: Record<string, number> }).timings
+      : undefined;
+  return {
+    ok: false,
+    error: message,
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+    timings,
+  };
 }
 
 export async function POST(request: Request) {

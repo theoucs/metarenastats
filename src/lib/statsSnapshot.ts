@@ -164,8 +164,11 @@ export type RefreshReport = {
   bytes: number;
   /** Ce qui a été publié, patch par patch. */
   patches: { patch: string; matches: number; participants: number }[];
-  /** Le classement recalculé en même temps (voir lib/playerRatings.ts). */
-  rated: number;
+  /** Le classement, quand il a été recalculé dans la MÊME invocation. Nul
+   *  quand la publication tourne seule (`?only=snapshots`), ce qui est le cas
+   *  normal depuis le découpage du 2026-09-22 : la phase classement a son
+   *  propre appel et son propre budget de 300 s. */
+  rated: number | null;
   /** Le commit qui a produit ce rapport.
    *
    *  Trois fois dans la même journée j'ai mesuré ou validé du travail sans
@@ -238,6 +241,76 @@ export async function refreshSiteCounters(): Promise<{ totalMatches: number }> {
 const SNAPSHOT_CHUNK = 24;
 const SNAPSHOT_WRITERS = 4;
 
+export type RatingsReport = {
+  ok: boolean;
+  rated: number;
+  matches: number;
+  promoted: number;
+  durationMs: number;
+  commit: string;
+  timings: Record<string, number>;
+};
+
+/**
+ * La phase classement, détachée de la publication.
+ *
+ * ─── POURQUOI DEUX APPELS ET NON UN ─────────────────────────────────────────
+ *
+ * Le job faisait deux métiers dans une seule invocation de 300 s : recalculer
+ * le classement, puis publier les tier lists. Relevé du 2026-09-22, une fois le
+ * disque desserré — donc sur un job qui n'échouait plus pour une autre raison :
+ *
+ *   mmr          96 s
+ *   promote     167 s   puis dépassement du délai
+ *   (jamais atteints) matérialisation ~92 s, agrégations ~150 s
+ *
+ * 264 s consommées avant la moitié du travail. Même avec `promote` réparé, la
+ * somme dépasse le budget.
+ *
+ * Or les deux métiers ne se parlent qu'en UN point : cette phase réécrit
+ * `player_ratings`, et la table matérialisée de la publication fige le
+ * `skill_bucket` qui en dérive. La publication doit donc passer APRÈS — mais
+ * rien n'exige la même invocation, puisque l'état vit en base entre les deux.
+ *
+ * Les séparer double le budget sans toucher au calcul. Ce n'est pas la solution
+ * de fond — l'agrégation en JS lit 600 000 lignes par patch à travers PostgREST
+ * et ce plafond est à 380 000 sur le patch 16.17 — mais ça achète les mois
+ * qu'il faut pour la faire proprement.
+ */
+export async function refreshRatings(): Promise<RatingsReport> {
+  const startedAt = Date.now();
+  if (!supabaseAdmin) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
+
+  const timings: Record<string, number> = {};
+  const at = Date.now();
+  const rating = await refreshPlayerRatings();
+  timings.mmr = Date.now() - at;
+  for (const [step, ms] of Object.entries(rating.timings)) timings[`mmr.${step}`] = ms;
+  console.log(`[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`);
+
+  const promoteAt = Date.now();
+  const promoted = await promoteTrackedPlayers();
+  timings.promote = Date.now() - promoteAt;
+  if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
+
+  return {
+    ok: true,
+    rated: rating.rated,
+    matches: rating.matches,
+    promoted,
+    durationMs: Date.now() - startedAt,
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+    timings,
+  };
+}
+
+/**
+ * La publication : matérialisation, agrégations, écriture des snapshots.
+ *
+ * Lit `player_ratings` tel qu'il est en base — donc tel que `refreshRatings()`
+ * l'a laissé au passage précédent. C'est le seul couplage entre les deux
+ * phases, et il passe par la base plutôt que par la mémoire du processus.
+ */
 export async function refreshSnapshots(): Promise<RefreshReport> {
   const startedAt = Date.now();
   const db = supabaseAdmin;
@@ -259,16 +332,9 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
   try {
     const context = await clock("patchContext", () => getPatchContext());
 
-    // AVANT le snapshot du leaderboard, qui lit les rangs que cette passe écrit.
-    const rating = await clock("mmr", () => refreshPlayerRatings());
-    // Le détail de la phase MMR, préfixé pour rester lisible à côté des phases
-    // du job : `mmr` reste le total, `mmr.passes` dit ce qu'il contient.
-    for (const [step, ms] of Object.entries(rating.timings)) timings[`mmr.${step}`] = ms;
-    console.log(
-      `[stats] MMR recalculé sur ${rating.matches} parties — ${rating.rated} joueurs classés`,
-    );
-    const promoted = await clock("promote", () => promoteTrackedPlayers());
-    if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
+    // Le classement n'est plus calculé ici (voir refreshRatings). Le snapshot du
+    // classement, lui, reste : il lit `player_ratings` en base, écrit par la
+    // phase précédente.
 
     // Hors patch : ces deux-là ne lisent plus les participants (ce sont des
     // fonctions SQL), ils n'ont donc besoin d'aucun contexte.
@@ -428,7 +494,7 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       durationMs: Date.now() - startedAt,
       bytes,
       patches: published,
-      rated: rating.rated,
+      rated: null,
       commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
       timings,
     };
