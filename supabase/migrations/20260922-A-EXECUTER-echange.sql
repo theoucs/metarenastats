@@ -2,22 +2,34 @@
 -- À EXÉCUTER DANS LE SQL EDITOR DE SUPABASE — 2026-09-22
 -- ════════════════════════════════════════════════════════════════════════════
 --
--- État au moment où ce fichier est écrit :
---   · match_participants      1 376 082 lignes · 732 Mo   ← lue par le site
---   · match_participants_v2   1 376 082 lignes · 313 Mo   ← prête, vérifiée
---   · moteur de crawl ARRÊTÉ (annulé à 15:11)
+-- État relevé le 2026-09-23 à 14:05 :
+--   · match_participants      1 601 982 lignes   ← lue par le site
+--   · match_participants_v2   1 376 082 lignes   ← copiée le 22/09, vérifiée
+--   · delta à rattraper          225 900 lignes  (12 550 matchs crawlés depuis)
+--
+-- Le moteur a recrawlé toute la nuit — GitHub a relancé le workflow tout seul
+-- après mon annulation. D'où ce delta, et d'où la borne DATÉE ci-dessous.
 --
 -- Les blocs se lancent DANS L'ORDRE. Entre le 1 et le 2, il y a une
 -- vérification à lire : ne pas enchaîner à l'aveugle.
 --
--- ⚠️  NE PAS RELANCER LE MOTEUR DE CRAWL avant la fin du bloc 3.
+-- ⚠️  LE MOTEUR DE CRAWL DOIT ÊTRE ARRÊTÉ pendant les blocs 1 et 2, sinon il
+--     écrit dans une table qu'on est en train de remplacer. Vérifier :
+--       gh run list --workflow=engine.yml --status in_progress
+--     et annuler s'il y en a un. Ne pas le relancer avant la fin du bloc 3.
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- BLOC 1 — Rattraper ce que le crawler a écrit depuis la copie
 -- ════════════════════════════════════════════════════════════════════════════
 --
--- La copie s'est faite pendant que le moteur tournait encore. Ce bloc reprend
--- les matchs touchés dans les trois dernières heures.
+-- La copie s'est faite le 22/09 vers 13 h UTC, et le moteur a continué de
+-- tourner depuis. La borne est donc une DATE FIXE, antérieure à la copie, et
+-- non un `interval` relatif : un intervalle glissant dépendrait de l'heure à
+-- laquelle ce fichier est exécuté, et raterait tout ce qui a été crawlé avant.
+-- (La première version disait `interval '3 hours'` : juste le 22, faux le 23.)
+--
+-- Couvre 238 860 lignes, dont les 225 900 manquantes ; les ~13 000 déjà
+-- présentes sont simplement réécrites à l'identique.
 --
 -- `do update` et non `do nothing` : la passe de timeline MET À JOUR
 -- `item_order` sur des lignes déjà écrites. Un `do nothing` les laisserait à
@@ -33,8 +45,8 @@ select p.match_id, pl.id::integer, p.subteam_id::smallint, p.placement::smallint
 from match_participants p
 join matches m on m.match_id = p.match_id
 join players pl on pl.puuid = p.puuid
-where m.ingested_at > now() - interval '3 hours'
-   or m.timeline_fetched_at > now() - interval '3 hours'
+where m.ingested_at > '2026-09-22 12:00:00+00'::timestamptz
+   or m.timeline_fetched_at > '2026-09-22 12:00:00+00'::timestamptz
 on conflict (match_id, player_id) do update
   set subteam_id = excluded.subteam_id,
       placement  = excluded.placement,
