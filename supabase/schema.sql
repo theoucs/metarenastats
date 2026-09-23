@@ -988,3 +988,101 @@ $$;
 
 grant execute on function sync_player_counts(integer) to service_role;
 
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- COMPRESSION DES PARTICIPATIONS (2026-09-23)
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- Tout ce qui précède décrit la table AVANT compression. Ce fichier est un
+-- journal : il se lit de haut en bas, et c'est ce bloc qui dit l'état actuel.
+-- Le détail du raisonnement et de l'opération vit dans
+-- supabase/migrations/20260922-compression-participations.sql.
+--
+-- Ce qui a changé, mesuré sur 1 601 982 lignes :
+--
+--                     avant      après
+--   octets/ligne        322        186
+--   données          893 Mo     285 Mo
+--   index            380 Mo     104 Mo
+--   ──────────────────────────────────
+--   total          1 273 Mo     390 Mo
+--
+-- Et la base entière : 1 751 Mo → 932 Mo.
+--
+--   · `puuid` (79 o par ligne) → `player_id` integer, clé étrangère vers
+--     `players`. C'était le poste n° 1 de la ligne, et la raison pour laquelle
+--     l'unique (match_id, puuid) pesait 208 Mo — le plus gros objet de la base.
+--   · `riot_id` supprimé : personne ne le lisait, et il se périmait. Le pseudo
+--     vit dans `players`, écrit par le crawler au moment où il résout le puuid.
+--   · l'`id` bigint supprimé avec son index (42 Mo, ZÉRO lecture). La clé
+--     primaire est désormais (match_id, player_id) : celle dont l'upsert a
+--     besoin ET celle de la pagination, donc un index au lieu de deux.
+--   · `created_at` supprimé : aucun lecteur dans le code.
+--   · les cinq entiers passent en smallint.
+--
+-- Non fait, et pourquoi : `match_id` texte → entier (~15 Mo) touche la clé
+-- étrangère, le crawler et le fetcheur de timelines ; `champion` → smallint
+-- (~7 Mo) demanderait une table de correspondance, donc une base qui ne se
+-- décrit plus toute seule. Les deux premières lignes du bilan portent 90 % du
+-- gain pour 20 % du risque.
+
+-- La forme actuelle de la table.
+--
+--   create table match_participants (
+--     match_id   text     not null references matches (match_id) on delete cascade,
+--     player_id  integer  not null references players (id),
+--     subteam_id smallint not null,
+--     placement  smallint not null,
+--     champion   text     not null,
+--     kills      smallint not null,
+--     deaths     smallint not null,
+--     assists    smallint not null,
+--     augments   integer[] not null default '{}',
+--     items      integer[] not null default '{}',
+--     item_order integer[],
+--     primary key (match_id, player_id)
+--   );
+--
+-- Ses index : la clé primaire, `match_participants_player_idx (player_id)`
+-- pour les pages de joueur, `match_participants_champion_idx (champion)` pour
+-- le compteur de l'accueil, et l'index partiel AFK inchangé.
+
+-- ─── LA RECHERCHE D'UN JOUEUR PAR PSEUDO ────────────────────────────────────
+--
+-- Mesuré le 2026-09-22 avec la clé Riot expirée — donc sur le chemin que TOUT
+-- visiteur empruntait, le repli en base quand l'API refuse :
+--
+--   dans match_participants (1,29 M lignes, 413 Mo, sans index)   47 s
+--   dans players (245 000 lignes, 36 Mo, sans index)             4,6 s
+--   dans players, avec cet index                                 1,9 s de page
+--
+-- Les deux premiers sont des parcours complets. Celui-ci est une recherche.
+create index if not exists players_riot_id_lower_idx on players (lower(riot_id));
+
+-- ─── LES COMPTEURS DE L'ACCUEIL ─────────────────────────────────────────────
+--
+-- `site_totals()` parcourait `participants_clean` en entier : trois
+-- `count(distinct)` sur 1,6 M de lignes à travers l'anti-jointure AFK. Mesuré
+-- après la compression, 26,9 s pour un plafond de requête à 30 s — et le plan
+-- était devenu un parcours par la clé primaire, donc en accès aléatoire sur
+-- tout le tas.
+--
+-- Aucune des trois valeurs n'a besoin de cette jointure. Lues à leur source :
+-- 26,9 s → 0,67 s, et 1,5 M de buffers → 226 000.
+--
+-- Ça déplace la définition, ce n'est pas une approximation : les chiffres
+-- passent de 88 997 à 89 000 matchs et de 265 116 à 265 657 joueurs. L'écart,
+-- ce sont les parties dont toute l'équipe était AFK. L'exclusion AFK sert les
+-- tier lists, où un placement de 2v3 fausse une moyenne ; elle n'a rien à dire
+-- sur « combien de parties connaît-on ».
+--
+--   create or replace function site_totals() ... voir la migration
+--   20260922-A-EXECUTER-echange.sql et le bloc appliqué le 2026-09-23.
+
+-- ─── sync_players() N'A PLUS D'OBJET ────────────────────────────────────────
+--
+-- Elle rattrapait les joueurs vus en partie mais absents de `players`, en
+-- lisant `match_participants.puuid`. Cette colonne n'existe plus, et ce qu'elle
+-- cherchait est devenu impossible : la clé étrangère refuse une participation
+-- dont le joueur manque, et c'est le crawler qui crée la ligne `players` avant
+-- d'écrire la participation. La fonction rend 0 et documente son remplacement.
