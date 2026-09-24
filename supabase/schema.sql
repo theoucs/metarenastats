@@ -1086,3 +1086,68 @@ create index if not exists players_riot_id_lower_idx on players (lower(riot_id))
 -- cherchait est devenu impossible : la clé étrangère refuse une participation
 -- dont le joueur manque, et c'est le crawler qui crée la ligne `players` avant
 -- d'écrire la participation. La fonction rend 0 et documente son remplacement.
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- RÉTENTION DES PARTICIPATIONS BRUTES (2026-09-24)
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- Les participations brutes ne sont plus gardées que pour les deux patchs
+-- publiés. Au-delà, il reste `player_champion_totals` : une ligne par
+-- (joueur, champion, patch), portant des compteurs BRUTS.
+--
+-- Bruts et non des moyennes, pour une raison précise : une moyenne ne
+-- s'additionne pas. Un joueur à 3,0 sur 40 parties et 5,0 sur 2 n'est pas à
+-- 4,0, il est à 3,1. Les sommes se recombinent exactement, donc la carrière
+-- affichée est identique à ce qu'elle était avant l'archivage — vérifié sur le
+-- joueur au rang 1 : Khazix 20 parties à 1,1500 de placement moyen sur la page,
+-- 1,1500 recalculé en SQL.
+--
+-- ─── LE GAIN RÉEL, ET L'ERREUR D'ESTIMATION ────────────────────────────────
+--
+-- J'avais annoncé « ~40 octets contre 322 », soit 6×. C'est FAUX, et l'erreur
+-- mérite d'être écrite : j'avais supposé que regrouper par (joueur, champion)
+-- consoliderait beaucoup de lignes. Mesuré sur le patch 16.10, 32 715
+-- participations donnent 31 883 lignes d'archive — un facteur 1,03. Le crawl
+-- découvre en permanence des joueurs croisés une seule fois ; ils ne rejouent
+-- pas le même champion.
+--
+-- Le gain vient donc de la SUPPRESSION DE COLONNES (augments, items,
+-- item_order : 113 des 186 octets d'une participation), pas de la fusion de
+-- lignes. C'est une compression de largeur, pas de hauteur. Mesuré après
+-- correction de deux erreurs de conception — un index redondant sur la
+-- première colonne de la clé primaire, et un `rolled_at` répété sur chaque
+-- ligne alors que c'est une propriété du patch :
+--
+--   participation brute   271 octets
+--   ligne d'archive       119 octets     → 2,27×
+--
+-- Ce qui compte davantage que le facteur : la table brute cesse de croître
+-- sans fin. Elle contient deux patchs, un point c'est tout.
+--
+-- ─── RÉSULTAT DE LA PREMIÈRE PASSE ──────────────────────────────────────────
+--
+-- Archivés : 16.10 à 16.17, soit 1 240 000 participations résumées en
+-- 1 328 933 lignes. Restent 413 352 participations brutes (16.18 et 16.19).
+--
+--   match_participants       479 Mo →  97 Mo
+--   participants_published   300 Mo → 106 Mo   (ballonnement, voir plus bas)
+--   player_champion_totals             142 Mo
+--   ───────────────────────────────────────────
+--   la base entière        1 291 Mo → 714 Mo
+--
+-- ─── LE BALLONNEMENT DE LA VUE MATÉRIALISÉE ────────────────────────────────
+--
+-- `refresh materialized view concurrently` procède par différence : il
+-- supprime et réinsère, donc il laisse des lignes mortes à chaque passage.
+-- Sur un job horaire, ça s'accumule — 300 Mo pour 413 000 lignes qui en
+-- occupent 106 après compactage, soit près de trois fois trop.
+--
+-- L'autovacuum ne suivait pas. À surveiller : si le ratio revient, il faudra
+-- soit un `vacuum` programmé sur cette vue, soit un rafraîchissement non
+-- concurrent (qui réécrit tout et ne laisse rien derrière, au prix d'un verrou
+-- pendant la durée du rafraîchissement).
+
+-- Les 595 matchs sans patch ne sont couverts par AUCUNE des deux fonctions
+-- (`p.patch = target_patch` ne rattrape pas NULL). C'est volontaire : un match
+-- sans patch est un défaut d'ingestion, pas une donnée périmée.
+-- `scripts/find-patch-boundaries.mjs` sait les dater.
