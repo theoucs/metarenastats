@@ -1228,30 +1228,41 @@ export type PlayerProfile = {
  * `dropExcludedAugments` reste ici : il dépend des catégories d'augments, qui
  * vivent dans les JSON côté app.
  */
-async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
-  if (!supabaseAdmin) return [];
-
-  // Le puuid ne vit plus sur la participation depuis la compression du
-  // 2026-09-22 : 79 octets par ligne, répétés 1,29 M de fois, pour une
-  // information que `players` porte déjà une fois par joueur. Une sonde sur
-  // `players_puuid_key` le traduit en entier ; c'est une lecture d'index, et
-  // elle remplace le transport de 79 octets sur chaque ligne lue ensuite.
-  const { data: player, error: playerError } = await supabaseAdmin
+/**
+ * Le puuid traduit en identifiant entier.
+ *
+ * Le puuid ne vit plus sur la participation depuis la compression du
+ * 2026-09-22 : 79 octets par ligne, répétés 1,29 M de fois, pour une
+ * information que `players` porte déjà une fois par joueur. Une sonde sur
+ * `players_puuid_key` fait la traduction — une lecture d'index, qui remplace
+ * le transport de 79 octets sur chaque ligne lue ensuite.
+ *
+ * Séparée de la lecture des lignes depuis l'archivage : les participations
+ * brutes et les compteurs archivés partent tous deux de cet identifiant, et
+ * rien ne justifie de le résoudre deux fois.
+ */
+async function resolvePlayerId(puuid: string): Promise<number | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
     .from("players")
     .select("id")
     .eq("puuid", puuid)
     .maybeSingle();
-  if (playerError) throw playerError;
-  // Joueur jamais croisé en partie : zéro ligne est la bonne réponse, et c'est
-  // ce que la page affiche déjà quand un joueur n'a aucune partie connue.
-  if (!player) return [];
+  if (error) throw error;
+  // Joueur jamais croisé en partie : `null` est la bonne réponse, et la page
+  // affiche déjà le cas « aucune partie connue ».
+  return data ? (data.id as number) : null;
+}
+
+async function fetchPlayerRowsById(playerId: number): Promise<ParticipantRow[]> {
+  if (!supabaseAdmin) return [];
 
   const rows: ParticipantRow[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error } = await supabaseAdmin
       .from(PARTICIPANT_SOURCE)
       .select(PARTICIPANT_COLUMNS)
-      .eq("player_id", player.id)
+      .eq("player_id", playerId)
       .order("match_id", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (error) throw error;
@@ -1262,22 +1273,75 @@ async function fetchPlayerRows(puuid: string): Promise<ParticipantRow[]> {
   return dropExcludedAugments(rows);
 }
 
-/** Everything about one player scoped to their own games (all matches we've
- * ever stored involving this puuid, not just the ones from the most recent
- * search) — powers the player profile page. */
+/**
+ * La carrière archivée d'un joueur, patchs sortis de la fenêtre publiée.
+ *
+ * Les participations brutes ne sont gardées que pour les deux patchs publiés
+ * (voir supabase/migrations/20260922-retention-et-rollup.sql). Au-delà, il
+ * reste une ligne par (joueur, champion, patch) portant des COMPTEURS BRUTS :
+ * `games`, `top1_wins`, `top3_wins`, `placement_sum`.
+ *
+ * Bruts, et non des moyennes, précisément pour ce calcul : une moyenne ne
+ * s'additionne pas. Un joueur à 3,0 de placement moyen sur 40 parties et 5,0
+ * sur 2 n'est pas à 4,0 — il est à 3,1. Les sommes, elles, se recombinent
+ * exactement, si bien que la carrière complète donne le même chiffre qu'avant
+ * l'archivage.
+ */
+async function fetchPlayerArchive(playerId: number): Promise<Map<string, Accumulator>> {
+  const byChampion = new Map<string, Accumulator>();
+  if (!supabaseAdmin) return byChampion;
+
+  const { data, error } = await supabaseAdmin
+    .from("player_champion_totals")
+    .select("champion, games, top1_wins, top3_wins, placement_sum")
+    .eq("player_id", playerId);
+  if (error) throw error;
+
+  // Un joueur a une ligne PAR PATCH pour un même champion : on les additionne.
+  for (const row of data ?? []) {
+    const champion = row.champion as string;
+    const acc = byChampion.get(champion) ?? { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+    acc.games += Number(row.games);
+    acc.top1Wins += Number(row.top1_wins);
+    acc.top3Wins += Number(row.top3_wins);
+    acc.placementSum += Number(row.placement_sum);
+    byChampion.set(champion, acc);
+  }
+  return byChampion;
+}
+
+/** Everything about one player scoped to their own games — powers the player
+ * profile page.
+ *
+ * Deux sources depuis l'archivage du 2026-09-24 : les participations encore
+ * en base (les deux patchs publiés) et les compteurs archivés (tout le reste).
+ * Les additionner ici plutôt que de garder 1,2 M de participations dont c'est
+ * le seul lecteur.
+ */
 export async function getPlayerProfile(puuid: string): Promise<PlayerProfile> {
-  const playerRows = await fetchPlayerRows(puuid);
-  const totalGames = playerRows.length;
+  const playerId = await resolvePlayerId(puuid);
+  if (playerId === null) {
+    return { games: 0, top1Rate: 0, top3Rate: 0, avgPlacement: 0, champions: [] };
+  }
+
+  const [playerRows, byChampion] = await Promise.all([
+    fetchPlayerRowsById(playerId),
+    fetchPlayerArchive(playerId),
+  ]);
+
+  // Les parties encore brutes s'ajoutent aux compteurs archivés, champion par
+  // champion. `accumulate` crée l'entrée si le joueur n'a ce champion que sur
+  // un patch publié.
+  for (const r of playerRows) accumulate(byChampion, r.champion, r.placement);
 
   const overallAcc: Accumulator = { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
-  const byChampion = new Map<string, Accumulator>();
-  for (const r of playerRows) {
-    overallAcc.games += 1;
-    overallAcc.placementSum += r.placement;
-    if (r.placement <= TOP3_PLACEMENT_THRESHOLD) overallAcc.top3Wins += 1;
-    if (r.placement === 1) overallAcc.top1Wins += 1;
-    accumulate(byChampion, r.champion, r.placement);
+  for (const acc of byChampion.values()) {
+    overallAcc.games += acc.games;
+    overallAcc.top1Wins += acc.top1Wins;
+    overallAcc.top3Wins += acc.top3Wins;
+    overallAcc.placementSum += acc.placementSum;
   }
+  const totalGames = overallAcc.games;
 
   const champions = Array.from(byChampion.entries())
     .map(([champion, s]) => ({ champion, ...toStat(s, totalGames) }))
