@@ -308,6 +308,16 @@ export type ParticipantSet = {
   /** true si MAX_PAGES a coupé la lecture : les stats calculées là-dessus sont
    * partielles. Signalé explicitement pour ne plus jamais être silencieux. */
   truncated: boolean;
+  /**
+   * Le patch que ce jeu couvre, ou `null` pour « tout l'historique ».
+   *
+   * Porté par le contexte parce que les agrégations qui migrent vers SQL en ont
+   * besoin : elles ne reçoivent pas les lignes, elles reçoivent la question.
+   * Sans ça il faudrait ajouter un paramètre de patch aux douze signatures
+   * d'agrégateurs, et le faire traverser toutes les fonctions intermédiaires —
+   * exactement ce que ce contexte existe pour éviter.
+   */
+  patch: string | null;
 };
 
 /**
@@ -397,7 +407,7 @@ async function readAllPages(
 const readParticipantSet = cache(async function readParticipantSet(
   patch: string | null,
 ): Promise<ParticipantSet> {
-  if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false };
+  if (!supabaseAdmin) return { rows: [], totalRows: 0, truncated: false, patch };
 
   // Sans patch, la vue : la table matérialisée ne connaît que les deux patchs
   // publiés, elle répondrait à côté de la question.
@@ -430,6 +440,7 @@ const readParticipantSet = cache(async function readParticipantSet(
     rows: dropExcludedAugments(read.rows),
     totalRows: read.rows.length,
     truncated: read.truncated,
+    patch,
   };
 });
 
@@ -657,8 +668,58 @@ function accumulate(map: Map<string | number, Accumulator>, key: string | number
   map.set(key, entry);
 }
 
+/**
+ * ─── SQL REGROUPE, LE JS NOTE ────────────────────────────────────────────────
+ *
+ * Première agrégation descendue en base (2026-09-24). Le principe vaut pour
+ * toutes celles qui suivront.
+ *
+ * Ce qui descend, c'est la RÉDUCTION : passer de 401 082 participations à 173
+ * compteurs. Mesuré, cette réduction coûte 311 ms en SQL, là où transporter les
+ * mêmes lignes à travers PostgREST en coûtait une bonne vingtaine de secondes —
+ * sur les 51 s que la lecture pesait dans le job.
+ *
+ * Ce qui RESTE en JavaScript, c'est tout ce qui a demandé de la mesure : la
+ * correction de biais par jalon, le rétrécissement vers la moyenne, les k-means
+ * des tiers. Les réécrire en SQL risquerait des chiffres faux pour un gain nul,
+ * puisqu'une fois l'échantillon réduit à 173 lignes le calcul ne coûte plus
+ * rien. Le contrat est donc : la base rend des compteurs bruts, `toStat` reste
+ * le seul endroit du site où un taux se calcule.
+ *
+ * Le repli sur le chemin JS n'est pas une précaution de style : sans patch —
+ * une lecture « tout l'historique » — il n'y a pas de vue publiée à interroger,
+ * et c'est aussi le chemin qu'emprunte une page quand un patch vient d'entrer
+ * dans la fenêtre et que le job n'a pas encore republié.
+ */
 export async function getChampionStats() {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  if (set.patch && supabaseAdmin) {
+    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
+      supabaseAdmin.rpc("champion_stats", { target_patch: set.patch }),
+      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
+    ]);
+    if (error) throw error;
+    if (countError) throw countError;
+
+    const totalMatches = Number(matchCount ?? 0);
+    const champions = ((data ?? []) as ChampionStatsRow[])
+      .map((r) => ({
+        champion: r.champion,
+        ...toStat(
+          {
+            games: Number(r.games),
+            top3Wins: Number(r.top3_wins),
+            top1Wins: Number(r.top1_wins),
+            placementSum: Number(r.placement_sum),
+          },
+          totalMatches * PARTICIPANTS_PER_MATCH,
+        ),
+      }))
+      .sort((a, b) => b.top3Rate - a.top3Rate);
+    return { totalMatches, champions };
+  }
+
+  const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const byChampion = new Map<string, Accumulator>();
   for (const r of rows) accumulate(byChampion, r.champion, r.placement);
@@ -667,6 +728,15 @@ export async function getChampionStats() {
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, champions };
 }
+
+/** Ce que `champion_stats` rend : des compteurs, jamais des taux. */
+type ChampionStatsRow = {
+  champion: string;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
 
 /**
  * Les quatre augments « stat anvil » du pool courant, dans leur ordre de
