@@ -1172,8 +1172,44 @@ export async function getItemStats(categoryOf: ItemCategoryLookup) {
   return { totalMatches, items };
 }
 
+/**
+ * Deuxième agrégation descendue en base — même contrat que `getChampionStats`.
+ *
+ * L'exclusion des augments d'événement se fait désormais dans la requête, par
+ * jointure à `ref_augments`. Côté JS elle vivait dans `dropExcludedAugments`,
+ * appliqué une fois à la lecture pour que les quatre endroits qui agrègent des
+ * augments ne puissent pas l'oublier. La jointure joue le même rôle : un
+ * augment exclu n'atteint aucun compteur, quelle que soit la requête.
+ */
 export async function getAugmentStats() {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  if (set.patch && supabaseAdmin) {
+    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
+      supabaseAdmin.rpc("augment_stats", { target_patch: set.patch }),
+      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
+    ]);
+    if (error) throw error;
+    if (countError) throw countError;
+
+    const totalMatches = Number(matchCount ?? 0);
+    const augments = ((data ?? []) as AugmentStatsRow[])
+      .map((r) => ({
+        augmentId: Number(r.augment_id),
+        ...toStat(
+          {
+            games: Number(r.games),
+            top3Wins: Number(r.top3_wins),
+            top1Wins: Number(r.top1_wins),
+            placementSum: Number(r.placement_sum),
+          },
+          totalMatches * PARTICIPANTS_PER_MATCH,
+        ),
+      }))
+      .sort((a, b) => b.top3Rate - a.top3Rate);
+    return { totalMatches, augments };
+  }
+
+  const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const byAugment = new Map<number, Accumulator>();
   for (const r of rows) {
@@ -1184,6 +1220,15 @@ export async function getAugmentStats() {
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, augments };
 }
+
+/** Ce que `augment_stats` rend : des compteurs, jamais des taux. */
+type AugmentStatsRow = {
+  augment_id: number;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
 
 /**
  * Le seuil de parties minimum ne vit plus ici : `player_ratings` ne contient
