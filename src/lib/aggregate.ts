@@ -2026,10 +2026,94 @@ export type CompStats = {
   };
 };
 
+/** Ce que `comp_archetypes` rend : des compteurs, jamais des taux. */
+type CompArchetypeRow = {
+  roles: string[];
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
+
+type CompCoverageRow = {
+  total_teams: number;
+  trios_distincts: number;
+  trios_repetes: number;
+  duos_distincts: number;
+  duos_exploitables: number;
+};
+
+/**
+ * Troisième agrégation descendue en base.
+ *
+ * Celle-ci regroupe DEUX fois : d'abord les participations en équipes, puis les
+ * équipes en archétypes. C'est la seule agrégation du fichier dont l'unité
+ * n'est pas la participation — le placement est une propriété de l'équipe.
+ *
+ * Deux fonctions plutôt qu'une : les archétypes rendent une ligne par forme,
+ * la couverture une seule ligne de compteurs. Les faire tenir dans un même
+ * résultat demanderait de mélanger deux formes dans une même colonne.
+ *
+ * `roleOf` reste dans la signature pour le chemin de repli — la version SQL
+ * lit `ref_champions`, projection des mêmes JSON, jointe EN MINUSCULES parce
+ * que Riot écrit « FiddleSticks » là où Data Dragon écrit « Fiddlesticks »
+ * (même contournement que championsByIdLower côté app).
+ */
 export async function getCompStats(
   roleOf: (champion: string) => string | undefined
 ): Promise<CompStats> {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  if (set.patch && supabaseAdmin) {
+    const [archetypeRes, coverageRes, matchCountRes] = await Promise.all([
+      supabaseAdmin.rpc("comp_archetypes", {
+        target_patch: set.patch,
+        min_teams: ARCHETYPE_MIN_TEAMS,
+      }),
+      supabaseAdmin.rpc("comp_coverage", {
+        target_patch: set.patch,
+        duo_usable_teams: DUO_USABLE_TEAMS,
+      }),
+      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
+    ]);
+    if (archetypeRes.error) throw archetypeRes.error;
+    if (coverageRes.error) throw coverageRes.error;
+    if (matchCountRes.error) throw matchCountRes.error;
+
+    const cover = ((coverageRes.data ?? []) as CompCoverageRow[])[0];
+    const totalTeams = Number(cover?.total_teams ?? 0);
+    const archetypes = ((archetypeRes.data ?? []) as CompArchetypeRow[])
+      .map((r) => ({
+        roles: r.roles,
+        ...toStat(
+          {
+            games: Number(r.games),
+            top3Wins: Number(r.top3_wins),
+            top1Wins: Number(r.top1_wins),
+            placementSum: Number(r.placement_sum),
+          },
+          totalTeams,
+        ),
+      }))
+      .sort((a, b) => b.top3Rate - a.top3Rate);
+
+    return {
+      totalMatches: Number(matchCountRes.data ?? 0),
+      totalTeams,
+      archetypes,
+      coverage: {
+        trios: {
+          distinct: Number(cover?.trios_distincts ?? 0),
+          repeated: Number(cover?.trios_repetes ?? 0),
+        },
+        duos: {
+          distinct: Number(cover?.duos_distincts ?? 0),
+          usable: Number(cover?.duos_exploitables ?? 0),
+        },
+      },
+    };
+  }
+
+  const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const teams = groupIntoTeams(rows);
   const totalTeams = teams.length;
