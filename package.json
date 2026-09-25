@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "screenshot": "node scripts/screenshot.mjs",
-    "patches": "node scripts/find-patch-boundaries.mjs"
+    "patches": "node scripts/find-patch-boundaries.mjs",
+    "sql:dump": "node scripts/dump-sql-functions.mjs",
+    "sql:reference": "node scripts/generate-reference-sql.mjs > supabase/migrations/reference-data.sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
