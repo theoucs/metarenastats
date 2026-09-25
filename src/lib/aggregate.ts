@@ -2034,19 +2034,63 @@ export type AugmentTimingStats = {
   augments: AugmentTimingStat[];
 };
 
+/** Ce que `augment_timing` rend : des compteurs par créneau, jamais des taux. */
+type AugmentTimingRow = {
+  slot: number;
+  augment_id: number;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
+
+/**
+ * Cinquième agrégation descendue en base — mais seulement le DÉCOMPTE.
+ *
+ * L'éligibilité, les références par créneau et le calcul du swing restent
+ * ici : ils travaillent sur ~96 augments, ils sont documentés et mesurés, et
+ * les descendre n'économiserait rien puisque l'échantillon est déjà réduit.
+ *
+ * Le SQL renumérote les créneaux APRÈS avoir retiré les augments d'événement,
+ * parce que c'est ce que fait `dropExcludedAugments` avant le `slice(0, 3)` :
+ * le tableau est compacté, donc un exclu en première position décale tout le
+ * reste d'un cran. Numéroter sur la position d'origine aurait produit des
+ * chiffres légèrement faux, sans aucune erreur pour le signaler.
+ */
 export async function getAugmentTimingStats(): Promise<AugmentTimingStats> {
-  const rows = await fetchAllParticipants();
-  const totalMatches = matchCountOf(rows);
+  const set = await fetchParticipantSet();
 
   const perSlot: Map<number, Accumulator>[] = Array.from(
     { length: TIMING_SLOTS },
     () => new Map()
   );
+  let totalMatches: number;
 
-  for (const row of rows) {
-    row.augments.slice(0, TIMING_SLOTS).forEach((augmentId, index) => {
-      accumulate(perSlot[index], augmentId, row.placement);
-    });
+  if (set.patch && supabaseAdmin) {
+    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
+      supabaseAdmin.rpc("augment_timing", { target_patch: set.patch, slots: TIMING_SLOTS }),
+      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
+    ]);
+    if (error) throw error;
+    if (countError) throw countError;
+
+    totalMatches = Number(matchCount ?? 0);
+    for (const r of (data ?? []) as AugmentTimingRow[]) {
+      const index = Number(r.slot) - 1;
+      if (index < 0 || index >= TIMING_SLOTS) continue;
+      perSlot[index].set(
+        Number(r.augment_id),
+        acc(r.games, r.top1_wins, r.top3_wins, r.placement_sum),
+      );
+    }
+  } else {
+    const rows = set.rows;
+    totalMatches = matchCountOf(rows);
+    for (const row of rows) {
+      row.augments.slice(0, TIMING_SLOTS).forEach((augmentId, index) => {
+        accumulate(perSlot[index], augmentId, row.placement);
+      });
+    }
   }
 
   const eligible = Array.from(perSlot[0].keys()).filter((id) =>
