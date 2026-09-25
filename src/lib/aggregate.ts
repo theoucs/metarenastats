@@ -1423,10 +1423,11 @@ const addSums = (sum: MetricSum, n: number, placement: number, top3: number, top
  * total des cases, et le demander séparément ferait un second parcours de
  * 2,5 M d'acquisitions pour une valeur déjà présente.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- branche SQL en
-// attente : voir l'encadré de getItemStats. Gardée plutôt que supprimée parce
-// qu'elle est vérifiée sur ses compteurs bruts, et que la supprimer obligerait
-// à la réécrire à l'identique le jour où l'écart de 0,003 sera expliqué.
+// Branche SQL en attente : voir l'encadré de getItemStats. Gardée plutôt que
+// supprimée parce qu'elle est vérifiée sur ses compteurs bruts, et que la
+// supprimer obligerait à la réécrire à l'identique le jour où l'écart de 0,003
+// sera expliqué.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function landmarkBaselinesFromRows(rows: LandmarkBaselineRow[]): LandmarkBaselines {
   const fine = new Map<string, MetricSum>();
   const coarse = new Map<string, MetricSum>();
