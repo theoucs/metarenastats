@@ -287,11 +287,12 @@ type ReusedCombos = NonNullable<Parameters<typeof getChampionDetail>[3]>;
  */
 async function reusableCombos(patch: string): Promise<{
   fresh: boolean;
+  ageHours: number;
   global: unknown | null;
   byChampion: Map<string, ReusedCombos>;
 }> {
   const db = supabaseAdmin;
-  const empty = { fresh: false, global: null, byChampion: new Map<string, ReusedCombos>() };
+  const empty = { fresh: false, ageHours: 0, global: null, byChampion: new Map<string, ReusedCombos>() };
   if (!db) return empty;
 
   const globalKey = patchedKey(SNAPSHOT_KEYS.combos, patch);
@@ -324,7 +325,7 @@ async function reusableCombos(patch: string): Promise<{
       championCombos: r.championCombos as ReusedCombos["championCombos"],
     });
   }
-  return { fresh: true, global: head.payload, byChampion };
+  return { fresh: true, ageHours: Math.round(age / 3_600_000), global: head.payload, byChampion };
 }
 
 export type RatingsReport = {
@@ -433,6 +434,7 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     ];
 
     const published: RefreshReport["patches"] = [];
+    const preserved: string[] = [];
     let truncated = false;
     let totalParticipants = 0;
 
@@ -466,7 +468,10 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       // lourds de la passe ont lieu ou non.
       const reusable = await clock("pairesReutilisables", () => reusableCombos(option.patch));
       if (reusable.fresh) {
-        console.log(`[stats] paires de ${option.patch} reprises (moins de 24 h) — ${reusable.byChampion.size} pages`);
+        preserved.push(patchedKey(SNAPSHOT_KEYS.combos, option.patch));
+        console.log(
+          `[stats] paires de ${option.patch} reprises (calculées il y a ${reusable.ageHours} h) — ${reusable.byChampion.size} pages`,
+        );
       }
 
       const patchSnapshots = await clock("agregation", () =>
@@ -490,7 +495,15 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
           { key: SNAPSHOT_KEYS.augments, payload: augments },
           { key: SNAPSHOT_KEYS.augmentTiming, payload: augmentTiming },
           { key: SNAPSHOT_KEYS.comps, payload: comps },
-          { key: SNAPSHOT_KEYS.combos, payload: combos },
+          // Les paires ne sont RÉÉCRITES que si elles ont été recalculées.
+          //
+          // Les réécrire à l'identique remettrait `computed_at` à l'heure
+          // courante, donc l'horloge des 24 h à zéro — et elles ne seraient
+          // plus jamais recalculées. Le site aurait servi des combos figés
+          // pour toujours, sans qu'aucune erreur ne le dise. La ligne est
+          // donc préservée telle quelle, et son ancienneté reste celle du
+          // vrai calcul.
+          ...(reusable.fresh ? [] : [{ key: SNAPSHOT_KEYS.combos, payload: combos }]),
         ].map((r) => ({ key: patchedKey(r.key, option.patch), payload: r.payload }));
 
         // Une entrée par champion réellement joué SUR CE PATCH : un champion
@@ -576,7 +589,10 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     // de la fenêtre des deux publiés. Ce sont des lignes que plus personne ne lit
     // mais qui pèsent, et surtout qui pourraient resservir de repli périmé le
     // jour où une clé serait relue par erreur.
-    const written = snapshots.map((r) => r.key);
+    // Le ménage supprime tout ce qui n'a pas été réécrit ce tour-ci. Les paires
+    // reprises n'ont PAS été réécrites, justement pour garder leur date : sans
+    // cette liste, la passe suivante les effacerait.
+    const written = [...snapshots.map((r) => r.key), ...preserved];
     const { error: pruneError, count: pruned } = await clock("menage", async () =>
       db
         .from("stats_snapshots")
