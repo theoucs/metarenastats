@@ -1423,6 +1423,10 @@ const addSums = (sum: MetricSum, n: number, placement: number, top3: number, top
  * total des cases, et le demander séparément ferait un second parcours de
  * 2,5 M d'acquisitions pour une valeur déjà présente.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- branche SQL en
+// attente : voir l'encadré de getItemStats. Gardée plutôt que supprimée parce
+// qu'elle est vérifiée sur ses compteurs bruts, et que la supprimer obligerait
+// à la réécrire à l'identique le jour où l'écart de 0,003 sera expliqué.
 function landmarkBaselinesFromRows(rows: LandmarkBaselineRow[]): LandmarkBaselines {
   const fine = new Map<string, MetricSum>();
   const coarse = new Map<string, MetricSum>();
@@ -1448,7 +1452,9 @@ function landmarkBaselinesFromRows(rows: LandmarkBaselineRow[]): LandmarkBaselin
   return { fine, coarse, overall };
 }
 
-/** La grille reconstruite à partir des cases rendues par Postgres. */
+/** La grille reconstruite à partir des cases rendues par Postgres.
+ *  Même statut que `landmarkBaselinesFromRows` : en attente, pas abandonnée. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function itemGridFromRows_sql(rows: ItemAcquisitionRow[]): ItemGrid {
   const grid: ItemGrid = new Map();
   for (const r of rows) {
@@ -1482,29 +1488,42 @@ function itemGridFromRows_sql(rows: ItemAcquisitionRow[]): ItemGrid {
  * Trois formulations SQL ont été nécessaires pour tenir dans le budget, la
  * dernière passant de 26,8 s à 8,9 s en supprimant une jointure sur
  * `match_id` — voir le commentaire de `landmark_baselines`.
+ *
+ * ─── ET POURQUOI CE CHEMIN N'EST PAS BRANCHÉ ────────────────────────────────
+ *
+ * Le 2026-09-25, comparé en gelant le crawler et en publiant deux fois sur la
+ * MÊME vue (418 218 participations des deux côtés, classement vérifié
+ * déterministe : zéro changement de tier, de rang ou de mu) :
+ *
+ *   games, avgPlacement, top3Rate, top1Rate, playRate   identiques sur 170/170
+ *   timing (swing et taux par bande)                    identiques
+ *   tierStat                                            DIFFÈRENT sur 169/170
+ *
+ * Écart maximal 0,0034 sur le placement corrigé — trop grand pour un arrondi
+ * flottant, dans les deux sens, et sur les items achetés.
+ *
+ * Ce qui a été écarté, mesuré et non supposé :
+ *   · le refactor JS (grille au lieu de boucle) — la page d'un champion, qui
+ *     l'emprunte, est identique au bit près sur ses 156 items ;
+ *   · une divergence interne au SQL — les deux formulations de référence
+ *     donnent les mêmes 87 cellules et les mêmes 1 857 941 acquisitions ;
+ *   · une grille et des références incohérentes — même nombre de cellules,
+ *     même total ;
+ *   · un classement non déterministe entre les deux publications.
+ *
+ * Reste l'hypothèse la plus probable : la répartition par (jalon, palier) des
+ * acquisitions diffère quelque part, d'une façon que les totaux masquent. Les
+ * bandes de timing, qui concordent, agrègent TOUS les paliers — elles ne
+ * couvrent donc pas cette dimension, et elles ne couvrent que les items
+ * éligibles au tri.
+ *
+ * Un écart de trois millièmes sur la correction de biais par jalon n'est pas
+ * une approximation acceptable : c'est le calcul le plus soigné du site. La
+ * fonction SQL reste en base, vérifiée sur ses compteurs bruts, et attend
+ * qu'on sache d'où vient l'écart.
  */
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const set = await fetchParticipantSet();
-  if (set.patch && supabaseAdmin) {
-    const [acqRes, baseRes, countRes] = await Promise.all([
-      supabaseAdmin.rpc("item_acquisitions", { target_patch: set.patch }),
-      supabaseAdmin.rpc("landmark_baselines", { target_patch: set.patch }),
-      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
-    ]);
-    if (acqRes.error) throw acqRes.error;
-    if (baseRes.error) throw baseRes.error;
-    if (countRes.error) throw countRes.error;
-
-    const totalMatches = Number(countRes.data ?? 0);
-    const items = adjustedItemStatsFromGrid(
-      itemGridFromRows_sql((acqRes.data ?? []) as ItemAcquisitionRow[]),
-      categoryOf,
-      landmarkBaselinesFromRows((baseRes.data ?? []) as LandmarkBaselineRow[]),
-      totalMatches * PARTICIPANTS_PER_MATCH,
-    ).sort((a, b) => b.top3Rate - a.top3Rate);
-    return { totalMatches, items };
-  }
-
   const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const baselines = landmarkBaselinesOf(rows, categoryOf);
