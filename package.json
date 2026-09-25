@@ -10,6 +10,8 @@
     "screenshot": "node scripts/screenshot.mjs",
     "patches": "node scripts/find-patch-boundaries.mjs",
     "sql:dump": "node scripts/dump-sql-functions.mjs",
+    "verify": "node scripts/verify-publication.mjs",
+    "verify:test": "node scripts/verify-publication.test.mjs",
     "sql:reference": "node scripts/generate-reference-sql.mjs > supabase/migrations/reference-data.sql"
   },
   "dependencies": {
