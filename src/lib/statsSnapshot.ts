@@ -241,6 +241,92 @@ export async function refreshSiteCounters(): Promise<{ totalMatches: number }> {
 const SNAPSHOT_CHUNK = 24;
 const SNAPSHOT_WRITERS = 4;
 
+/**
+ * ─── LES PAIRES NE SE RECALCULENT PAS TOUTES LES HEURES ─────────────────────
+ *
+ * Former les paires est le poste le plus lourd du job, et il est payé DEUX
+ * fois : une fois par `getComboStats` sur tout l'échantillon, une fois par
+ * `getChampionDetail` sur chaque champion — ce qui, sommé sur les 173, refait
+ * exactement le même travail. Chaque participation produit ~31 paires, soit
+ * ~14 millions par patch. Profilé le 2026-09-16, les combos pesaient 28 % de
+ * l'agrégation du site « sans compter leur part dans les pages de champion ».
+ *
+ * Mesuré le 2026-09-25, la même agrégation descendue en SQL coûte 36,8 s sur
+ * le patch 16.18 — et extrapolée à un patch complet au rythme de crawl actuel
+ * (~3,6 M de participations), ~320 s pour un budget de 300. Autrement dit le
+ * problème n'est pas le langage : c'est la CADENCE.
+ *
+ * Une paire d'objets ne change pas de valeur en soixante minutes. Sur un patch
+ * qui compte des centaines de milliers de participations, une heure de plus
+ * déplace un taux de quelques centièmes de point — et le tableau est de toute
+ * façon coupé à 200 lignes par catégorie, seuil que ces centièmes ne font pas
+ * franchir.
+ *
+ * Les paires sont donc reprises telles quelles tant qu'elles ont moins de
+ * 24 h. Tout le reste du site continue d'être recalculé chaque heure.
+ */
+const COMBOS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Ce qu'une page de champion garde d'une passe à l'autre quand les paires
+ *  sont encore fraîches. Dérivé de la signature plutôt que réécrit : les deux
+ *  ne peuvent pas diverger. */
+type ReusedCombos = NonNullable<Parameters<typeof getChampionDetail>[3]>;
+
+/**
+ * L'âge des paires publiées pour ce patch, et les paires par champion si elles
+ * sont encore bonnes.
+ *
+ * Une seule décision pour les deux endroits qui forment des paires : soit on
+ * les refait partout, soit on les reprend partout. Les laisser diverger
+ * donnerait une tier list des combos d'une heure et des pages de champion
+ * d'une autre, sur les mêmes données.
+ *
+ * Les champs de paires sont projetés côté serveur (`payload->allCombos`) :
+ * relire les 173 pages entières pour n'en garder que deux champs ferait
+ * traverser plusieurs mégaoctets sans raison.
+ */
+async function reusableCombos(patch: string): Promise<{
+  fresh: boolean;
+  global: unknown | null;
+  byChampion: Map<string, ReusedCombos>;
+}> {
+  const db = supabaseAdmin;
+  const empty = { fresh: false, global: null, byChampion: new Map<string, ReusedCombos>() };
+  if (!db) return empty;
+
+  const globalKey = patchedKey(SNAPSHOT_KEYS.combos, patch);
+  const { data: head, error: headError } = await db
+    .from("stats_snapshots")
+    .select("payload, computed_at")
+    .eq("key", globalKey)
+    .maybeSingle();
+  // Une lecture ratée ne doit pas empêcher de publier : on recalcule, c'est
+  // plus lent mais juste.
+  if (headError || !head?.computed_at) return empty;
+
+  const age = Date.now() - new Date(head.computed_at as string).getTime();
+  if (age > COMBOS_MAX_AGE_MS) return empty;
+
+  const prefix = `${championDetailKey("")}`;
+  const { data: rows, error } = await db
+    .from("stats_snapshots")
+    .select("key, allCombos:payload->allCombos, championCombos:payload->championCombos")
+    .like("key", `${prefix}%@${patch}`);
+  if (error) return empty;
+
+  const byChampion = new Map<string, ReusedCombos>();
+  for (const r of rows ?? []) {
+    // Un champion dont la page précédente n'a pas ces champs — version plus
+    // ancienne du job, ou page neuve — doit être recalculé, pas rempli de vide.
+    if (!r.allCombos || !r.championCombos) continue;
+    byChampion.set(r.key as string, {
+      allCombos: r.allCombos as ReusedCombos["allCombos"],
+      championCombos: r.championCombos as ReusedCombos["championCombos"],
+    });
+  }
+  return { fresh: true, global: head.payload, byChampion };
+}
+
 export type RatingsReport = {
   ok: boolean;
   rated: number;
@@ -376,6 +462,13 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       truncated = truncated || set.truncated;
       totalParticipants += set.rows.length;
 
+      // Les paires d'abord : leur fraîcheur décide si deux des calculs les plus
+      // lourds de la passe ont lieu ou non.
+      const reusable = await clock("pairesReutilisables", () => reusableCombos(option.patch));
+      if (reusable.fresh) {
+        console.log(`[stats] paires de ${option.patch} reprises (moins de 24 h) — ${reusable.byChampion.size} pages`);
+      }
+
       const patchSnapshots = await clock("agregation", () =>
         withParticipantSet(set, async () => {
         const [champions, anvil, items, augments, augmentTiming, comps, combos] = await Promise.all([
@@ -385,7 +478,9 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
           getAugmentStats(),
           getAugmentTimingStats(),
           getCompStats(championRole),
-          getComboStats(itemCategory),
+          reusable.fresh
+            ? Promise.resolve(reusable.global as Awaited<ReturnType<typeof getComboStats>>)
+            : getComboStats(itemCategory),
         ]);
 
         const rows: SnapshotRow[] = [
@@ -404,9 +499,15 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
         const details = await Promise.all(
           champions.champions.map(async (c) => {
             const idLower = c.champion.toLowerCase();
+            const key = patchedKey(championDetailKey(idLower), option.patch);
             return {
-              key: patchedKey(championDetailKey(idLower), option.patch),
-              payload: await getChampionDetail(idLower, augmentRarity, itemCategory),
+              key,
+              payload: await getChampionDetail(
+                idLower,
+                augmentRarity,
+                itemCategory,
+                reusable.byChampion.get(key),
+              ),
             };
           }),
         );

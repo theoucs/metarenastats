@@ -1970,7 +1970,23 @@ function computeTopPrismaticItems(
 export async function getChampionDetail(
   championIdLower: string,
   rarityOf: (augmentId: number) => "silver" | "gold" | "prismatic" | undefined,
-  itemCategoryOf: ItemCategoryLookup
+  itemCategoryOf: ItemCategoryLookup,
+  /**
+   * Les paires de ce champion, reprises d'une passe précédente.
+   *
+   * Former les paires est, de loin, le poste le plus lourd de cette fonction :
+   * chaque participation produit ~31 paires, et sur un patch entier ça se
+   * compte en millions — payées ici une fois par champion, donc une fois par
+   * participation au total, EN PLUS de la tier list globale qui fait le même
+   * travail. Profilé le 2026-09-16, les combos pesaient 28 % de l'agrégation
+   * du site « sans compter leur part dans les pages de champion ».
+   *
+   * Or une paire d'objets ne change pas de valeur en soixante minutes. Quand
+   * l'appelant a des paires de moins de 24 h, il les passe ici et on ne les
+   * reforme pas. Absent au premier passage, et pour un champion qui vient
+   * d'apparaître : on calcule alors normalement.
+   */
+  reusedCombos?: { allCombos: Record<ComboCategory, PackedCombo[]>; championCombos: Record<ComboCategory, ComboStat[]> },
 ): Promise<ChampionDetail | null> {
   const rows = await fetchAllParticipants();
   const totalMatches = matchCountOf(rows);
@@ -2148,18 +2164,17 @@ export async function getChampionDetail(
   // le résumé n'en montrait que dix, et une paire à deux parties y passait
   // inaperçue ; un onglet qui en montre soixante ne peut pas se le permettre.
   // Voir CHAMPION_COMBO_MIN_GAMES pour le choix du nombre.
-  const packedCombos = computeCombos(
-    champRows,
-    itemCategoryOf,
-    CHAMPION_COMBO_MIN_GAMES,
-    CHAMPION_COMBO_MAX,
-  );
-  const championCombos = Object.fromEntries(
-    Object.entries(packedCombos).map(([category, list]) => [
-      category,
-      list.slice(0, 10).map((combo) => unpackCombo(combo, champGames)),
-    ]),
-  ) as Record<ComboCategory, ComboStat[]>;
+  const packedCombos =
+    reusedCombos?.allCombos ??
+    computeCombos(champRows, itemCategoryOf, CHAMPION_COMBO_MIN_GAMES, CHAMPION_COMBO_MAX);
+  const championCombos =
+    reusedCombos?.championCombos ??
+    (Object.fromEntries(
+      Object.entries(packedCombos).map(([category, list]) => [
+        category,
+        list.slice(0, 10).map((combo) => unpackCombo(combo, champGames)),
+      ]),
+    ) as Record<ComboCategory, ComboStat[]>);
 
   // Tous les items de ce champion, tier compris — le même calcul que la tier
   // list générale, mais sur les seules parties de ce champion et avec les
