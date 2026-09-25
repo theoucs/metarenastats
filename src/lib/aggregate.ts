@@ -816,8 +816,136 @@ function outcomeOf(s: Accumulator | undefined): AnvilOutcome {
 // playRate here is "% of this champion's own games (any playstyle) that were
 // an anvil run" rather than a pick rate over the anvil population — matching
 // the anvilStat.playRate shown on the champion detail page.
+/** Ce que les quatre fonctions `anvil_*` rendent : des compteurs, jamais des taux. */
+type AnvilChampionRow = {
+  champion: string;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+  total_games: number;
+};
+type AnvilOverallRow = {
+  total_matches: number;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
+type AnvilOpenerRow = {
+  augment_id: number;
+  anvil_games: number;
+  anvil_top1: number;
+  anvil_top3: number;
+  anvil_placement_sum: number;
+  bought_games: number;
+  bought_top1: number;
+  bought_top3: number;
+  bought_placement_sum: number;
+};
+type AnvilOpenerChampionRow = {
+  augment_id: number;
+  champion: string;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
+
+const acc = (games: number, top1: number, top3: number, sum: number): Accumulator => ({
+  games: Number(games),
+  top1Wins: Number(top1),
+  top3Wins: Number(top3),
+  placementSum: Number(sum),
+});
+
+/**
+ * Quatrième agrégation descendue en base.
+ *
+ * Le test « cette partie est-elle un anvil run » s'écrit en SQL
+ * `items <@ libres` — l'inventaire est contenu dans l'ensemble des items
+ * gratuits (prismatiques et exclus). Une seule opération de tableau par ligne.
+ *
+ * Les deux cas limites tombent juste, et c'est ce qui rend l'écriture
+ * utilisable : un inventaire VIDE est contenu dans n'importe quoi donc compte
+ * comme anvil, exactement ce que `items.every(...)` rend ici ; et un item
+ * inconnu de `ref_items` n'est pas dans l'ensemble, donc il disqualifie, comme
+ * `categoryOf(id)` qui rend `undefined`.
+ *
+ * Quatre requêtes là où le JS fait une passe, parce que les quatre résultats
+ * ont quatre formes différentes. Elles partent ensemble.
+ */
 export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  if (set.patch && supabaseAdmin) {
+    const openerIds = [...ANVIL_OPENER_AUGMENTS];
+    const [champRes, overallRes, openerRes, openerChampRes] = await Promise.all([
+      supabaseAdmin.rpc("anvil_champions", { target_patch: set.patch }),
+      supabaseAdmin.rpc("anvil_overall", { target_patch: set.patch }),
+      supabaseAdmin.rpc("anvil_openers", { target_patch: set.patch, opener_ids: openerIds }),
+      supabaseAdmin.rpc("anvil_opener_champions", {
+        target_patch: set.patch,
+        opener_ids: openerIds,
+        min_games: ANVIL_OPENER_MIN_GAMES,
+      }),
+    ]);
+    for (const r of [champRes, overallRes, openerRes, openerChampRes]) {
+      if (r.error) throw r.error;
+    }
+
+    const champRows = (champRes.data ?? []) as AnvilChampionRow[];
+    const over = ((overallRes.data ?? []) as AnvilOverallRow[])[0];
+
+    const champions = champRows
+      .map((r) => ({
+        champion: r.champion,
+        ...toStat(
+          acc(r.games, r.top1_wins, r.top3_wins, r.placement_sum),
+          Number(r.total_games),
+        ),
+      }))
+      .sort((a, b) => b.top3Rate - a.top3Rate);
+
+    // Dénominateur des colonnes par ouvreur : les anvil runs DE CE CHAMPION.
+    const anvilGamesOf = new Map(champRows.map((r) => [r.champion, Number(r.games)]));
+    const openerRows = (openerRes.data ?? []) as AnvilOpenerRow[];
+    const openerChampRows = (openerChampRes.data ?? []) as AnvilOpenerChampionRow[];
+
+    const openers: AnvilOpenerStats[] = ANVIL_OPENER_AUGMENTS.map((augmentId) => {
+      const o = openerRows.find((r) => Number(r.augment_id) === augmentId);
+      return {
+        augmentId,
+        anvil: outcomeOf(
+          o && acc(o.anvil_games, o.anvil_top1, o.anvil_top3, o.anvil_placement_sum),
+        ),
+        bought: outcomeOf(
+          o && acc(o.bought_games, o.bought_top1, o.bought_top3, o.bought_placement_sum),
+        ),
+        champions: openerChampRows
+          .filter((r) => Number(r.augment_id) === augmentId)
+          .map((r) => ({
+            champion: r.champion,
+            ...toStat(
+              acc(r.games, r.top1_wins, r.top3_wins, r.placement_sum),
+              anvilGamesOf.get(r.champion) ?? 0,
+            ),
+          }))
+          // Le placement moyen mène, comme partout ailleurs sur le site.
+          .sort((a, b) => a.avgPlacement - b.avgPlacement),
+      };
+    });
+
+    return {
+      totalMatches: Number(over?.total_matches ?? 0),
+      overall: outcomeOf(
+        over && acc(over.games, over.top1_wins, over.top3_wins, over.placement_sum),
+      ),
+      champions,
+      openers,
+    };
+  }
+
+  const rows = set.rows;
 
   // UNE passe sur les lignes, pas deux.
   //
