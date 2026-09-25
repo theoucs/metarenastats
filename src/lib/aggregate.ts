@@ -1482,6 +1482,29 @@ function itemGridFromRows_sql(rows: ItemAcquisitionRow[]): ItemGrid {
  * Trois formulations SQL ont été nécessaires pour tenir dans le budget, la
  * dernière passant de 26,8 s à 8,9 s en supprimant une jointure sur
  * `match_id` — voir le commentaire de `landmark_baselines`.
+ *
+ * ─── VÉRIFIÉ, ET COMMENT ────────────────────────────────────────────────────
+ *
+ * Crawler gelé, deux publications sur la même vue (418 218 participations des
+ * deux côtés) et SURTOUT aucune phase classement entre les deux :
+ *
+ *   games, playRate, avgPlacement, top3Rate, top1Rate   identiques 170/170
+ *   tierStat                                 écart max 7,8 × 10⁻¹⁴
+ *
+ * Soit du bruit d'arrondi : l'ordre de sommation change, le résultat
+ * mathématique non. Aucun item au-delà de 10⁻¹².
+ *
+ * Le « aucune phase classement entre les deux » n'est pas une précaution de
+ * style. Une première tentative de comparaison montrait 0,0034 d'écart sur
+ * tierStat, et j'ai failli abandonner la migration là-dessus : j'appelais
+ * `?only=ratings` entre les deux publications, pour lire la révision déployée.
+ * Or cette phase réécrit `player_ratings`, dont dérive le `skill_bucket` de
+ * chaque participation, dont dépend la référence de chaque case de jalon.
+ * Je mesurais l'effet de mon propre appel.
+ *
+ * Le symptôme le disait : SEUL tierStat bougeait, alors que toutes les sorties
+ * indépendantes du palier étaient identiques au bit près. Une différence qui
+ * ne touche qu'une seule sortie désigne son entrée.
  */
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const set = await fetchParticipantSet();
