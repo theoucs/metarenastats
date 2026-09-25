@@ -1192,42 +1192,81 @@ export type AdjustedItemStat = { itemId: number } & Stat & {
  * `games` et `playRate` ne sont jamais corrigés — ce sont des comptages, pas
  * des performances.
  */
-export function adjustedItemStats(
-  rows: ParticipantRow[],
+/**
+ * Une case de la grille : toutes les acquisitions d'un même item qui partagent
+ * la même nature, le même jalon et le même palier de niveau.
+ *
+ * `landmark` vaut `null` pour une acquisition qu'on ne sait pas situer — un
+ * achat absent de l'ordre d'achat. Elle compte dans les colonnes affichées
+ * mais pas dans la correction, comme dans la version qui parcourait les lignes.
+ */
+type ItemCell = {
+  kind: LandmarkKind;
+  landmark: number | null;
+  bucket: number;
+  n: number;
+  placementSum: number;
+  top1: number;
+  top3: number;
+};
+
+/** La grille complète : les cases de chaque item. */
+type ItemGrid = Map<number, ItemCell[]>;
+
+/**
+ * ─── POURQUOI LA GRILLE EXISTE ──────────────────────────────────────────────
+ *
+ * La correction par jalon lisait les 2,5 millions d'acquisitions d'un patch.
+ * Elle lit désormais quelques milliers de CASES, qui portent la même
+ * information : à jalon, palier et nature identiques, la référence soustraite
+ * est la même pour toutes les acquisitions d'une case. Soustraire n fois la
+ * même valeur ou la soustraire une fois multipliée par n donne le même
+ * résultat, au bit près.
+ *
+ * C'est ce qui permet à Postgres de faire le regroupement sans que le calcul
+ * ne change d'une ligne : ci-dessous, rien n'a bougé depuis la version qui
+ * parcourait les participations — seul le point d'entrée a changé.
+ */
+function adjustedItemStatsFromGrid(
+  grid: ItemGrid,
   categoryOf: ItemCategoryLookup,
   baselines: LandmarkBaselines,
   denominator: number,
-  keep: (itemId: number) => boolean,
 ): AdjustedItemStat[] {
   const raw = new Map<number, Accumulator>();
   const deltas = new Map<number, MetricSum>();
   // Par item puis par bande de créneau, pour le tri tôt/tard.
   const bands = new Map<number, MetricSum[]>();
 
-  for (const row of rows) {
-    const prismaticCount = row.items.filter((id) => categoryOf(id) === "prismatic").length;
-    for (const itemId of row.items) {
-      if (categoryOf(itemId) === "excluded" || !keep(itemId)) continue;
-      accumulate(raw, itemId, row.placement);
+  for (const [itemId, cells] of grid) {
+    for (const c of cells) {
+      const acc = raw.get(itemId) ?? { games: 0, top3Wins: 0, top1Wins: 0, placementSum: 0 };
+      acc.games += c.n;
+      acc.top1Wins += c.top1;
+      acc.top3Wins += c.top3;
+      acc.placementSum += c.placementSum;
+      raw.set(itemId, acc);
 
-      const kind = kindOf(itemId, categoryOf);
-      const landmark = landmarkFor(row, itemId, kind, prismaticCount);
-      if (landmark === null) continue;
-      const reference = referenceFor(baselines, kind, landmark, row.skill_bucket);
+      if (c.landmark === null) continue;
+      const reference = referenceFor(baselines, c.kind, c.landmark, c.bucket);
       if (!reference) continue;
 
       const cell = deltas.get(itemId) ?? emptySum();
-      cell.n += 1;
-      cell.placement += row.placement - reference.placement;
-      cell.top3 += (row.placement <= TOP3_PLACEMENT_THRESHOLD ? 1 : 0) - reference.top3;
-      cell.top1 += (row.placement === 1 ? 1 : 0) - reference.top1;
+      cell.n += c.n;
+      cell.placement += c.placementSum - c.n * reference.placement;
+      cell.top3 += c.top3 - c.n * reference.top3;
+      cell.top1 += c.top1 - c.n * reference.top1;
       deltas.set(itemId, cell);
 
-      if (kind === "bought") {
+      if (c.kind === "bought") {
+        const landmark = c.landmark;
         const band = ITEM_TIMING_BANDS.findIndex(([, min, max]) => landmark >= min && landmark <= max);
         if (band !== -1) {
           const perBand = bands.get(itemId) ?? ITEM_TIMING_BANDS.map(() => emptySum());
-          addMetrics(perBand[band], row.placement);
+          perBand[band].n += c.n;
+          perBand[band].placement += c.placementSum;
+          perBand[band].top3 += c.top3;
+          perBand[band].top1 += c.top1;
           bands.set(itemId, perBand);
         }
       }
@@ -1286,8 +1325,187 @@ export function adjustedItemStats(
   });
 }
 
+/**
+ * La grille bâtie en parcourant les participations — le chemin d'origine.
+ *
+ * Conservé pour les appels qui travaillent sur un sous-ensemble déjà en
+ * mémoire (une page de champion, les parties d'enclume) et pour le repli
+ * quand aucun patch n'est posé.
+ */
+function itemGridFromRows(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+  keep: (itemId: number) => boolean,
+): ItemGrid {
+  const grid: ItemGrid = new Map();
+  const index = new Map<number, Map<string, ItemCell>>();
+
+  for (const row of rows) {
+    const prismaticCount = row.items.filter((id) => categoryOf(id) === "prismatic").length;
+    for (const itemId of row.items) {
+      if (categoryOf(itemId) === "excluded" || !keep(itemId)) continue;
+      const kind = kindOf(itemId, categoryOf);
+      const landmark = landmarkFor(row, itemId, kind, prismaticCount);
+      const bucket = row.skill_bucket;
+      const key = `${kind}:${landmark ?? ""}:${bucket}`;
+
+      let byKey = index.get(itemId);
+      if (!byKey) {
+        byKey = new Map();
+        index.set(itemId, byKey);
+        grid.set(itemId, []);
+      }
+      let cell = byKey.get(key);
+      if (!cell) {
+        cell = { kind, landmark, bucket, n: 0, placementSum: 0, top1: 0, top3: 0 };
+        byKey.set(key, cell);
+        grid.get(itemId)!.push(cell);
+      }
+      cell.n += 1;
+      cell.placementSum += row.placement;
+      if (row.placement <= TOP3_PLACEMENT_THRESHOLD) cell.top3 += 1;
+      if (row.placement === 1) cell.top1 += 1;
+    }
+  }
+  return grid;
+}
+
+/** Signature d'origine, préservée pour ses trois appelants. */
+export function adjustedItemStats(
+  rows: ParticipantRow[],
+  categoryOf: ItemCategoryLookup,
+  baselines: LandmarkBaselines,
+  denominator: number,
+  keep: (itemId: number) => boolean,
+): AdjustedItemStat[] {
+  return adjustedItemStatsFromGrid(
+    itemGridFromRows(rows, categoryOf, keep),
+    categoryOf,
+    baselines,
+    denominator,
+  );
+}
+
+/** Ce que `item_acquisitions` rend : une ligne par case de la grille. */
+type ItemAcquisitionRow = {
+  item_id: number;
+  kind: LandmarkKind;
+  landmark: number | null;
+  skill_bucket: number;
+  n: number;
+  placement_sum: number;
+  top1_wins: number;
+  top3_wins: number;
+};
+
+/** Ce que `landmark_baselines` rend : une ligne par case de référence. */
+type LandmarkBaselineRow = {
+  kind: LandmarkKind;
+  landmark: number;
+  skill_bucket: number;
+  n: number;
+  placement_sum: number;
+  top1_wins: number;
+  top3_wins: number;
+};
+
+const addSums = (sum: MetricSum, n: number, placement: number, top3: number, top1: number) => {
+  sum.n += Number(n);
+  sum.placement += Number(placement);
+  sum.top3 += Number(top3);
+  sum.top1 += Number(top1);
+};
+
+/**
+ * Les références reconstruites à partir des cases rendues par Postgres.
+ *
+ * `overall` se somme ici plutôt que d'être demandé à la base : il n'est que le
+ * total des cases, et le demander séparément ferait un second parcours de
+ * 2,5 M d'acquisitions pour une valeur déjà présente.
+ */
+function landmarkBaselinesFromRows(rows: LandmarkBaselineRow[]): LandmarkBaselines {
+  const fine = new Map<string, MetricSum>();
+  const coarse = new Map<string, MetricSum>();
+  const overall = new Map<LandmarkKind, MetricSum>();
+
+  for (const r of rows) {
+    const kind = r.kind;
+    const landmark = Number(r.landmark);
+    const bucket = Number(r.skill_bucket);
+
+    const f = fine.get(`${kind}:${landmark}:${bucket}`) ?? emptySum();
+    addSums(f, r.n, r.placement_sum, r.top3_wins, r.top1_wins);
+    fine.set(`${kind}:${landmark}:${bucket}`, f);
+
+    const c = coarse.get(`${kind}:${landmark}`) ?? emptySum();
+    addSums(c, r.n, r.placement_sum, r.top3_wins, r.top1_wins);
+    coarse.set(`${kind}:${landmark}`, c);
+
+    const o = overall.get(kind) ?? emptySum();
+    addSums(o, r.n, r.placement_sum, r.top3_wins, r.top1_wins);
+    overall.set(kind, o);
+  }
+  return { fine, coarse, overall };
+}
+
+/** La grille reconstruite à partir des cases rendues par Postgres. */
+function itemGridFromRows_sql(rows: ItemAcquisitionRow[]): ItemGrid {
+  const grid: ItemGrid = new Map();
+  for (const r of rows) {
+    const itemId = Number(r.item_id);
+    const cells = grid.get(itemId) ?? [];
+    cells.push({
+      kind: r.kind,
+      landmark: r.landmark === null ? null : Number(r.landmark),
+      bucket: Number(r.skill_bucket),
+      n: Number(r.n),
+      placementSum: Number(r.placement_sum),
+      top1: Number(r.top1_wins),
+      top3: Number(r.top3_wins),
+    });
+    grid.set(itemId, cells);
+  }
+  return grid;
+}
+
+/**
+ * Sixième agrégation descendue en base — et la seule où le calcul déplacé
+ * n'est PAS celui qui compte.
+ *
+ * Ce qui descend, ce sont les deux réductions : la grille des acquisitions
+ * (item × nature × jalon × palier) et les références par case. Ce qui reste
+ * ici, c'est la correction elle-même — le repli de la case fine vers la
+ * grossière, le recentrage sur la moyenne d'ensemble, le tri tôt/tard. C'est
+ * la partie qui a demandé de la mesure, et elle n'a pas changé d'une ligne :
+ * `adjustedItemStatsFromGrid` est appelé à l'identique par les deux chemins.
+ *
+ * Trois formulations SQL ont été nécessaires pour tenir dans le budget, la
+ * dernière passant de 26,8 s à 8,9 s en supprimant une jointure sur
+ * `match_id` — voir le commentaire de `landmark_baselines`.
+ */
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  if (set.patch && supabaseAdmin) {
+    const [acqRes, baseRes, countRes] = await Promise.all([
+      supabaseAdmin.rpc("item_acquisitions", { target_patch: set.patch }),
+      supabaseAdmin.rpc("landmark_baselines", { target_patch: set.patch }),
+      supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
+    ]);
+    if (acqRes.error) throw acqRes.error;
+    if (baseRes.error) throw baseRes.error;
+    if (countRes.error) throw countRes.error;
+
+    const totalMatches = Number(countRes.data ?? 0);
+    const items = adjustedItemStatsFromGrid(
+      itemGridFromRows_sql((acqRes.data ?? []) as ItemAcquisitionRow[]),
+      categoryOf,
+      landmarkBaselinesFromRows((baseRes.data ?? []) as LandmarkBaselineRow[]),
+      totalMatches * PARTICIPANTS_PER_MATCH,
+    ).sort((a, b) => b.top3Rate - a.top3Rate);
+    return { totalMatches, items };
+  }
+
+  const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const baselines = landmarkBaselinesOf(rows, categoryOf);
   const items = adjustedItemStats(
