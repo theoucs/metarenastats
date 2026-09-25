@@ -192,6 +192,75 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.combo_stats(target_patch text, min_games integer)
+ RETURNS TABLE(a integer, b integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+ SET work_mem TO '96MB'
+AS $function$
+  with choix as (
+    select p.match_id, p.player_id, p.placement,
+           coalesce(rb.canonical_id, u.id) as code
+    from participants_published p
+    cross join lateral unnest(p.items) as u(id)
+    left join ref_items rb on rb.id = u.id
+    left join ref_items rc on rc.id = coalesce(rb.canonical_id, u.id)
+    where p.patch = target_patch
+      and rc.category is distinct from 'excluded'
+      and rc.category is distinct from 'boots'
+    union all
+    select p.match_id, p.player_id, p.placement, 4194304 + a.id
+    from participants_published p
+    cross join lateral unnest(p.augments) as a(id)
+    where p.patch = target_patch
+      and not exists (
+        select 1 from ref_augments r
+        where r.id = a.id and r.category = 'excluded'
+      )
+  ),
+  paires as (
+    select
+      x.code::bigint * 8388608 + y.code as cle,
+      x.placement
+    from choix x
+    join choix y
+      on y.match_id = x.match_id
+     and y.player_id = x.player_id
+     and y.code > x.code
+  )
+  select
+    (p.cle / 8388608)::integer,
+    (p.cle % 8388608)::integer,
+    count(*),
+    count(*) filter (where p.placement = 1),
+    count(*) filter (where p.placement <= 3),
+    sum(p.placement)::bigint
+  from paires p
+  group by p.cle
+  having count(*) >= min_games
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.combo_stats_probe(target_patch text, min_games integer)
+ RETURNS TABLE(paires bigint, occurrences bigint, ms integer)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+ SET statement_timeout TO '600s'
+AS $function$
+declare
+  t0 timestamptz := clock_timestamp();
+  n bigint;
+  occ bigint;
+begin
+  select count(*), coalesce(sum(games), 0) into n, occ
+  from combo_stats(target_patch, min_games);
+  return query select n, occ, (extract(epoch from clock_timestamp() - t0) * 1000)::integer;
+end;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.comp_archetypes(target_patch text, min_teams integer)
  RETURNS TABLE(roles text[], games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
@@ -297,6 +366,24 @@ begin
 
   return removed;
 end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.dump_aggregation_functions()
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select string_agg(pg_get_functiondef(p.oid), E';\n\n' order by p.proname) || ';'
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prokind in ('f', 'p')
+    and not exists (
+      select 1 from pg_depend d
+      where d.objid = p.oid and d.deptype = 'e'
+    );
 $function$
 ;
 
@@ -488,6 +575,32 @@ begin
   get diagnostics promoted = row_count;
   return promoted;
 end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.rating_matches(after_created timestamp with time zone DEFAULT '-infinity'::timestamp with time zone, after_match text DEFAULT ''::text, page_size integer DEFAULT 1000)
+ RETURNS TABLE(game_creation timestamp with time zone, match_id text, players integer[], subteams smallint[], placements smallint[])
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select r.game_creation, r.match_id, r.players, r.subteams, r.placements
+  from match_rating_rows r
+  where (r.game_creation, r.match_id) > (after_created, after_match)
+  order by r.game_creation, r.match_id
+  limit page_size
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.rating_players(min_games integer, after_idx integer DEFAULT 0, page_size integer DEFAULT 1000)
+ RETURNS TABLE(player_idx integer, puuid text, riot_id text, games bigint)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select pl.id::integer, pl.puuid, coalesce(pl.riot_id, pl.puuid), pl.games::bigint
+  from players pl
+  where pl.games >= min_games and pl.id > after_idx
+  order by pl.id
+  limit page_size
 $function$
 ;
 
