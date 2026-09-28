@@ -64,7 +64,11 @@ function ChampionSpotlight({
   return (
     <Link
       href={`/champions/${champion.key}`}
-      className="group relative flex aspect-[16/9] overflow-hidden rounded-xl border border-subtle shadow-[var(--elev-2)] transition-colors hover:border-strong sm:aspect-[3/4]"
+      // Phones: #1 spans the row at 16:9, #2 and #3 share the next row at 4:5.
+      // Three stacked 16:9 cards took three screens for six numbers.
+      className={`group relative flex overflow-hidden rounded-xl border border-subtle shadow-[var(--elev-2)] transition-colors hover:border-strong sm:aspect-[3/4] ${
+        rank === 1 ? "col-span-2 aspect-[16/9] sm:col-span-1" : "aspect-[4/5]"
+      }`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -83,7 +87,11 @@ function ChampionSpotlight({
       <div className="relative mt-auto w-full p-3.5">
         <div className="flex items-center gap-2">
           <TierBadge tier={champion.tier} />
-          <span className="min-w-0 truncate font-display text-h1 font-semibold text-primary">
+          <span
+            className={`min-w-0 truncate font-display font-semibold text-primary ${
+              rank === 1 ? "text-h1" : "text-h2 sm:text-h1"
+            }`}
+          >
             {champion.name}
           </span>
         </div>
@@ -243,7 +251,7 @@ export default async function Home() {
         </div>
 
         {podium.length > 0 && (
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {podium.map((c, i) => (
               <ChampionSpotlight key={c.key} champion={c} rank={i + 1} scale={scale} />
             ))}

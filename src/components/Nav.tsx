@@ -13,6 +13,9 @@ type NavItem = { href: string; label: string };
 // that only fitted from 1280px up. They live under one menu now (decided with
 // Théo, 2026-09-28), and Info & Tips moved to the footer.
 const TIER_LISTS: NavItem[] = [
+  // Also a top-level link (the most used page, one click away), but it IS a
+  // tier list and people open this menu expecting to find it there too.
+  { href: "/champions", label: "Champions" },
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
   // Kept apart from "Combos" in the ordering on purpose: Team Comps is three
@@ -85,7 +88,10 @@ function TierListsMenu({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
-  const active = TIER_LISTS.some((item) => isActive(pathname, item.href));
+  // On /champions the top-level link carries the highlight, not this button.
+  const active = TIER_LISTS.some(
+    (item) => item.href !== CHAMPIONS.href && isActive(pathname, item.href),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -329,7 +335,7 @@ export function Nav() {
             </ul>
             <p className="mt-3 px-2.5 text-micro text-muted">Tier lists</p>
             <ul className="mt-1 flex flex-col gap-1 text-sm">
-              {TIER_LISTS.map((item) => (
+              {TIER_LISTS.filter((item) => item.href !== CHAMPIONS.href).map((item) => (
                 <li key={item.href}>
                   <NavLink item={item} active={isActive(pathname, item.href)} onClick={() => setOpen(false)} staticActiveBg />
                 </li>
