@@ -840,6 +840,8 @@ export async function getChampionStats() {
           },
           totalMatches * PARTICIPANTS_PER_MATCH,
         ),
+        // bigint[] : PostgREST le rend en chaînes.
+        placements: (r.placement_counts ?? []).map(Number),
       }))
       .sort((a, b) => b.top3Rate - a.top3Rate);
     return { totalMatches, champions };
@@ -848,9 +850,19 @@ export async function getChampionStats() {
   const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const byChampion = new Map<string, Accumulator>();
-  for (const r of rows) accumulate(byChampion, r.champion, r.placement);
+  const placements = new Map<string, number[]>();
+  for (const r of rows) {
+    accumulate(byChampion, r.champion, r.placement);
+    const counts = placements.get(r.champion) ?? [0, 0, 0, 0, 0, 0];
+    if (r.placement >= 1 && r.placement <= 6) counts[r.placement - 1] += 1;
+    placements.set(r.champion, counts);
+  }
   const champions = Array.from(byChampion.entries())
-    .map(([champion, s]) => ({ champion, ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH) }))
+    .map(([champion, s]) => ({
+      champion,
+      ...toStat(s, totalMatches * PARTICIPANTS_PER_MATCH),
+      placements: placements.get(champion) ?? [],
+    }))
     .sort((a, b) => b.top3Rate - a.top3Rate);
   return { totalMatches, champions };
 }
@@ -862,7 +874,81 @@ type ChampionStatsRow = {
   top1_wins: number;
   top3_wins: number;
   placement_sum: number;
+  /** Parties finies à chaque place, de la 1re à la 6e. */
+  placement_counts: (number | string)[] | null;
 };
+
+/**
+ * Écart-type d'un placement. Sur six places à peu près équiprobables il vaut
+ * celui d'une loi uniforme sur 1..6, √(35/12) ≈ 1,71 ; mesuré par champion sur
+ * le 16.18, il tourne autour de 1,7. Il sert à l'erreur type d'un écart d'avg
+ * entre deux patchs : √(σ²/n₀ + σ²/n₁).
+ */
+const PLACEMENT_SD = Math.sqrt(35 / 12);
+
+/**
+ * Un écart retenu doit dépasser trois erreurs types.
+ *
+ * Mesuré sur cinq paires de patchs (16.13 → 16.18) : à deux erreurs types, une
+ * dizaine de champions sur 173 « bougeaient » à chaque patch, à peu près ce que
+ * le hasard seul produit à ce seuil (~8). À trois, il en reste 0 à 4, là où le
+ * hasard n'en fabriquerait qu'un demi. Décidé avec Théo le 2026-09-28 : ne
+ * montrer que ceux-là, quitte à ne rien montrer.
+ */
+const MOVER_SIGMAS = 3;
+
+export type ChampionMover = {
+  champion: string;
+  avgPlacement: number;
+  previousAvgPlacement: number;
+  games: number;
+  previousGames: number;
+};
+
+/**
+ * Les champions dont l'avg a vraiment bougé depuis le patch précédent.
+ *
+ * `champions` est passé par le job, qui vient de les calculer ; la page qui
+ * retombe sur un calcul direct (snapshot absent) les recalcule.
+ */
+export async function getChampionMovers(
+  champions?: { champion: string; games: number; avgPlacement: number }[],
+): Promise<{ patch: string | null; previousPatch: string | null; movers: ChampionMover[] }> {
+  const set = await fetchParticipantSet();
+  if (!set.patch || !supabaseAdmin) return { patch: set.patch ?? null, previousPatch: null, movers: [] };
+  const current = champions ?? (await getChampionStats()).champions;
+  const previous = await rpcRows<{
+    patch: string;
+    champion: string;
+    games: number | string;
+    placement_sum: number | string;
+  }>("previous_patch_champion_totals", { target_patch: set.patch });
+
+  const byChampion = new Map(previous.map((p) => [p.champion, p]));
+  const movers: ChampionMover[] = [];
+  for (const c of current) {
+    const p = byChampion.get(c.champion);
+    if (!p) continue;
+    const previousGames = Number(p.games);
+    if (previousGames === 0 || c.games === 0) continue;
+    const previousAvgPlacement = Number(p.placement_sum) / previousGames;
+    const se = PLACEMENT_SD * Math.sqrt(1 / c.games + 1 / previousGames);
+    if (Math.abs(c.avgPlacement - previousAvgPlacement) > MOVER_SIGMAS * se) {
+      movers.push({
+        champion: c.champion,
+        avgPlacement: c.avgPlacement,
+        previousAvgPlacement,
+        games: c.games,
+        previousGames,
+      });
+    }
+  }
+  movers.sort(
+    (a, b) =>
+      Math.abs(b.avgPlacement - b.previousAvgPlacement) - Math.abs(a.avgPlacement - a.previousAvgPlacement),
+  );
+  return { patch: set.patch, previousPatch: previous[0]?.patch ?? null, movers };
+}
 
 /**
  * Les quatre augments « stat anvil » du pool courant, dans leur ordre de

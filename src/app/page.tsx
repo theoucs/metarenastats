@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSiteStats, getChampionStats } from "@/lib/aggregate";
-import { readSnapshot } from "@/lib/statsSnapshot";
+import { readMoversSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import { getPatchContext } from "@/lib/patches";
 import { computeTiers, type Tier } from "@/lib/tiers";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
@@ -10,6 +10,7 @@ import {
   avgPlacementColor,
   formatCount,
   statScale,
+  MoverBadge,
   type StatScale,
 } from "@/lib/statsDisplay";
 import { TierBadge } from "@/components/StatsTable";
@@ -156,6 +157,7 @@ export default async function Home() {
     readSnapshot("site", getSiteStats),
     readSnapshot("champions", getChampionStats, patch.defaultPatch),
   ]);
+  const movers = await readMoversSnapshot(patch.defaultPatch);
 
   const rows = champions.map((c) => {
     const info = resolveChampion(c.champion);
@@ -267,6 +269,43 @@ export default async function Home() {
         )}
       </section>
 
+      {/* Only champions whose Avg Placement moved beyond noise since the
+          previous patch (three standard errors, see getChampionMovers). Most
+          patches have none to four, so the section simply isn't there when
+          nothing real happened. */}
+      {movers.movers.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
+          <h2 className="font-display text-h1 font-semibold text-primary">
+            What changed{movers.previousPatch ? ` since ${movers.previousPatch}` : ""}
+          </h2>
+          <ul className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {movers.movers.slice(0, 8).map((m) => {
+              const info = resolveChampion(m.champion);
+              return (
+                <li key={m.champion}>
+                  <Link
+                    href={`/champions/${info?.id ?? m.champion}`}
+                    className="flex items-center gap-3 rounded-lg border border-subtle bg-raised/40 p-3 transition-colors hover:border-default hover:bg-overlay"
+                  >
+                    {info?.iconUrl && <EntityIcon iconUrl={info.iconUrl} sizeClass="h-10 w-10" />}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-primary">{info?.name ?? m.champion}</div>
+                      <div className="text-small tabular-nums text-muted">
+                        {m.previousAvgPlacement.toFixed(2)} → {m.avgPlacement.toFixed(2)} avg
+                      </div>
+                    </div>
+                    <MoverBadge
+                      avgPlacement={m.avgPlacement}
+                      previousAvgPlacement={m.previousAvgPlacement}
+                      previousPatch={movers.previousPatch}
+                    />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

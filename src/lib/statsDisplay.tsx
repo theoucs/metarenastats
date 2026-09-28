@@ -243,3 +243,132 @@ export function EntityIcon({
     />
   );
 }
+
+const PLACE_LABELS = ["1st", "2nd", "3rd", "4th", "5th", "6th"] as const;
+
+/**
+ * Colour of each place's bar. 1st takes gold, which globals.css reserves for
+ * "the best" (tier S and 1st place). 2nd and 3rd are the rest of a top 3, in
+ * the accent; 4th to 6th stay quiet. The shape then reads at a glance: a
+ * champion that wins is heavy on the left.
+ */
+const PLACE_COLORS = [
+  "var(--gold)",
+  "color-mix(in srgb, var(--accent) 75%, transparent)",
+  "color-mix(in srgb, var(--accent) 55%, transparent)",
+  "var(--border-strong)",
+  "var(--border-strong)",
+  "var(--border-strong)",
+] as const;
+
+/** Six places, so an even spread puts 1 game in 6 at each. */
+const EVEN_SHARE = 1 / 6;
+
+function placeShares(counts: number[]) {
+  const total = counts.reduce((a, b) => a + b, 0);
+  return total > 0 ? counts.map((c) => c / total) : [];
+}
+
+/**
+ * The bars share one fixed scale, 0 to 30 %, in every row of every list:
+ * normalising per row would make every champion's tallest bar the same height
+ * and hide exactly what the chart is for, which is comparing shapes down a
+ * column. Measured on 16.18, a single place never passes 25 % for a champion
+ * with a real sample; above 30 % the scale grows rather than clip.
+ */
+function barScale(shares: number[]) {
+  return Math.max(0.3, ...shares);
+}
+
+function placementSummary(shares: number[]) {
+  return shares.map((s, i) => `${PLACE_LABELS[i]} ${(s * 100).toFixed(1)}%`).join(" · ");
+}
+
+/** Six thin bars, 1st to 6th, for a table cell. */
+export function PlacementSparkline({ counts }: { counts: number[] }) {
+  const shares = placeShares(counts);
+  if (shares.length !== 6) return null;
+  const max = barScale(shares);
+  const label = placementSummary(shares);
+  return (
+    <span role="img" aria-label={`Finishes: ${label}`} title={label} className="inline-flex h-6 items-end gap-[3px]">
+      {shares.map((share, i) => (
+        <span
+          key={i}
+          className="block w-[5px] rounded-t-[1px]"
+          style={{ height: `${(share / max) * 100}%`, backgroundColor: PLACE_COLORS[i] }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** The same six places, large, with their share written on each bar. */
+export function PlacementChart({ counts }: { counts: number[] }) {
+  const shares = placeShares(counts);
+  if (shares.length !== 6) return null;
+  const max = barScale(shares);
+  return (
+    <figure className="m-0">
+      <div
+        role="img"
+        aria-label={`Finishes: ${placementSummary(shares)}`}
+        className="relative grid h-36 grid-cols-6 items-end gap-2 border-b border-default sm:gap-3"
+      >
+        {/* The even-spread line: above it a place comes up more often than
+            chance, below it less. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 border-t border-dashed border-strong"
+          style={{ bottom: `${(EVEN_SHARE / max) * 100}%` }}
+        />
+        {shares.map((share, i) => (
+          <div key={i} className="relative flex h-full flex-col justify-end">
+            <span className="mb-1 text-center text-small font-medium tabular-nums text-primary">
+              {(share * 100).toFixed(1)}%
+            </span>
+            <span
+              className="block rounded-t-sm"
+              style={{ height: `${(share / max) * 100}%`, backgroundColor: PLACE_COLORS[i] }}
+            />
+          </div>
+        ))}
+      </div>
+      <div aria-hidden="true" className="mt-1.5 grid grid-cols-6 gap-2 text-center text-micro text-muted sm:gap-3">
+        {PLACE_LABELS.map((l) => (
+          <span key={l}>{l}</span>
+        ))}
+      </div>
+      <figcaption className="mt-2 text-micro text-muted">Dashed line: 1 game in 6, an even spread.</figcaption>
+    </figure>
+  );
+}
+
+/**
+ * A real change of Avg Placement since the previous patch (beyond three
+ * standard errors, see getChampionMovers). Lower is better, so a drop in the
+ * number is the good direction, shown as ▲ in the "good" colour.
+ */
+export function MoverBadge({
+  avgPlacement,
+  previousAvgPlacement,
+  previousPatch,
+}: {
+  avgPlacement: number;
+  previousAvgPlacement: number;
+  previousPatch: string | null;
+}) {
+  const delta = avgPlacement - previousAvgPlacement;
+  const better = delta < 0;
+  const since = previousPatch ? ` since ${previousPatch}` : "";
+  return (
+    <span
+      title={`Avg placement ${previousAvgPlacement.toFixed(2)} → ${avgPlacement.toFixed(2)}${since}`}
+      className={`inline-flex items-center gap-0.5 text-micro font-medium tabular-nums ${better ? "text-stat-good" : "text-stat-bad"}`}
+    >
+      <span aria-hidden="true">{better ? "▲" : "▼"}</span>
+      <span className="sr-only">{better ? "Better" : "Worse"}{since}:</span>
+      {Math.abs(delta).toFixed(2)}
+    </span>
+  );
+}

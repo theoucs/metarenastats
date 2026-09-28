@@ -1,7 +1,7 @@
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { type StatsRow } from "@/components/StatsTable";
 import { comboToRow } from "@/lib/comboDisplay";
-import { statScale } from "@/lib/statsDisplay";
+import { statScale, PlacementChart } from "@/lib/statsDisplay";
 import { loadChampionPage, ChampionShell } from "./championPage";
 import {
   AugmentColumn,
@@ -78,6 +78,18 @@ export default async function ChampionSummaryPage({
     <ChampionShell data={data} active="summary">
       {detail && (
         <>
+          {data.placements?.length === 6 && (
+            <section className="mt-10 border-t border-subtle pt-8">
+              <h2 className="font-display text-h2 font-semibold text-primary">Finishes</h2>
+              <p className="mt-1 text-small text-secondary">
+                Share of {data.champInfo.name}&apos;s games ending at each place.
+              </p>
+              <div className="mt-5 max-w-xl">
+                <PlacementChart counts={data.placements} />
+              </div>
+            </section>
+          )}
+
           <section className="mt-10 border-t border-subtle pt-8">
             <SectionHeading title="Best Augments" href={tab("augments")}>
               Among this champion&apos;s own games.

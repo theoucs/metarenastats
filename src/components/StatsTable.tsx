@@ -12,6 +12,8 @@ import {
   formatCount,
   statScale,
   EntityIcon,
+  PlacementSparkline,
+  MoverBadge,
   type EntityRarity,
   type StatScale,
 } from "@/lib/statsDisplay";
@@ -44,6 +46,11 @@ export type StatsRow = {
    *  ont pas — l'infobulle se réduit alors au nom. */
   entity?: EntityRef;
   secondaryEntity?: EntityRef;
+  /** Games finished at each place, 1st to 6th. Champions only for now. */
+  placements?: number[];
+  /** Set only when Avg Placement moved beyond noise since the previous patch
+   *  (see getChampionMovers). */
+  mover?: { previousAvgPlacement: number; previousPatch: string | null };
   /** When set, the name cell renders as a "name + secondaryName" pair — used
    * for the Combos tier list (two items/augments picked together). */
   secondaryName?: string;
@@ -571,6 +578,7 @@ function DataRow({
   worstPlacement,
   hideTierColumn,
   showRankColumn,
+  showPlacements,
   compact,
 }: {
   row: StatsRow;
@@ -587,6 +595,8 @@ function DataRow({
   hideTierColumn: boolean;
   /** Colonne du rang Arena : présente dès qu'au moins un joueur est classé. */
   showRankColumn: boolean;
+  /** The "Finishes" column, present when the rows carry a distribution. */
+  showPlacements: boolean;
   /** See StatsTable's `compact` — must drop the same columns as the header. */
   compact: boolean;
 }) {
@@ -618,16 +628,32 @@ function DataRow({
         </td>
       )}
       <td className={`${cellX} py-1.5`}>
-        {linkPrefix ? (
-          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex items-center gap-2.5 hover:underline">
-            <NameCellContent row={row} />
-          </Link>
-        ) : (
-          <div className="flex items-center gap-2.5">
-            <NameCellContent row={row} />
-          </div>
-        )}
+        {/* The mover badge sits on the name's line: under it, it made the
+            few rows that carry one taller than the rest. */}
+        <div className="flex items-center gap-2.5">
+          {linkPrefix ? (
+            <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex items-center gap-2.5 hover:underline">
+              <NameCellContent row={row} />
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2.5">
+              <NameCellContent row={row} />
+            </div>
+          )}
+          {row.mover && (
+            <MoverBadge
+              avgPlacement={row.avgPlacement}
+              previousAvgPlacement={row.mover.previousAvgPlacement}
+              previousPatch={row.mover.previousPatch}
+            />
+          )}
+        </div>
       </td>
+      {showPlacements && (
+        <td className={`${cellX} py-1.5 text-center`}>
+          {row.placements && <PlacementSparkline counts={row.placements} />}
+        </td>
+      )}
       {/* Avg Placement leads: it is the metric that outranks the others
           everywhere on this site (docs/design-audit-plan.md §3.6), and it is
           what computeTiers weights at 60%. */}
@@ -756,6 +782,15 @@ function MobileCard({
         ) : (
           heading
         )}
+        {row.mover && (
+          <div className="mt-0.5">
+            <MoverBadge
+              avgPlacement={row.avgPlacement}
+              previousAvgPlacement={row.mover.previousAvgPlacement}
+              previousPatch={row.mover.previousPatch}
+            />
+          </div>
+        )}
         <dl className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-micro tabular-nums text-muted">
           <div className="flex items-baseline gap-1">
             <dt>Top 3</dt>
@@ -868,6 +903,7 @@ export function StatsTable({
   // La colonne n'apparaît que s'il y a un rang à montrer : sur un classement
   // tout neuf, une colonne vide poserait une question sans y répondre.
   const showRankColumn = variant === "ranked" && rows.some((r) => r.rankTier);
+  const showPlacements = !compact && rows.some((r) => r.placements?.length === 6);
 
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -1029,7 +1065,9 @@ export function StatsTable({
   const tableClass = needsWideTable ? "hidden lg:block" : "hidden md:block";
 
   const colCount =
-    (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) + (showRankColumn ? 1 : 0);
+    (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) +
+    (showRankColumn ? 1 : 0) +
+    (showPlacements ? 1 : 0);
   const cellX = compact ? "px-2" : "px-4";
 
 
@@ -1161,6 +1199,11 @@ export function StatsTable({
                 />
               )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
+              {showPlacements && (
+                <th className={`${stickyHeadCell} ${cellX} text-center`} title="Share of games finished 1st to 6th">
+                  Finishes
+                </th>
+              )}
               <SortableHead
                 label={compact ? "Avg" : "Avg Placement"}
                 sortKey="avgPlacement"
@@ -1233,6 +1276,7 @@ export function StatsTable({
                     worstPlacement={worstPlacement}
                     hideTierColumn={showBands}
                     showRankColumn={showRankColumn}
+                    showPlacements={showPlacements}
                     compact={compact}
                   />
                 </Fragment>

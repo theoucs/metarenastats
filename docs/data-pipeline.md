@@ -408,3 +408,24 @@ falls back to stored data like an expired key does).
 
 What the same audit found but left for later — mostly what a production key and more data
 will bring — is noted in `docs/later.md`.
+
+## Placements and patch movers (2026-09-28)
+
+**Placement distribution.** `champion_stats` now also returns `placement_counts`, games
+finished at each place 1 to 6, from the same scan as the other counters: measured as its own
+query it cost 386 ms per patch, folded in it costs next to nothing. The champion snapshot
+carries it as `placements`; the tier list draws it as a six-bar sparkline and the champion
+page as a chart. Champions only: items and augments would need their own queries.
+
+**Movers, and why most of the idea was dropped.** The plan was an ↑/↓ arrow per row against
+the previous patch. Measured on five patch pairs (16.13 → 16.18, rollup data): a champion's
+avg placement moves by ±0.1 to 0.3 between patches, against a standard error of 0.05 to
+0.08. At two standard errors about ten of 173 champions "move" every patch, roughly what
+chance alone produces. At three, 0 to 4 remain (chance makes half of one). Only those are
+kept, in a `movers@<patch>` snapshot written by the hourly job from
+`previous_patch_champion_totals`, which reads the previous patch from the published
+participations if it is still there, from `player_champion_totals` otherwise, never both
+(during archiving a match can be in both). 16.17 → 16.18 had none. The standard error uses
+σ = √(35/12), a uniform over six places, which matches the per-champion spread measured on
+16.18 (~1.7). Pages read that snapshot without a compute fallback: an absent snapshot means
+"nothing to report", not "re-read 500,000 rows".

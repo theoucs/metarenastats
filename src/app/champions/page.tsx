@@ -1,5 +1,5 @@
-import { getChampionStats } from "@/lib/aggregate";
-import { readSnapshot } from "@/lib/statsSnapshot";
+import { getChampionMovers, getChampionStats } from "@/lib/aggregate";
+import { readMoversSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
 import { PatchSwitch } from "@/components/PatchSwitch";
@@ -11,9 +11,14 @@ import { resolveChampion } from "@/lib/gameData";
 // à chaque visite.
 export const revalidate = 1800;
 
-function toRows(champions: Awaited<ReturnType<typeof getChampionStats>>["champions"]): StatsRow[] {
+function toRows(
+  champions: Awaited<ReturnType<typeof getChampionStats>>["champions"],
+  movers: Awaited<ReturnType<typeof getChampionMovers>>,
+): StatsRow[] {
+  const moved = new Map(movers.movers.map((m) => [m.champion, m]));
   return champions.map((c) => {
     const info = resolveChampion(c.champion);
+    const mover = moved.get(c.champion);
     return {
       // Use Data Dragon's canonical casing as the key so search-result anchor
       // links (which are built from the same reference data) land on the
@@ -26,6 +31,11 @@ function toRows(champions: Awaited<ReturnType<typeof getChampionStats>>["champio
       top1Rate: c.top1Rate,
       avgPlacement: c.avgPlacement,
       playRate: c.playRate,
+      // Absent from snapshots written before the distribution existed.
+      placements: c.placements,
+      mover: mover
+        ? { previousAvgPlacement: mover.previousAvgPlacement, previousPatch: movers.previousPatch }
+        : undefined,
     };
   });
 }
@@ -38,13 +48,16 @@ export default async function ChampionsPage() {
   const views = Object.fromEntries(
     await Promise.all(
       patch.options.map(async (option) => {
-        const { champions } = await readSnapshot("champions", getChampionStats, option.patch);
+        const [{ champions }, movers] = await Promise.all([
+          readSnapshot("champions", getChampionStats, option.patch),
+          readMoversSnapshot(option.patch),
+        ]);
         return [
           option.patch,
           <StatsTable
             filterPlaceholder="Search a champion"
             key={option.patch}
-            rows={toRows(champions)}
+            rows={toRows(champions, movers)}
             linkPrefix="/champions/"
             linkSuffix={option.patch === patch.defaultPatch ? undefined : `?patch=${option.patch}`}
           />,

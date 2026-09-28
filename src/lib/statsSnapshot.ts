@@ -11,6 +11,7 @@ import {
   getAugmentStats,
   getAugmentTimingStats,
   getChampionDetail,
+  getChampionMovers,
   getChampionStats,
   getComboStats,
   getCompStats,
@@ -48,6 +49,7 @@ export const SNAPSHOT_KEYS = {
   leaderboard: "leaderboard",
   comps: "comps",
   combos: "combos",
+  movers: "movers",
 } as const;
 
 /** Une page de champion par champion vu en jeu — clé `champion:ahri`. */
@@ -68,6 +70,7 @@ export type SnapshotPayloads = {
   leaderboard: Awaited<ReturnType<typeof getLeaderboardStats>>;
   comps: Awaited<ReturnType<typeof getCompStats>>;
   combos: Awaited<ReturnType<typeof getComboStats>>;
+  movers: Awaited<ReturnType<typeof getChampionMovers>>;
 };
 
 type SnapshotRow = { key: string; payload: unknown };
@@ -93,6 +96,23 @@ export async function readSnapshot<K extends keyof SnapshotPayloads>(
   // sinon une page afficherait tout l'historique là où elle annonce un patch.
   if (!patch) return compute();
   return withParticipantSet(await readParticipantSetForPatch(patch), compute);
+}
+
+/**
+ * Les mouvements d'un patch, SANS repli de calcul.
+ *
+ * Un snapshot absent (le job n'est pas encore passé depuis le déploiement) veut
+ * dire « rien à signaler », pas « recalculer » : le repli de readSnapshot
+ * relirait les ~500 000 participations du patch pour un bloc qui, la plupart du
+ * temps, est vide.
+ */
+export async function readMoversSnapshot(
+  patch: string | null,
+): Promise<SnapshotPayloads["movers"]> {
+  const empty = { patch, previousPatch: null, movers: [] };
+  if (!patch) return empty;
+  const stored = await readSnapshotRaw(patchedKey(SNAPSHOT_KEYS.movers, patch));
+  return (stored as SnapshotPayloads["movers"] | null) ?? empty;
 }
 
 /** Zéro partie : le bloc « Opening augment » ne s'affiche alors pas du tout,
@@ -561,8 +581,13 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
             : getComboStats(itemCategory),
         ]);
 
+        // Réutilise les champions qu'on vient de calculer : une seule lecture
+        // SQL de plus, celle du patch précédent.
+        const movers = await getChampionMovers(champions.champions);
+
         const rows: SnapshotRow[] = [
           { key: SNAPSHOT_KEYS.champions, payload: champions },
+          { key: SNAPSHOT_KEYS.movers, payload: movers },
           { key: SNAPSHOT_KEYS.anvil, payload: anvil },
           { key: SNAPSHOT_KEYS.items, payload: items },
           { key: SNAPSHOT_KEYS.augments, payload: augments },

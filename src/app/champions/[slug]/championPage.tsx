@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { getChampionStats, type ChampionDetail } from "@/lib/aggregate";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
-import { readChampionDetailSnapshot, readSnapshot } from "@/lib/statsSnapshot";
+import { readChampionDetailSnapshot, readMoversSnapshot, readSnapshot } from "@/lib/statsSnapshot";
 import { getPatchContext } from "@/lib/patches";
 import { PatchBadge } from "@/components/PatchBadge";
 import { TierBadge } from "@/components/StatsTable";
@@ -15,6 +15,7 @@ import {
   top3Color,
   formatCount,
   statScale,
+  MoverBadge,
   type StatScale,
 } from "@/lib/statsDisplay";
 
@@ -53,6 +54,11 @@ export type ChampionPageData = {
   /** The champions tier list's colour scale, so this champion's pills read
    *  the same colour here as its row does there. */
   scale: StatScale | undefined;
+  /** Games finished at each place (1st to 6th), from the champions snapshot. */
+  placements: number[] | undefined;
+  /** Set only when this champion's Avg Placement moved beyond noise since the
+   *  previous patch. */
+  mover: { previousAvgPlacement: number; previousPatch: string | null } | null;
 };
 
 /** Tout ce dont une page de champion a besoin, quel que soit l'onglet. */
@@ -81,10 +87,13 @@ export async function loadChampionPage(
   // Site-wide champion stats come along for the ride so the header can say
   // where this champion actually sits — a tier badge and "#7 of 173" is the
   // one thing a build page header can tell you that the numbers below can't.
-  const [detail, { champions }] = await Promise.all([
+  const [detail, { champions }, movers] = await Promise.all([
     readChampionDetailSnapshot(slug.toLowerCase(), patch),
     readSnapshot("champions", getChampionStats, patch),
+    readMoversSnapshot(patch),
   ]);
+  const own = champions.find((c) => (resolveChampion(c.champion)?.id ?? c.champion) === champInfo.id);
+  const moved = movers.movers.find((m) => m.champion === own?.champion);
 
   const rows = champions.map((c) => ({
     key: resolveChampion(c.champion)?.id ?? c.champion,
@@ -107,7 +116,17 @@ export async function loadChampionPage(
       })()
     : null;
 
-  return { slug, champInfo, detail, patch, patchParam: requested, rank, scale: statScale(rows) };
+  return {
+    slug,
+    champInfo,
+    detail,
+    patch,
+    patchParam: requested,
+    rank,
+    scale: statScale(rows),
+    placements: own?.placements,
+    mover: moved ? { previousAvgPlacement: moved.previousAvgPlacement, previousPatch: movers.previousPatch } : null,
+  };
 }
 
 function ChampionTabNav({ data, active }: { data: ChampionPageData; active: ChampionTabKey }) {
@@ -152,7 +171,7 @@ export function ChampionShell({
   active: ChampionTabKey;
   children: ReactNode;
 }) {
-  const { champInfo, detail, patch, rank, scale } = data;
+  const { champInfo, detail, patch, rank, scale, mover } = data;
 
   return (
     <div>
@@ -215,6 +234,13 @@ export function ChampionShell({
                   <span>Arena build summary</span>
                 )}
                 {patch && <PatchBadge patch={patch} games={detail?.games} />}
+                {mover && detail && (
+                  <MoverBadge
+                    avgPlacement={detail.avgPlacement}
+                    previousAvgPlacement={mover.previousAvgPlacement}
+                    previousPatch={mover.previousPatch}
+                  />
+                )}
               </p>
             </div>
           </div>

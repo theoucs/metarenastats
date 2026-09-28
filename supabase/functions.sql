@@ -306,7 +306,7 @@ $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.champion_stats(target_patch text)
- RETURNS TABLE(champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
+ RETURNS TABLE(champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint, placement_counts bigint[])
  LANGUAGE sql
  STABLE
 AS $function$
@@ -315,7 +315,15 @@ AS $function$
     count(*),
     count(*) filter (where p.placement = 1),
     count(*) filter (where p.placement <= 3),
-    sum(p.placement)::bigint
+    sum(p.placement)::bigint,
+    array[
+      count(*) filter (where p.placement = 1),
+      count(*) filter (where p.placement = 2),
+      count(*) filter (where p.placement = 3),
+      count(*) filter (where p.placement = 4),
+      count(*) filter (where p.placement = 5),
+      count(*) filter (where p.placement = 6)
+    ]
   from participants_published p
   where p.patch = target_patch
   group by p.champion
@@ -479,6 +487,17 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.find_player_by_riot_id(p_riot_id text)
+ RETURNS TABLE(puuid text, riot_id text)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select p.puuid, p.riot_id from players p
+  where lower(p.riot_id) = lower(p_riot_id)
+  limit 1
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.item_acquisitions(target_patch text)
  RETURNS TABLE(item_id integer, kind text, landmark integer, skill_bucket smallint, n bigint, placement_sum bigint, top1_wins bigint, top3_wins bigint)
  LANGUAGE sql
@@ -620,6 +639,41 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.previous_patch_champion_totals(target_patch text)
+ RETURNS TABLE(patch text, champion text, games bigint, placement_sum bigint)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  with known as (
+    select r.patch from rolled_patches r
+    union
+    select distinct p.patch from participants_published p
+  ),
+  prev as (
+    select k.patch
+    from known k
+    where string_to_array(k.patch, '.')::int[] < string_to_array(target_patch, '.')::int[]
+    order by string_to_array(k.patch, '.')::int[] desc
+    limit 1
+  ),
+  published as (
+    select p.champion, count(*)::bigint as games, sum(p.placement)::bigint as placement_sum
+    from participants_published p
+    where p.patch = (select patch from prev)
+    group by p.champion
+  ),
+  archived as (
+    select t.champion, sum(t.games)::bigint as games, sum(t.placement_sum)::bigint as placement_sum
+    from player_champion_totals t
+    where t.patch = (select patch from prev)
+      and not exists (select 1 from published)
+    group by t.champion
+  )
+  select (select patch from prev), x.champion, x.games, x.placement_sum
+  from (select * from published union all select * from archived) x
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.promote_tracked_players(min_games integer)
  RETURNS integer
  LANGUAGE plpgsql
@@ -692,6 +746,14 @@ AS $function$
 begin
   refresh materialized view concurrently participants_published;
 end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.release_job_lock(p_name text, p_holder text)
+ RETURNS void
+ LANGUAGE sql
+AS $function$
+  delete from job_locks where name = p_name and holder = p_holder
 $function$
 ;
 
@@ -831,5 +893,18 @@ CREATE OR REPLACE FUNCTION public.sync_players()
  LANGUAGE sql
 AS $function$
   select 0;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.try_job_lock(p_name text, p_holder text, p_ttl_seconds integer)
+ RETURNS boolean
+ LANGUAGE sql
+AS $function$
+  insert into job_locks as l (name, holder, locked_until)
+  values (p_name, p_holder, now() + make_interval(secs => p_ttl_seconds))
+  on conflict (name) do update
+    set holder = excluded.holder, locked_until = excluded.locked_until
+    where l.locked_until < now()
+  returning true
 $function$
 ;
