@@ -1,8 +1,10 @@
+import { headers } from "next/headers";
 import {
   searchPlayerMatches,
   findKnownPlayerByRiotId,
   fetchSummonerProfile,
   normalizeRiotId,
+  clientIpFrom,
 } from "@/lib/riotSearch";
 import { getPlayerProfile } from "@/lib/aggregate";
 import { resolveChampion, profileIconUrl } from "@/lib/gameData";
@@ -26,7 +28,7 @@ export default async function PlayerPage({
   // partagé, l'historique du navigateur ou une URL tapée à la main.
   const riotId = normalizeRiotId(decodeURIComponent(rawParam)) ?? decodeURIComponent(rawParam);
 
-  const result = await searchPlayerMatches(riotId);
+  const result = await searchPlayerMatches(riotId, clientIpFrom(await headers()));
 
   let puuid: string | null = null;
   let displayRiotId = riotId;
@@ -145,6 +147,12 @@ export default async function PlayerPage({
                       #{rank.position} of {rank.outOf} ranked
                     </span>
                   </>
+                ) : profile.games >= RATING_MIN_GAMES ? (
+                  // Assez de parties, mais le classement n'est recalculé qu'une
+                  // fois par heure : un joueur tout juste cherché n'y est pas
+                  // encore. Sans ce cas, la soustraction ci-dessous devenait
+                  // négative (« -7 more tracked games »).
+                  <span className="text-muted">Unranked — rank arrives with the next hourly update</span>
                 ) : profile.games > 0 ? (
                   <span className="text-muted">
                     Unranked — {RATING_MIN_GAMES - profile.games} more tracked game

@@ -371,10 +371,37 @@ player's whole history" is wrong since that date. The two known whole-history re
 are built for it (player profile: archive + live; ratings: `match_rating_rows`); an audit
 should still grep for the others.
 
-**Not yet verified in production:**
+**Not yet verified in production (archiving and crawl, above):**
 - a full patch leaving the window (16.18, when 16.20 lands around 8 October): after a few
   hourly passes, no 16.18 row should remain in `match_participants`;
 - a whole day of crawling with two passes of 30 players — matches per day on the current
   patch, and whether visitor searches still get through;
 - the freed space is reused, not returned to the disk (no `vacuum full`: not worth
   rewriting the table at 12 % of the disk used).
+
+## Audit fixes (2026-09-28)
+
+**One heavy phase at a time.** The engine and the hourly safety net each had their own
+GitHub concurrency group, so nothing stopped two `ratings` phases from overlapping — and
+that phase ends by deleting every `player_ratings` row older than *its own* stamp. If the
+other pass wrote in between, its rows went, and the ladder could sit empty until the next
+hour. A shared concurrency group would have made the safety net wait out the engine's
+5 h 30. So the route takes a lease in `job_locks` (`try_job_lock`, 320 s, just past a
+function's 300 s so a killed invocation blocks nothing for long); a phase that finds it
+taken answers `skipped: "busy"` with a 200. Not `pg_advisory_lock`: PostgREST serves each
+request on a pooled connection, so a session lock would not outlive the call that took it.
+
+**The queue now counts failures.** `crawl_queue` was filtered on `error_count < 5` from day
+one, but nothing ever incremented it — 0 of 346 000 rows carried one. A puuid failing for
+good was never marked visited, so it stayed at the head of the queue and cost a call every
+pass. A player-side failure (anything but 429/401/403) now bumps the counter and sends the
+player to the back; a success resets it. A timeline Riot answers 404 for is marked fetched,
+with `item_order` left null, instead of being re-requested forever. Still open: a match
+stuck at `ingested_at` null whose detail 404s is retried every pass (0 such matches today).
+
+**Visitor search.** The known-player fallback was an unindexed `ilike` over `players`
+(4.6 s); it is now `find_player_by_riot_id`, an equality on an index over `lower(riot_id)`
+— 0.1 ms. A player page costs ~32 Riot calls and is never cached, so `robots.txt` keeps
+crawlers off `/players/` and `/api/`, and a search is capped at 5 per IP per 2 minutes
+(per instance, in memory — it stops a burst, not a distributed attack; beyond that, it
+falls back to stored data like an expired key does).

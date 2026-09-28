@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { riotFetch } from "@/lib/riotClient";
 import { ARENA_QUEUE_ID, apiKey, fetchMatchDetail, persistMatches } from "@/lib/riotSearch";
-import { fetchItemOrder } from "@/lib/timeline";
+import { fetchItemOrderWithStatus } from "@/lib/timeline";
 
 /**
  * Crawler Arena (phase 1 de docs/data-pipeline-plan.md).
@@ -230,8 +230,12 @@ function gameNumber(matchId: string): number {
 }
 
 /** Historique Arena d'un joueur (100 = maximum autorisé par Riot en un appel),
- *  borné à `startTime` (secondes) quand il est donné. */
-async function fetchPlayerMatchIds(puuid: string, startTime: number | null): Promise<string[] | null> {
+ *  borné à `startTime` (secondes) quand il est donné. En échec, le statut HTTP :
+ *  c'est lui qui dit si l'échec est celui du joueur ou celui du moment. */
+async function fetchPlayerMatchIds(
+  puuid: string,
+  startTime: number | null,
+): Promise<{ ids: string[] } | { status: number }> {
   const res = await riotFetch(
     `https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids` +
       `?queue=${ARENA_QUEUE_ID}&start=0&count=100` +
@@ -241,9 +245,54 @@ async function fetchPlayerMatchIds(puuid: string, startTime: number | null): Pro
   );
   if (!res.ok) {
     console.error(`[crawl] historique de ${puuid.slice(0, 12)}… indisponible : HTTP ${res.status}`);
-    return null;
+    return { status: res.status };
   }
-  return res.json();
+  return { ids: await res.json() };
+}
+
+/**
+ * Un échec qui tient au JOUEUR et non au moment.
+ *
+ * 429 est le débit (le nôtre ou celui de Riot) ; 401/403, la clé, que
+ * `isApiReachable` a déjà vérifiée en début de passe. Tout le reste — 400 sur
+ * un puuid illisible, 404 sur un compte disparu, 5xx répétés — se répéterait à
+ * l'identique au passage suivant.
+ */
+function isPlayerFailure(status: number): boolean {
+  return status !== 429 && status !== 401 && status !== 403;
+}
+
+/**
+ * Compte l'échec et renvoie le joueur en fin de file.
+ *
+ * `error_count < 5` filtrait la file depuis le début, mais rien n'incrémentait
+ * jamais le compteur — 0 joueur sur 346 000 en portait un, le 2026-09-28. Un
+ * puuid en échec permanent n'était donc jamais marqué visité, restait en tête
+ * de file (jamais-crawlé = servi d'abord) et coûtait un appel à CHAQUE passe.
+ * Le marquer visité le renvoie derrière les autres ; au cinquième échec, la
+ * file ne le sert plus.
+ */
+async function markPlayersFailed(puuids: string[]) {
+  if (puuids.length === 0) return;
+  await retryDb("comptage des échecs", async () => {
+    const { data, error } = await db()
+      .from("crawl_queue")
+      .select("puuid, error_count")
+      .in("puuid", puuids);
+    if (error) throw error;
+    const now = new Date().toISOString();
+    const { error: writeError } = await db()
+      .from("crawl_queue")
+      .upsert(
+        (data ?? []).map((r) => ({
+          puuid: r.puuid as string,
+          error_count: Number(r.error_count ?? 0) + 1,
+          last_crawled_at: now,
+        })),
+        { onConflict: "puuid" },
+      );
+    if (writeError) throw writeError;
+  });
 }
 
 /**
@@ -307,6 +356,9 @@ async function markPlayersCrawled(entries: { puuid: string; matchesFound: number
           puuid: e.puuid,
           last_crawled_at: now,
           matches_found: e.matchesFound,
+          // Un succès efface les échecs passés : seuls cinq échecs D'AFFILÉE
+          // sortent un joueur de la file (voir markPlayersFailed).
+          error_count: 0,
         })),
         { onConflict: "puuid" },
       );
@@ -367,6 +419,7 @@ export async function runCrawl({
   // ── 2. Découvrir de nouveaux matchs ──────────────────────────────────────
   const players = await pickPlayers(playerBatch);
   const crawled: { puuid: string; matchesFound: number }[] = [];
+  const failed: string[] = [];
   const discoveredIds: string[] = [];
 
   const patchStart = await currentPatchStart();
@@ -375,12 +428,15 @@ export async function runCrawl({
       stoppedBy = "deadline";
       break;
     }
-    const ids = await fetchPlayerMatchIds(puuid, tracked ? null : patchStart);
+    const result = await fetchPlayerMatchIds(puuid, tracked ? null : patchStart);
     riotCalls++;
-    if (ids === null) continue;
+    if ("status" in result) {
+      if (isPlayerFailure(result.status)) failed.push(puuid);
+      continue;
+    }
     riotOk++;
-    discoveredIds.push(...ids);
-    crawled.push({ puuid, matchesFound: ids.length });
+    discoveredIds.push(...result.ids);
+    crawled.push({ puuid, matchesFound: result.ids.length });
   }
 
   // Les plus récents d'abord. Le plafond de la passe (maxMatches) coupe la
@@ -438,6 +494,7 @@ export async function runCrawl({
   // ── 4. Alimenter la file ─────────────────────────────────────────────────
   const playersDiscovered = await enqueuePlayers(seenPuuids);
   await markPlayersCrawled(crawled);
+  await markPlayersFailed(failed);
 
   return {
     ok: true,
@@ -555,9 +612,26 @@ export async function runTimelineCrawl({
       break;
     }
 
-    const order = await fetchItemOrder(matchId, CRAWLER_MAX_WAIT_MS);
+    const result = await fetchItemOrderWithStatus(matchId, CRAWLER_MAX_WAIT_MS);
     riotCalls++;
-    if (order === null) continue;
+    if ("status" in result) {
+      // Un timeline que Riot n'a pas (404) ne viendra jamais. Sans marquage,
+      // le match restait en tête de la file — les plus récents d'abord — et
+      // coûtait un appel à chaque passe. Marqué traité, `item_order` reste
+      // NULL et l'agrégation retombe sur l'inventaire final, comme pour tout
+      // match sans timeline. Les autres échecs sont passagers : repris.
+      if (result.status === 404) {
+        await retryDb("marquage d'un timeline absent", async () => {
+          const { error } = await db()
+            .from("matches")
+            .update({ timeline_fetched_at: new Date().toISOString() })
+            .eq("match_id", matchId);
+          if (error) throw error;
+        }).catch((error) => console.error(`[timeline] marquage de ${matchId} échoué :`, error));
+      }
+      continue;
+    }
+    const order = result.order;
     riotOk++;
 
     try {

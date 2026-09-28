@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 import { refreshRatings, refreshSiteCounters, refreshSnapshots } from "@/lib/statsSnapshot";
 
 /**
@@ -42,6 +44,67 @@ async function handle(request: Request) {
     return NextResponse.json({ ok: true, only: "counters", totalMatches });
   }
 
+  // Une seule phase ratings/snapshots à la fois, tous déclencheurs confondus
+  // (voir PUBLISH_LOCK). Occupé : on rend la main sans erreur, puisqu'une
+  // autre passe est justement en train de faire ce travail.
+  const holder = randomUUID();
+  if (!(await acquirePublishLock(holder))) {
+    console.log(`[cron] recalcul déjà en cours ailleurs — phase ${only ?? "complète"} sautée`);
+    return NextResponse.json({ ok: true, skipped: "busy", only });
+  }
+  try {
+    return await runPhase(only);
+  } finally {
+    await releasePublishLock(holder);
+  }
+}
+
+/**
+ * Le bail qui sérialise les phases lourdes.
+ *
+ * Le moteur (engine.yml) et le filet horaire (refresh-stats.yml) ont chacun
+ * leur groupe de concurrence GitHub, donc rien ne les empêchait de recalculer
+ * en même temps. Or la phase classement efface en fin de course les lignes plus
+ * vieilles que SON estampille : si l'autre passe avait écrit entre-temps, tout
+ * ce qu'elle avait écrit partait, et le classement pouvait se retrouver vide
+ * jusqu'à l'heure suivante. Deux rafraîchissements concurrents de la table
+ * matérialisée, eux, échouent.
+ *
+ * Un bail en base plutôt qu'un groupe de concurrence commun : le moteur tient
+ * le sien 5 h 30, le filet horaire aurait attendu tout ce temps. Le bail
+ * expire seul un peu après les 300 s d'une fonction, si bien qu'une invocation
+ * tuée ne bloque rien au-delà (voir la migration 20260928-verrou-publication).
+ */
+const PUBLISH_LOCK = "publish";
+const PUBLISH_LOCK_TTL_S = 320;
+
+async function acquirePublishLock(holder: string): Promise<boolean> {
+  if (!supabaseAdmin) return true;
+  const { data, error } = await supabaseAdmin.rpc("try_job_lock", {
+    p_name: PUBLISH_LOCK,
+    p_holder: holder,
+    p_ttl_seconds: PUBLISH_LOCK_TTL_S,
+  });
+  // Un bail illisible ne doit pas arrêter la publication : on retombe sur le
+  // comportement d'avant plutôt que de figer le site.
+  if (error) {
+    console.error("[cron] bail de publication illisible, on continue sans :", error.message);
+    return true;
+  }
+  return data === true;
+}
+
+async function releasePublishLock(holder: string): Promise<void> {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin.rpc("release_job_lock", {
+    p_name: PUBLISH_LOCK,
+    p_holder: holder,
+  });
+  // Sans gravité : le bail expire seul.
+  if (error) console.error("[cron] bail de publication non rendu :", error.message);
+}
+
+async function runPhase(only: string | null) {
   // `?only=ratings` et `?only=snapshots` découpent le recalcul en deux
   // invocations (voir refreshRatings) : la somme des deux phases ne tient plus
   // dans les 300 s d'une seule fonction. Appelés l'un après l'autre, dans cet

@@ -221,7 +221,13 @@ jobs:
             # rien de frais du tout.
             refresh_phase ratings || true
             if refresh_phase snapshots; then
-              echo "· publié — $(sed -n 's/.*"sourceMatches":\([0-9]*\).*/\1/p' /tmp/refresh-snapshots.json) matchs"
+              # Le bail de publication (voir la route) : si refresh-stats.yml
+              # publiait au même moment, la phase rend la main sans rien faire.
+              if grep -q '"skipped":"busy"' /tmp/refresh-snapshots.json; then
+                echo "· publication déjà en cours ailleurs — sautée"
+              else
+                echo "· publié — $(sed -n 's/.*"sourceMatches":\([0-9]*\).*/\1/p' /tmp/refresh-snapshots.json) matchs"
+              fi
               last_refresh=$(date +%s)
             fi
           }

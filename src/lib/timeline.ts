@@ -120,6 +120,19 @@ export async function fetchItemOrder(
   matchId: string,
   maxWaitMs?: number,
 ): Promise<MatchItemOrder | null> {
+  const result = await fetchItemOrderWithStatus(matchId, maxWaitMs);
+  return "order" in result ? result.order : null;
+}
+
+/**
+ * Même chose, en disant POURQUOI il n'y a pas d'ordre : la passe timeline doit
+ * distinguer un timeline qui n'existe pas (404, inutile de redemander) d'un
+ * échec passager (429, 5xx), qui lui sera repris.
+ */
+export async function fetchItemOrderWithStatus(
+  matchId: string,
+  maxWaitMs?: number,
+): Promise<{ order: MatchItemOrder } | { status: number }> {
   const res = await riotFetch(
     `https://europe.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline`,
     apiKey(),
@@ -127,12 +140,12 @@ export async function fetchItemOrder(
   );
   if (!res.ok) {
     console.error(`[timeline] ${matchId} ignoré : HTTP ${res.status}`);
-    return null;
+    return { status: res.status };
   }
   try {
-    return parseItemOrder(await res.json());
+    return { order: parseItemOrder(await res.json()) };
   } catch (error) {
     console.error(`[timeline] ${matchId} illisible :`, error);
-    return null;
+    return { status: 0 };
   }
 }

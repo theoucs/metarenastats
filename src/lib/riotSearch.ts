@@ -200,11 +200,61 @@ export function normalizeRiotId(raw: string): string | null {
   return parsed && `${parsed.gameName}#${parsed.tagLine}`;
 }
 
-export async function searchPlayerMatches(riotId: string): Promise<SearchPlayerResult> {
+/**
+ * Recherches Riot autorisées par adresse IP, sur une fenêtre glissante.
+ *
+ * Une recherche coûte ~32 appels, sur une clé de 100 appels / 2 min partagée
+ * avec le crawler : trois recherches enchaînées la saturent pour tout le monde.
+ * Sans plafond, un seul script — ou un robot qui ignore robots.txt — pouvait
+ * donc rendre la recherche indisponible à tous les autres visiteurs.
+ *
+ * Au-delà, la page joueur retombe sur ce que la base connaît déjà, exactement
+ * comme quand la clé est expirée : l'utilisateur voit ses stats, sans
+ * l'historique frais.
+ *
+ * En mémoire de l'instance, donc approximatif quand Vercel en fait tourner
+ * plusieurs : ça arrête la rafale d'une même adresse, pas une attaque
+ * distribuée — pour celle-là, c'est le pare-feu de Vercel.
+ */
+const SEARCHES_PER_IP = 5;
+const SEARCH_WINDOW_MS = 120_000;
+const searchesByIp = new Map<string, number[]>();
+
+function allowSearch(clientIp: string | null): boolean {
+  if (!clientIp) return true;
+  const now = Date.now();
+  const recent = (searchesByIp.get(clientIp) ?? []).filter((t) => now - t < SEARCH_WINDOW_MS);
+  if (recent.length >= SEARCHES_PER_IP) {
+    searchesByIp.set(clientIp, recent);
+    return false;
+  }
+  recent.push(now);
+  searchesByIp.set(clientIp, recent);
+  // Ménage opportuniste : sans lui, la table garderait toutes les adresses
+  // vues depuis le démarrage de l'instance.
+  if (searchesByIp.size > 5_000) {
+    for (const [ip, times] of searchesByIp) {
+      if (times.every((t) => now - t >= SEARCH_WINDOW_MS)) searchesByIp.delete(ip);
+    }
+  }
+  return true;
+}
+
+/** L'adresse du visiteur telle que Vercel la transmet (premier saut). */
+export function clientIpFrom(headers: { get(name: string): string | null }): string | null {
+  const forwarded = headers.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || headers.get("x-real-ip") || null;
+}
+
+export async function searchPlayerMatches(
+  riotId: string,
+  clientIp: string | null = null,
+): Promise<SearchPlayerResult> {
   const parsed = parseRiotId(riotId);
   if (!parsed) {
     return { ok: false, status: 400, error: "Enter a player name (e.g. Theoucs, or Theoucs#EUW)" };
   }
+  if (!allowSearch(clientIp)) return riotErrorResult(429);
   const { gameName, tagLine } = parsed;
 
   const accountRes = await riotFetch(
@@ -458,19 +508,15 @@ export async function persistMatches(incoming: MatchResult[]) {
  * (sync_player_counts le réécrit), là où une participation porte celui du jour
  * de la partie.
  *
- * 4,6 s reste trop : c'est un parcours complet. Le vrai correctif est un index
- * sur `lower(riot_id)` — il attend que la base ait de la place (voir le disque
- * saturé du 2026-09-22).
+ * 4,6 s restait un parcours complet. Depuis le 2026-09-28, une égalité sur
+ * `lower(riot_id)`, indexée (`find_player_by_riot_id`) : 0,1 ms. L'`ilike`
+ * d'avant traitait aussi `%` et `_` d'un pseudo comme des jokers.
  */
 export async function findKnownPlayerByRiotId(
   riotId: string
 ): Promise<{ puuid: string; riotId: string } | null> {
   if (!supabaseAdmin) return null;
-  const { data } = await supabaseAdmin
-    .from("players")
-    .select("puuid, riot_id")
-    .ilike("riot_id", riotId)
-    .not("riot_id", "is", null)
-    .limit(1);
-  return data && data[0] ? { puuid: data[0].puuid, riotId: data[0].riot_id } : null;
+  const { data } = await supabaseAdmin.rpc("find_player_by_riot_id", { p_riot_id: riotId });
+  const row = (data as { puuid: string; riot_id: string }[] | null)?.[0];
+  return row ? { puuid: row.puuid, riotId: row.riot_id } : null;
 }
