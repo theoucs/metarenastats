@@ -134,7 +134,7 @@ export default async function PlayerPage({
               </h1>
               <p className="text-small text-secondary">
                 {summoner ? `Level ${summoner.summonerLevel}` : "Arena player"}
-                {topChampionInfo ? ` — mains ${topChampionInfo.name}` : ""}
+                {topChampionInfo ? ` · mains ${topChampionInfo.name}` : ""}
               </p>
               {/* Le rang, ou la raison précise de son absence : « Unranked »
                   seul laisserait croire à un niveau, alors que c'est un
@@ -152,10 +152,10 @@ export default async function PlayerPage({
                   // fois par heure : un joueur tout juste cherché n'y est pas
                   // encore. Sans ce cas, la soustraction ci-dessous devenait
                   // négative (« -7 more tracked games »).
-                  <span className="text-muted">Unranked — rank arrives with the next hourly update</span>
+                  <span className="text-muted">Unranked. The rank arrives with the next hourly update.</span>
                 ) : profile.games > 0 ? (
                   <span className="text-muted">
-                    Unranked — {RATING_MIN_GAMES - profile.games} more tracked game
+                    Unranked: {RATING_MIN_GAMES - profile.games} more tracked game
                     {RATING_MIN_GAMES - profile.games === 1 ? "" : "s"} to get a rank
                   </span>
                 ) : null}
@@ -172,7 +172,7 @@ export default async function PlayerPage({
         <div className="relative z-10 -mt-8">
           {liveError && (
             <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
-              Couldn&apos;t refresh from Riot right now ({liveError}) — showing previously saved data.
+              Couldn&apos;t refresh from Riot right now ({liveError}). Showing previously saved data.
             </p>
           )}
 

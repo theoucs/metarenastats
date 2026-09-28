@@ -56,7 +56,7 @@ export default async function ChampionsPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
-        <PageHeader eyebrow="Tier list" title="Champions" />
+        <PageHeader title="Champions" />
       </PatchSwitch>
     </div>
   );

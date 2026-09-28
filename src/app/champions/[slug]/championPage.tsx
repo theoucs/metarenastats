@@ -197,7 +197,7 @@ export function ChampionShell({
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-secondary">
                 {rank ? (
                   <span>
-                    Rank <span className="font-mono tabular-nums text-primary">#{rank.position}</span>{" "}
+                    Rank <span className="tabular-nums text-primary">#{rank.position}</span>{" "}
                     of {rank.total} champions
                   </span>
                 ) : (

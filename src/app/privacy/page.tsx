@@ -2,14 +2,13 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/PageHeader";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy & Terms of Service — MetArenaStats",
+  title: "Privacy Policy & Terms of Service · MetArenaStats",
 };
 
 export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="Legal"
         title="Privacy Policy & Terms of Service"
         description="Last updated September 2026."
       />
@@ -77,7 +76,7 @@ export default function PrivacyPage() {
               >
                 Riot Games&apos; official API
               </a>
-              . It&apos;s stored with Supabase and this site runs on Vercel — neither has access
+              . It&apos;s stored with Supabase and this site runs on Vercel. Neither has access
               to it beyond hosting it on our behalf.
             </p>
           </div>
@@ -89,14 +88,14 @@ export default function PrivacyPage() {
         <div className="mt-3 space-y-4 text-secondary">
           <p>
             MetArenaStats is a free, community stats and tier-list site for League of Legends
-            Arena. There&apos;s no login, no paid tier, and no ads — all core stats stay free, in
+            Arena. There&apos;s no login, no paid tier and no ads. All core stats stay free, in
             line with Riot&apos;s policies for third-party apps.
           </p>
 
           <div>
             <h3 className="font-medium text-primary">No warranty</h3>
             <p className="mt-1">
-              Stats are computed from whatever matches have been searched so far — they&apos;re
+              Stats are computed from whatever matches have been searched so far. They&apos;re
               partial, may contain mistakes, and can change as more data comes in. Don&apos;t
               treat anything here as authoritative or complete.
             </p>

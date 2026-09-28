@@ -20,13 +20,14 @@ export function HeadlineRow({ aside, children }: { aside?: ReactNode; children: 
 }
 
 /**
- * Le bloc de droite : une étiquette en capitales, puis son contenu.
+ * Le bloc de droite, aligné sur le haut du titre.
  *
- * L'étiquette fait écho à l'eyebrow du titre, à gauche et à la même hauteur.
- * C'est ce qui rattache le bloc à la page au lieu de le laisser flotter dans
- * le coin.
+ * Il portait une étiquette en capitales espacées (« PATCH », « SCOPE ») qui
+ * répondait au sur-titre de gauche. Les deux sont partis ensemble le
+ * 2026-09-28 : c'est le tic le plus reconnaissable des sites générés, et le
+ * contenu se nomme lui-même (le sélecteur dit « Patch »).
  */
-export function HeaderAside({ label, children }: { label: string; children: ReactNode }) {
+export function HeaderAside({ children }: { children: ReactNode }) {
   return (
     // `sm:mb-7` et non `sm:mb-0` : sur une page sans description, cette colonne
     // est PLUS HAUTE que le titre, c'est donc elle qui fixe la hauteur de la
@@ -35,9 +36,6 @@ export function HeaderAside({ label, children }: { label: string; children: Reac
     // amas dans le coin. La marge reprend celle de PageHeader, donc la
     // séparation est la même quelle que soit la colonne la plus haute.
     <div className="mb-6 flex shrink-0 flex-col items-start gap-1.5 sm:mb-7 sm:items-end">
-      <span className="text-micro font-semibold uppercase tracking-[0.14em] text-muted">
-        {label}
-      </span>
       {children}
     </div>
   );

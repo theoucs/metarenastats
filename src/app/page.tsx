@@ -29,13 +29,6 @@ import { Wordmark } from "@/components/Wordmark";
 // (voir refreshSiteCounters), donc c'était ce cache qui dominait.
 export const revalidate = 600;
 
-const EXPLORE = [
-  { href: "/items", title: "Items", blurb: "Legendary and prismatic, split by rarity." },
-  { href: "/augments", title: "Augments", blurb: "Silver, gold and prismatic tier lists." },
-  { href: "/combos", title: "Combos", blurb: "Pairs that actually place together." },
-  { href: "/comps", title: "Team Comps", blurb: "Which three-champion shapes place." },
-] as const;
-
 type TopChampion = {
   key: string;
   name: string;
@@ -83,7 +76,7 @@ function ChampionSpotlight({
       />
       <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base)] from-15% via-[var(--bg-base)]/55 via-55% to-transparent" />
 
-      <span className="absolute left-3 top-3 rounded-md border border-subtle bg-[var(--bg-base)]/70 px-1.5 py-0.5 font-mono text-micro tabular-nums text-secondary backdrop-blur-sm">
+      <span className="absolute left-3 top-3 rounded-md border border-subtle bg-[var(--bg-base)]/70 px-1.5 py-0.5 text-micro tabular-nums text-secondary backdrop-blur-sm">
         #{rank}
       </span>
 
@@ -220,14 +213,11 @@ export default async function Home() {
             crossing the tagline just read as a rendering artefact. */}
 
         <div className="relative mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <p className="text-micro font-semibold uppercase tracking-[0.18em] text-muted">
-            League of Legends Arena · 3v3 Three by Six
-          </p>
-          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight text-primary sm:text-display-lg">
+          <h1 className="font-display text-4xl font-semibold tracking-tight text-primary sm:text-display-lg">
             <Wordmark />
           </h1>
           <p className="mt-3 max-w-md text-balance text-secondary">
-            Free champion, item and augment tier lists — built from real tracked matches.
+            League of Legends Arena tier lists for champions, items and augments, built from real matches.
           </p>
 
           <div className="mt-8 max-w-xl">
@@ -244,14 +234,13 @@ export default async function Home() {
 
       <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="font-display text-h1 font-semibold text-primary">Meta Snapshot</h2>
+          <h2 className="font-display text-h1 font-semibold text-primary">
+            Best champions{patch.defaultPatch ? ` on ${patch.defaultPatch}` : ""}
+          </h2>
           <Link href="/champions" className="text-small text-accent hover:underline">
             Full tier list →
           </Link>
         </div>
-        <p className="mt-1 text-small text-muted">
-          Highest-scoring champions right now, by tier score.
-        </p>
 
         {podium.length > 0 && (
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -270,27 +259,6 @@ export default async function Home() {
         )}
       </section>
 
-      {/* Half the nav was reachable only from the nav itself. No extra fetch
-          here: every number below is already loaded for the section above. */}
-      <section className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
-        <h2 className="font-display text-h1 font-semibold text-primary">Explore</h2>
-        <p className="mt-1 text-small text-muted">Every tier list, ranked the same way.</p>
-        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {EXPLORE.map((card) => (
-            <Link
-              key={card.href}
-              href={card.href}
-              className="group flex flex-col rounded-xl border border-subtle bg-raised/40 p-4 transition-colors hover:border-default hover:bg-overlay"
-            >
-              <span className="font-display text-h2 font-semibold text-primary">{card.title}</span>
-              <span className="mt-1 text-small text-muted">{card.blurb}</span>
-              <span className="mt-3 text-small text-accent">
-                Open <span className="inline-block transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none">→</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

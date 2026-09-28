@@ -184,7 +184,7 @@ export function MiniStatHeader() {
  *  gets the room the label used to take (text-xs -> text-small). */
 export function MiniStat({ value, colorClass }: { value: string; colorClass?: string }) {
   return (
-    <div className={`font-mono text-small [font-variant-numeric:tabular-nums] ${colorClass ?? "text-secondary"}`}>
+    <div className={`tabular-nums text-small [font-variant-numeric:tabular-nums] ${colorClass ?? "text-secondary"}`}>
       {value}
     </div>
   );

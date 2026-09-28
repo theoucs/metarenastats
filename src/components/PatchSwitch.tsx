@@ -66,8 +66,9 @@ export function PatchSwitch({
     <>
       <HeadlineRow
         aside={
-          <HeaderAside label="Patch">
-            <div className="inline-flex rounded-lg border border-subtle bg-inset p-1">
+          <HeaderAside>
+            <div className="inline-flex items-center rounded-lg border border-subtle bg-inset p-1">
+              <span className="px-2 text-small text-muted">Patch</span>
               {context.options.map((option) => {
                 const active = option.patch === selected;
                 return (

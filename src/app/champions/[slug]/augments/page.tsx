@@ -30,7 +30,7 @@ export default async function ChampionAugmentsPage({
       {detail && (
         <>
           <TabHeading title="Augments">
-            Every augment taken on {champInfo.name}, tiered on {champInfo.name}&apos;s games alone —
+            Every augment taken on {champInfo.name}, tiered on {champInfo.name}&apos;s games alone,
             not on how the augment performs across the roster.
           </TabHeading>
           <div className="mt-4">

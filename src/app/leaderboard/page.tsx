@@ -36,22 +36,21 @@ export default async function LeaderboardPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <HeadlineRow
         aside={
-          <HeaderAside label="Scope">
-            <span className="rounded-lg border border-subtle bg-inset px-3 py-1.5 text-small font-medium text-primary">
-              All patches
-            </span>
+          <HeaderAside>
+            {/* Plain text, not a pill: the pill looked like a button that did
+                nothing. */}
             <span className="text-small text-muted">
-              <span className="tabular-nums text-secondary">{formatCount(totalMatches)}</span> matches tracked
+              All patches ·{" "}
+              <span className="tabular-nums text-secondary">{formatCount(totalMatches)}</span> matches
             </span>
           </HeaderAside>
         }
       >
         <PageHeader
-          eyebrow="Rankings"
           title="Player Leaderboard"
           description={
             <>
-              Ranked by Arena MMR — it moves with every game, weighted by who you faced and who you
+              Ranked by Arena MMR. It moves with every game, weighted by who you faced and who you
               played with (
               <Link href="/info" className="text-accent hover:underline">
                 how it works

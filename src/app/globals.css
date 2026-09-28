@@ -128,7 +128,6 @@
   --color-stat-bad: var(--stat-bad);
 
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
   --font-display: var(--font-bricolage), var(--font-geist-sans);
 
   /* Type scale — see docs/design-refresh-plan.md §3.3 */

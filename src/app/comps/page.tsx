@@ -68,15 +68,14 @@ export default async function CompsPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
         <PageHeader
-          eyebrow="Tier list"
           title="Team Comps"
-          description="Three-champion shapes, measured on every team in every match — not just the one you were on. Needs 20 teams."
+          description="Three-champion shapes, measured on every team in every match, not just yours. Needs 20 teams."
         >
           <ShowMoreNote label="Why shapes, and not champion names">
             <p className="max-w-2xl text-small text-muted">
               Naming specific champions doesn&apos;t work yet: nearly every three-champion
               combination has been seen exactly once, and few pairings clear 8 games. Both tabs
-              unlock when the sample supports them — ranking either one today would be noise with a
+              unlock when the sample supports them. Ranking either one today would be noise with a
               tier badge on it.
             </p>
             <p className="mt-1.5 max-w-2xl text-small text-muted">

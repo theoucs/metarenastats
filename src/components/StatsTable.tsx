@@ -146,7 +146,7 @@ export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
     <p className="text-small text-muted">
       Sample size: <span className="text-secondary">{formatCount(totalMatches)}</span> match
-      {totalMatches === 1 ? "" : "es"} tracked so far — data grows with every search
+      {totalMatches === 1 ? "" : "es"} tracked so far, and growing with every search
     </p>
   );
 }
@@ -175,7 +175,7 @@ function RankCell({ rank }: { rank: number }) {
       </span>
     );
   }
-  return <span className="font-mono tabular-nums text-muted">{rank}</span>;
+  return <span className="tabular-nums text-muted">{rank}</span>;
 }
 
 export function TierBadge({ tier }: { tier: Tier }) {
@@ -604,7 +604,7 @@ function DataRow({
         {variant === "ranked" ? (
           <RankCell rank={row.rank ?? rank + 1} />
         ) : (
-          <span className="font-mono tabular-nums text-muted">{rank + 1}</span>
+          <span className="tabular-nums text-muted">{rank + 1}</span>
         )}
       </td>
       {variant === "tiers" && !hideTierColumn && (

@@ -87,20 +87,20 @@ function riotErrorResult(status: number): SearchPlayerResult {
     return {
       ok: false,
       status: 502,
-      error: "Search is temporarily unavailable (API key issue) — please try again shortly.",
+      error: "Search is temporarily unavailable (API key issue). Please try again shortly.",
     };
   }
   if (status === 429) {
     return {
       ok: false,
       status: 502,
-      error: "Too many searches right now — please try again in a moment.",
+      error: "Too many searches right now. Please try again in a moment.",
     };
   }
   return {
     ok: false,
     status: 502,
-    error: "Riot API is temporarily unavailable — please try again shortly.",
+    error: "Riot API is temporarily unavailable. Please try again shortly.",
   };
 }
 

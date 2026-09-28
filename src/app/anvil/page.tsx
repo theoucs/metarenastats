@@ -93,10 +93,8 @@ export default async function AnvilPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
         <PageHeader
-          eyebrow="Tier list"
           title="Anvil Run"
-          isNew
-          description="Champions played on a full anvil run — stat anvils only, no items bought."
+          description="Champions played on a full anvil run: stat anvils only, no items bought."
         />
       </PatchSwitch>
     </div>

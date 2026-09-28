@@ -58,7 +58,7 @@ export default async function ChampionAnvilPage({
       {detail && (
         <>
           <TabHeading title="Anvil Run">
-            Games where {champInfo.name} bought nothing at all — every item came from an anvil or an
+            Games where {champInfo.name} bought nothing at all. Every item came from an anvil or an
             augment. A different game, so it gets its own numbers.
           </TabHeading>
 
@@ -78,15 +78,15 @@ export default async function ChampionAnvilPage({
                       Same split, measured on every champion at once, sits on the{" "}
                       <Link href="/anvil" className="text-accent hover:underline">
                         Anvil Run tier list
-                      </Link>{" "}
-                      — a hundred times the sample, so trust that one when the two disagree.
+                      </Link>
+                      , with a hundred times the sample. Trust that one when the two disagree.
                     </p>
                   </>
                 )}
               </div>
 
               <TabHeading title="Prismatic Items">
-                Ranked among anvil runs only — &quot;% of games&quot; is a share of the{" "}
+                Ranked among anvil runs only: &quot;% of games&quot; is a share of the{" "}
                 {formatCount(anvilGames)} anvil games, not of every game.
               </TabHeading>
               {/* La grille seule, sans barre d'onglets : une enclume ne donne
@@ -114,7 +114,7 @@ export default async function ChampionAnvilPage({
 
               <p className="mt-4 text-micro text-muted">
                 Built on {formatCount(anvilGames)} anvil games. That is a small sample even for a much-played
-                champion, so the threshold here is 3 rather than 5 — the tiers are indicative, not a
+                champion, so the threshold here is 3 rather than 5. The tiers are indicative, not a
                 verdict.
               </p>
             </>

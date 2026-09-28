@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
+import { Geist, Bricolage_Grotesque } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
@@ -24,7 +19,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "MetArenaStats — League of Legends Arena stats & tier lists",
+  title: "MetArenaStats · League of Legends Arena stats & tier lists",
   description: "Free stats, tier lists and leaderboards for League of Legends Arena (EUW).",
 };
 
@@ -32,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${bricolage.variable} h-full antialiased`}
     >
       {/* Background/color come from the `body` rule in globals.css (tokens),
           not Tailwind classes here — keeps a single source of truth. */}

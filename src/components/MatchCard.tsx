@@ -88,7 +88,7 @@ function PlayerRow({ player, highlight }: { player: MatchPlayer; highlight?: boo
             ) : (
               <span className="truncate text-small font-medium text-primary">{player.champion}</span>
             )}
-            <span className="shrink-0 font-mono text-micro text-secondary">
+            <span className="shrink-0 tabular-nums text-micro text-secondary">
               {player.kills}/{player.deaths}/{player.assists}
             </span>
           </div>

@@ -59,7 +59,7 @@ export default async function ChampionCombosPage({
             and the more candidates you rank the more the best one stands out for reasons that
             aren&apos;t merit. Pairs seen fewer than 10 times are left out, and only the best 60 per
             category are kept. Unlike the Items tab, these numbers carry no correction for when a
-            pick arrives — a pair completed late inherits the placement of a game that was already
+            pick arrives: a pair completed late inherits the placement of a game that was already
             going well.
           </p>
         </>

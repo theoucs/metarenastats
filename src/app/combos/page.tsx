@@ -51,9 +51,7 @@ export default async function CombosPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <PatchSwitch context={patch} views={views}>
         <PageHeader
-          eyebrow="Tier list"
           title="Combos"
-          isNew
           description="Two items or augments taken by the same player in the same game. Needs 5 games; top 200 per category."
         >
           <p className="mt-2 text-small text-muted">

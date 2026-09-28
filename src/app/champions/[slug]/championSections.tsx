@@ -117,7 +117,7 @@ export function ShardbladeRateBlock({ rate }: { rate: number }) {
       )}
       <div className="min-w-0">
         <div className="text-micro text-muted">Shardblade obtained</div>
-        <div className="truncate font-mono text-small font-medium text-primary">
+        <div className="truncate tabular-nums text-small font-medium text-primary">
           {(rate * 100).toFixed(0)}% of anvil games
         </div>
       </div>
@@ -237,7 +237,7 @@ function OpeningCell({
   return (
     <td className="py-2 pl-2 text-right">
       <span
-        className={`font-mono [font-variant-numeric:tabular-nums] ${
+        className={`tabular-nums ${
           emphasis ? "font-semibold" : ""
         } ${colorClass ?? "text-secondary"}`}
       >
@@ -353,7 +353,7 @@ export function ItemSlotBlock({ slot }: { slot: ChampionItemSlot }) {
               className="h-16 w-16 rounded-lg border border-subtle object-cover"
             />
           </EntityTooltip>
-          <div className="font-mono text-micro text-secondary">{(primary.playRate * 100).toFixed(0)}%</div>
+          <div className="tabular-nums text-micro text-secondary">{(primary.playRate * 100).toFixed(0)}%</div>
         </>
       )}
 

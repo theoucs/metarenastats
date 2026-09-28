@@ -126,8 +126,8 @@ export function AnvilOpenerSwitch({
           conclusions. */}
       {opener && (
         <p className="mb-3 text-micro text-muted">
-          Champions under 10 anvil runs on this opener are hidden. Even above it the sample is thin
-          — the table is a hint, the panel above is the solid number.
+          Champions under 10 anvil runs on this opener are hidden. Even above it the sample is thin:
+          the table is a hint, the panel above is the solid number.
         </p>
       )}
 
@@ -316,7 +316,7 @@ function Cell({
   return (
     <td className="py-2 pl-2 text-right align-top">
       <span
-        className={`block font-mono [font-variant-numeric:tabular-nums] ${
+        className={`block tabular-nums ${
           emphasis ? "text-body font-semibold" : ""
         } ${colorClass ?? "text-secondary"}`}
       >
@@ -326,7 +326,7 @@ function Cell({
           pas dans 390 px et le panneau partait en défilement horizontal. */}
       {deltaText && better !== undefined && (
         <span
-          className={`block font-mono text-micro [font-variant-numeric:tabular-nums] ${
+          className={`block tabular-nums text-micro [font-variant-numeric:tabular-nums] ${
             Math.abs(better) < DELTA_NOISE
               ? "text-muted"
               : better > 0
