@@ -39,3 +39,7 @@ status like the timeline fix got.
 distributed one — that would be Vercel's firewall.
 
 **Vercel Hobby forbids commercial use.** Ads or donations mean Pro ($20/month).
+
+**Three lint errors predate the design work.** `react-hooks/set-state-in-effect` in
+`Nav.tsx`, `NavSearch.tsx` and `HomeSearch.tsx` (a setState in a mount effect). Harmless
+today; `npm run lint` is not clean until they are rewritten.

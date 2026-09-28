@@ -115,6 +115,18 @@ below exist because something was actually wrong at one of those widths.
   tables grow through a sentinel as the page nears their end.
 - **Counts are formatted** with `formatCount()` ("126,814"), never raw.
 
+## Patterns added on 2026-09-28
+
+- **Navigation**: `Tier lists ▾` (Champions first, then Items, Augments, Team Comps, Anvil
+  Run, Combos) and `Leaderboard`. Info & Tips lives in the footer.
+- **Ranks** are the official emblem (`public/img/rank`, cropped WebP ~5 KB) plus the name in
+  neutral text. No coloured rank pill: it borrowed the stat green and red.
+- **Short lists** (champion summary) are compact tables (`MiniStatTable`): one header, one
+  line per entry, numbers packed right. Not a card per entry.
+- **Placement distribution**: six bars, 1st in gold (the "best" colour), 2nd and 3rd in the
+  accent, 4th to 6th grey, on one fixed 0-30 % scale shared by every row.
+- **Patch movers** (▲/▼) only beyond three standard errors; never a delta on every row.
+
 ## Motion
 
 Motion confirms an action; it never announces itself. Tab and sort changes slide a
