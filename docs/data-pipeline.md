@@ -315,3 +315,32 @@ measurement rather than a guess: a new patch's sample correlates with its own ev
 tier list at 0.48 at 750 matches, 0.76 at 3 000 and 0.82 at 6 000 — while the *previous*
 patch predicts it at 0.80–0.90 across three measured pairs. Below ~5 000, the old patch
 is the better description of the new one. The table is in `src/lib/patches.ts`.
+
+## Archiving becomes a job step (2026-09-28)
+
+The first archiving (24 September) was done by hand, a patch at a time, with
+`roll_up_patch` then `drop_patch_participations`. Two things made that unfit to automate.
+It *replaced* a patch's totals rather than adding to them, while the crawler kept
+bringing matches from archived patches — 263 000 participations by the 28th, which
+re-running it would have turned into the whole archive of their patch. And nothing
+recorded *which* matches had been archived, so a player search, which re-saves the last
+twenty games it reads, could give an archived match its participations back.
+
+The unit is now the match. `archive_old_matches(n)` takes matches outside the two
+published patches whose rating row is built, deletes their participations *returning*
+them, counts those (with the same AFK exclusion as `participants_clean`), adds the
+counters to `player_champion_totals` and stamps `archived_at` — one statement, so no row
+can be deleted without being counted. `persistMatches` skips archived matches.
+
+The check was exact rather than approximate, because each match's rating row lists the
+participants it counted: across the 14 637 matches of the first run, the archive grew by
+262 824 games, 918 210 placement points, 43 902 top-1s and 131 754 top-3s, and the rating
+rows of those matches sum to the same four numbers.
+
+It runs in the ratings phase, after `sync_match_rating_rows`, in batches of 5 000 matches
+(~25 s each) until 150 s into the phase. A patch rollover — ~30 000 matches — clears in a
+few hourly passes.
+
+The same day, timeline passes were restricted to the published patches: once the recent
+backlog is clear they were spending calls on the purchase order of archived matches,
+which the archive does not keep.

@@ -1164,3 +1164,11 @@ create index if not exists crawl_queue_next_recent_idx
   on crawl_queue (priority, last_crawled_at nulls first, discovered_at desc)
   where error_count < 5;
 drop index if exists crawl_queue_next_idx;
+
+-- ─── ARCHIVAGE PAR MATCH (2026-09-28) ──────────────────────────────────────
+--
+-- `matches.archived_at` : posé par archive_old_matches() quand les
+-- participations d'un match ont été résumées dans player_champion_totals puis
+-- supprimées. roll_up_patch et drop_patch_participations sont supprimées.
+-- Voir supabase/migrations/20260928-archivage-automatique.sql.
+alter table matches add column if not exists archived_at timestamptz;

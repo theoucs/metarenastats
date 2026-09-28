@@ -104,14 +104,13 @@ compression of width, not of height.
 What matters more than the factor is that `match_participants` stops growing without
 bound. Two patches, and that is all.
 
-**Known gap.** The crawler keeps backfilling matches on patches that were already
-archived — 269 000 raw participations belong to them today, read by nothing but the
-ratings. Since 2026-09-28 only the ladder-tracking half of the crawl still reads full
-histories; discovery stops at the start of the current patch. The
-published figures stay correct (the archive holds what was deleted, the raw table holds
-the rest, every game counted once), but re-running `roll_up_patch` on such a patch would
-*replace* its totals with only the newly-crawled subset rather than add to them. Archiving
-is a deliberate, one-at-a-time operation for now, not a job step.
+**Automatic, and per match.** The hourly ratings phase archives every match that has left
+the two published patches: it adds the match's counters to the archive, deletes its
+participations and stamps `matches.archived_at`, all in one statement — so a match can be
+counted once and only once, whether it was crawled before the patch rolled over or long
+after. A player search never rewrites an archived match. Verified on the first run, which
+swept up 14 637 late-crawled matches: the archive grew by exactly the counters their rating
+rows hold (262 824 games, and the same for placements, top-1s and top-3s).
 
 ## Stack
 

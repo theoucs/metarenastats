@@ -117,6 +117,110 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.archive_old_matches(max_matches integer)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+ SET work_mem TO '64MB'
+ SET statement_timeout TO '280s'
+AS $function$
+declare
+  archived integer;
+begin
+  -- `on commit drop` ne suffit pas : deux appels dans une même transaction
+  -- retrouveraient les tables du premier.
+  drop table if exists pg_temp.published, pg_temp.batch;
+
+  -- Les deux publiés : même règle que patch_options() et que le site.
+  create temp table published on commit drop as
+  select m.patch
+  from matches m
+  where m.patch is not null and m.ingested_at is not null
+  group by m.patch
+  having count(*) >= 5
+  order by string_to_array(m.patch, '.')::int[] desc
+  limit 2;
+
+  -- Garde-fou : sans deux patchs publiés connus, on ne sait pas ce qui est
+  -- vieux. Mieux vaut ne rien archiver que tout archiver.
+  if (select count(*) from published) < 2 then
+    return 0;
+  end if;
+
+  create temp table batch on commit drop as
+  select m.match_id, m.patch
+  from matches m
+  join match_rating_rows r on r.match_id = m.match_id and r.built_at >= m.ingested_at
+  where m.archived_at is null
+    and m.ingested_at is not null
+    and m.patch is not null
+    and m.patch not in (select patch from published)
+  limit max_matches;
+
+  if not exists (select 1 from batch) then
+    return 0;
+  end if;
+
+  with gone as (
+    delete from match_participants p
+    using batch b
+    where p.match_id = b.match_id
+    returning p.match_id, p.player_id, p.subteam_id, p.placement, p.champion, p.items
+  ),
+  -- Même exclusion que la vue participants_clean : une équipe dont un membre
+  -- porte un objet AFK ne compte pas. Calculable sur `gone` seul, puisque
+  -- toutes les participations d'un match partent ensemble.
+  afk as (
+    select distinct match_id, subteam_id
+    from gone
+    where items && array[220008, 220009, 220010, 220011]
+  ),
+  counted as (
+    select g.player_id, g.champion, b.patch,
+           count(*) as games,
+           count(*) filter (where g.placement = 1) as top1,
+           count(*) filter (where g.placement <= 3) as top3,
+           sum(g.placement) as placement_sum
+    from gone g
+    join batch b on b.match_id = g.match_id
+    where not exists (
+      select 1 from afk a where a.match_id = g.match_id and a.subteam_id = g.subteam_id
+    )
+    group by g.player_id, g.champion, b.patch
+  ),
+  written as (
+    insert into player_champion_totals (player_id, champion, patch, games, top1_wins, top3_wins, placement_sum)
+    select player_id, champion, patch, games, top1, top3, placement_sum from counted
+    on conflict (player_id, champion, patch) do update
+      set games         = player_champion_totals.games         + excluded.games,
+          top1_wins     = player_champion_totals.top1_wins     + excluded.top1_wins,
+          top3_wins     = player_champion_totals.top3_wins     + excluded.top3_wins,
+          placement_sum = player_champion_totals.placement_sum + excluded.placement_sum
+    returning patch
+  ),
+  per_patch as (
+    select c.patch, sum(c.games) as participations,
+           (select count(*) from written w where w.patch = c.patch) as rows_written
+    from counted c
+    group by c.patch
+  )
+  insert into rolled_patches (patch, participations, rows_written)
+  select patch, participations, rows_written from per_patch
+  on conflict (patch) do update
+    set rolled_at      = now(),
+        participations = rolled_patches.participations + excluded.participations,
+        rows_written   = rolled_patches.rows_written   + excluded.rows_written;
+
+  update matches m set archived_at = now()
+  from batch b where m.match_id = b.match_id;
+  get diagnostics archived = row_count;
+
+  return archived;
+end;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.augment_stats(target_patch text)
  RETURNS TABLE(augment_id integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
@@ -357,44 +461,6 @@ AS $function$
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.drop_patch_participations(target_patch text)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
- SET statement_timeout TO '600s'
-AS $function$
-declare
-  removed integer;
-begin
-  if not exists (select 1 from rolled_patches where patch = target_patch) then
-    raise exception 'Patch % non archivé — lancer roll_up_patch(%) d''abord.',
-      target_patch, target_patch;
-  end if;
-
-  if target_patch in (
-    select m.patch
-    from matches m
-    where m.patch is not null and m.ingested_at is not null
-    group by m.patch
-    having count(*) >= 5
-    order by string_to_array(m.patch, '.')::int[] desc
-    limit 2
-  ) then
-    raise exception 'Patch % est publié — le site le lit, on n''y touche pas.',
-      target_patch;
-  end if;
-
-  delete from match_participants p
-  using matches m
-  where m.match_id = p.match_id and m.patch = target_patch;
-  get diagnostics removed = row_count;
-
-  return removed;
-end;
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.dump_aggregation_functions()
  RETURNS text
  LANGUAGE sql
@@ -625,56 +691,6 @@ CREATE OR REPLACE FUNCTION public.refresh_published_participants()
 AS $function$
 begin
   refresh materialized view concurrently participants_published;
-end;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.roll_up_patch(target_patch text)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
- SET work_mem TO '64MB'
- SET statement_timeout TO '600s'
-AS $function$
-declare
-  written integer;
-  seen integer;
-begin
-  -- `participants_clean` et non la table brute : l'archive doit appliquer les
-  -- mêmes exclusions que les tier lists (équipes AFK), sinon la carrière d'un
-  -- joueur compterait des parties que le reste du site ne compte pas.
-  insert into player_champion_totals (
-    player_id, champion, patch, games, top1_wins, top3_wins, placement_sum
-  )
-  select
-    p.player_id,
-    p.champion,
-    target_patch,
-    count(*),
-    count(*) filter (where p.placement = 1),
-    count(*) filter (where p.placement <= 3),
-    sum(p.placement)
-  from participants_clean p
-  where p.patch = target_patch
-  group by p.player_id, p.champion
-  on conflict (player_id, champion, patch) do update
-    set games         = excluded.games,
-        top1_wins     = excluded.top1_wins,
-        top3_wins     = excluded.top3_wins,
-        placement_sum = excluded.placement_sum;
-  get diagnostics written = row_count;
-
-  select count(*) into seen from participants_clean where patch = target_patch;
-
-  insert into rolled_patches (patch, participations, rows_written)
-  values (target_patch, seen, written)
-  on conflict (patch) do update
-    set rolled_at = now(),
-        participations = excluded.participations,
-        rows_written = excluded.rows_written;
-
-  return written;
 end;
 $function$
 ;

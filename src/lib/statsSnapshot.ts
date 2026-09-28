@@ -359,10 +359,46 @@ export type RatingsReport = {
   rated: number;
   matches: number;
   promoted: number;
+  archived: number;
   durationMs: number;
   commit: string;
   timings: Record<string, number>;
 };
+
+/** Matchs par appel d'archive_old_matches. Mesuré le 2026-09-28 : 5 000
+ *  matchs (~90 000 participations) en ~25 s. */
+const ARCHIVE_BATCH = 5000;
+
+/** Au-delà, on laisse la suite au passage suivant : la phase doit finir dans
+ *  ses 300 s, et le classement en a déjà pris ~100. */
+const ARCHIVE_BUDGET_MS = 150_000;
+
+/**
+ * Résume puis supprime les participations des matchs sortis des deux patchs
+ * publiés (voir supabase/migrations/20260928-archivage-automatique.sql).
+ *
+ * Ici, dans la phase classement, et APRÈS le MMR : un match n'est archivable
+ * qu'une fois sa ligne de classement construite depuis ses participations —
+ * c'est sync_match_rating_rows, appelé par refreshPlayerRatings, qui la
+ * construit. La fonction SQL le vérifie elle-même.
+ *
+ * Le jour d'une bascule de patch, ~30 000 matchs d'un coup : quelques passages
+ * horaires, par tranches. Les autres heures, les quelques retardataires du
+ * crawler, en une seconde.
+ */
+async function archiveOldMatches(phaseStartedAt: number): Promise<number> {
+  let total = 0;
+  while (Date.now() - phaseStartedAt < ARCHIVE_BUDGET_MS) {
+    const { data, error } = await supabaseAdmin!.rpc("archive_old_matches", {
+      max_matches: ARCHIVE_BATCH,
+    });
+    if (error) throw error;
+    const archived = Number(data ?? 0);
+    total += archived;
+    if (archived < ARCHIVE_BATCH) break;
+  }
+  return total;
+}
 
 /**
  * La phase classement, détachée de la publication.
@@ -406,11 +442,17 @@ export async function refreshRatings(): Promise<RatingsReport> {
   timings.promote = Date.now() - promoteAt;
   if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
 
+  const archiveAt = Date.now();
+  const archived = await archiveOldMatches(startedAt);
+  timings.archive = Date.now() - archiveAt;
+  if (archived) console.log(`[stats] ${archived} match(s) archivé(s)`);
+
   return {
     ok: true,
     rated: rating.rated,
     matches: rating.matches,
     promoted,
+    archived,
     durationMs: Date.now() - startedAt,
     commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
     timings,

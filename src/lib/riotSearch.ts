@@ -320,8 +320,23 @@ export async function fetchSummonerProfile(puuid: string): Promise<SummonerProfi
  * donc résoudre à l'écriture. C'est le prix de 415 Mo rendus à la base — et il
  * se paie en deux requêtes par paquet de dix matchs, pas par ligne.
  */
-export async function persistMatches(matches: MatchResult[]) {
-  if (!supabaseAdmin || matches.length === 0) return;
+export async function persistMatches(incoming: MatchResult[]) {
+  if (!supabaseAdmin || incoming.length === 0) return;
+
+  // 0. Jamais un match déjà archivé (archive_old_matches). Ses participations
+  //    sont résumées dans player_champion_totals : les réécrire le ferait
+  //    compter deux fois dans la carrière du joueur. C'est la recherche qui
+  //    tombe dessus — elle relit les 20 dernières parties d'un joueur, quel
+  //    qu'en soit le patch.
+  const { data: archivedRows, error: archivedError } = await supabaseAdmin
+    .from("matches")
+    .select("match_id")
+    .in("match_id", incoming.map((m) => m.matchId))
+    .not("archived_at", "is", null);
+  if (archivedError) throw archivedError;
+  const archived = new Set((archivedRows ?? []).map((r) => r.match_id as string));
+  const matches = incoming.filter((m) => !archived.has(m.matchId));
+  if (matches.length === 0) return;
 
   // 1. Les matchs. `ingested_at` n'est volontairement pas dans la charge utile :
   //    en cas de conflit PostgREST ne met à jour que les colonnes fournies, donc
