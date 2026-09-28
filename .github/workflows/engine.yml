@@ -22,8 +22,8 @@
 #
 # La bonne forme est donc l'inverse : tourner longtemps, doucement.
 #
-#   Par cycle : 1 passe de crawl (136 appels) + 2 passes de timeline (2 × 81)
-#               = 298 appels, étalés sur ~20 min de cycle
+#   Par cycle : 1 passe de crawl (151 appels) + 2 passes de timeline (2 × 81)
+#               = 313 appels, étalés sur ~20 min de cycle
 #   Soit ~0,25 appel/s contre 0,83 autorisé → ON UTILISE UN QUART DE LA CLÉ.
 #
 # Les trois quarts restants appartiennent en permanence aux visiteurs. C'est

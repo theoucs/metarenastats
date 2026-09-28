@@ -325,7 +325,12 @@ async function markPlayersCrawled(entries: { puuid: string; matchesFound: number
 export async function runCrawl({
   maxDurationMs = 240_000,
   maxMatches = 150,
-  playerBatch = 15,
+  // 30 et non plus 15 depuis que la découverte est bornée au patch courant
+  // (2026-09-28) : un joueur n'y rapporte que ses parties des derniers jours,
+  // et à 15 la première passe n'a trouvé que 40 matchs 16.19 pour 120 places —
+  // le reste repartait sur les vieux historiques du suivi. Un joueur de plus
+  // coûte un appel, pas cent.
+  playerBatch = 30,
 }: CrawlOptions = {}): Promise<CrawlReport> {
   const startedAt = Date.now();
   const deadline = startedAt + maxDurationMs;
