@@ -69,7 +69,7 @@ export function NavSearch({
   }
 
   return (
-    <div className="relative w-full md:w-44 xl:w-56">
+    <div className="relative w-full md:w-56 lg:w-72">
       <form
         onSubmit={(e) => {
           e.preventDefault();
