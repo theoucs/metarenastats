@@ -8,8 +8,9 @@
 --
 -- Le jeton est un « fine-grained token » GitHub limité au dépôt
 -- theoucs/metarenastats et au seul droit Actions (lecture/écriture), rangé dans
--- le Vault sous `github_dispatch_token` par Théo (jamais dans le dépôt). Il
--- expire : quand les déclenchements se mettent à répondre 401, c'est lui.
+-- le Vault sous `github_dispatch_token` par Théo (jamais dans le dépôt), sans
+-- date d'expiration. Si les déclenchements répondent un jour 401, c'est qu'il a
+-- été révoqué ou supprimé.
 --
 -- Les crons GitHub des workflows restent en place comme filet. Deux
 -- déclenchements rapprochés ne font pas deux moteurs : le groupe de concurrence

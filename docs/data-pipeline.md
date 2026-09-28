@@ -442,9 +442,10 @@ as a backup; the `riot-api` concurrency group turns a second engine trigger into
 that starts when the current one ends, which is exactly continuous coverage.
 
 The token is a fine-grained GitHub token limited to this repository and to Actions
-read/write, stored in the Supabase Vault as `github_dispatch_token` (never in the repo). It
-expires (a year at most, so by 2026-09-28 + 1 year): when it does, the dispatches start
-answering 401 and the site falls back to GitHub's own schedule. To check:
+read/write, stored in the Supabase Vault as `github_dispatch_token` (never in the repo),
+created without an expiry date. GitHub still deletes a token unused for a year, which an
+hourly dispatch rules out. If it is ever revoked or deleted, the dispatches start answering
+401 and the site falls back to GitHub's own schedule. To check:
 
 ```sql
 select status_code, created from net._http_response order by id desc limit 5;  -- 204 = ok

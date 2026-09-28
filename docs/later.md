@@ -39,8 +39,3 @@ status like the timeline fix got.
 distributed one — that would be Vercel's firewall.
 
 **Vercel Hobby forbids commercial use.** Ads or donations mean Pro ($20/month).
-
-**The GitHub token behind the job clock expires.** `github_dispatch_token` in the Supabase
-Vault (created 2026-09-28, one year at most). When it lapses the hourly triggers get 401 and
-only GitHub's unreliable schedule is left. Renew it in the Vault; see `data-pipeline.md`,
-"The clock moves to the database".
