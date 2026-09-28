@@ -41,7 +41,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,16 +73,40 @@ function engineRunning() {
   }
 }
 
+/**
+ * Publie, avec UN réessai.
+ *
+ * Le rafraîchissement de la vue matérialisée prend un verrou. Si le job
+ * horaire tourne en même temps, la seconde tentative repart en « canceling
+ * statement due to lock timeout » — observé le 2026-09-23 et de nouveau le
+ * 2026-09-28, où il a fait échouer une capture de référence après quatre
+ * minutes de travail.
+ *
+ * C'est une collision de calendrier, pas un défaut : le réessai suffit, et il
+ * vaut mieux que perdre la capture. Deux échecs d'affilée, en revanche, ne
+ * sont plus un hasard et doivent remonter.
+ */
 async function publish() {
   const site = env("SITE_URL", "https://metarenastats.tblabs.dev").replace(/\/$/, "");
-  const res = await fetch(`${site}/api/cron/refresh-stats?only=snapshots`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env("CRON_SECRET")}` },
-  }).catch(() => null);
-  if (!res || !res.ok) throw new Error(`Publication échouée (HTTP ${res?.status ?? "réseau"})`);
-  const report = await res.json();
-  if (!report.ok) throw new Error(`Publication en erreur : ${report.error}`);
-  return report;
+  let derniere = "";
+  for (let essai = 1; essai <= 2; essai++) {
+    const res = await fetch(`${site}/api/cron/refresh-stats?only=snapshots`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env("CRON_SECRET")}` },
+    }).catch(() => null);
+    if (res?.ok) {
+      const report = await res.json();
+      if (report.ok) return report;
+      derniere = report.error ?? "sans message";
+    } else {
+      derniere = `HTTP ${res?.status ?? "réseau"}`;
+    }
+    if (essai === 1) {
+      console.warn(`⚠ publication échouée (${derniere}) — un réessai dans 20 s`);
+      await new Promise((r) => setTimeout(r, 20_000));
+    }
+  }
+  throw new Error(`Publication échouée deux fois : ${derniere}`);
 }
 
 async function readSnapshots() {
@@ -208,11 +232,11 @@ if (mode === "capture") {
     process.exit(1);
   }
 
-  writeFileSync(join(root, file), JSON.stringify(s1));
+  writeFileSync(resolve(root, file), JSON.stringify(s1));
   console.log(`✓ Harnais stable : ${check.snapshots} snapshots, ${check.compared} feuilles, identiques.`);
   console.log(`  Référence écrite dans ${file} (${r1.sourceParticipants} participations).`);
 } else {
-  const before = JSON.parse(readFileSync(join(root, file), "utf8"));
+  const before = JSON.parse(readFileSync(resolve(root, file), "utf8"));
   console.log("· publication");
   await publish();
   const after = await readSnapshots();

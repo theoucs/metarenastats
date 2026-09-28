@@ -493,6 +493,67 @@ type DerivedSet = {
 
 const derivedStore = new WeakMap<ParticipantRow[], DerivedSet>();
 
+/**
+ * ─── LES AGRÉGATS PAR CHAMPION, CHARGÉS UNE FOIS POUR LES 173 ───────────────
+ *
+ * `getChampionDetail` est appelée une fois par champion. Une requête par appel
+ * ferait 173 allers-retours pour un travail que Postgres fait en un seul
+ * regroupement — et sur ce job, l'aller-retour coûte plus cher que le calcul.
+ *
+ * Le cache est une `WeakMap` sur le JEU DE PARTICIPANTS lui-même, comme
+ * `derivedStore` juste au-dessus : deux patchs sont deux jeux, donc deux
+ * entrées, et rien ne survit au jeu qui l'a produit. La promesse est mémorisée
+ * et non son résultat, si bien que les 173 appels qui partent ensemble
+ * attendent la même requête au lieu d'en lancer 173.
+ */
+type SqlDerived = {
+  championAugments?: Promise<Map<string, ChampionAugmentRow[]>>;
+};
+
+const sqlStore = new WeakMap<ParticipantSet, SqlDerived>();
+
+function sqlDerivedOf(set: ParticipantSet): SqlDerived {
+  let derived = sqlStore.get(set);
+  if (!derived) {
+    derived = {};
+    sqlStore.set(set, derived);
+  }
+  return derived;
+}
+
+/** Ce que `champion_augment_stats` rend : des compteurs, jamais des taux. */
+type ChampionAugmentRow = {
+  champion: string;
+  augment_id: number;
+  games: number;
+  top1_wins: number;
+  top3_wins: number;
+  placement_sum: number;
+};
+
+/** Les augments de chaque champion, indexés par champion en minuscules —
+ *  la clé sous laquelle `getChampionDetail` reçoit son champion. */
+async function championAugmentsOf(set: ParticipantSet): Promise<Map<string, ChampionAugmentRow[]>> {
+  const derived = sqlDerivedOf(set);
+  derived.championAugments ??= (async () => {
+    const byChampion = new Map<string, ChampionAugmentRow[]>();
+    if (!set.patch || !supabaseAdmin) return byChampion;
+    const { data, error } = await supabaseAdmin.rpc("champion_augment_stats", {
+      target_patch: set.patch,
+      min_games: CHAMPION_LIST_MIN_GAMES,
+    });
+    if (error) throw error;
+    for (const row of (data ?? []) as ChampionAugmentRow[]) {
+      const key = row.champion.toLowerCase();
+      const list = byChampion.get(key);
+      if (list) list.push(row);
+      else byChampion.set(key, [row]);
+    }
+    return byChampion;
+  })();
+  return derived.championAugments;
+}
+
 function derivedOf(rows: ParticipantRow[]): DerivedSet {
   let derived = derivedStore.get(rows);
   if (!derived) {
@@ -1988,7 +2049,8 @@ export async function getChampionDetail(
    */
   reusedCombos?: { allCombos: Record<ComboCategory, PackedCombo[]>; championCombos: Record<ComboCategory, ComboStat[]> },
 ): Promise<ChampionDetail | null> {
-  const rows = await fetchAllParticipants();
+  const set = await fetchParticipantSet();
+  const rows = set.rows;
   const totalMatches = matchCountOf(rows);
   const champRows = championRowsOf(rows).get(championIdLower) ?? [];
   if (champRows.length === 0) return null;
@@ -2006,21 +2068,51 @@ export async function getChampionDetail(
   // the same tier score as the tier lists (games, avg placement, %top1,
   // %top3) rather than raw %top3, so a 2-game 100%-top3 augment doesn't
   // outrank a proven 40-game pick.
+  // Les compteurs par augment viennent de Postgres quand un patch est posé :
+  // une requête pour les 173 champions, au lieu d'une double boucle sur les
+  // parties de chacun. Le seuil y est déjà appliqué — c'est le même, au même
+  // endroit du raisonnement, et il évite de transporter les ~200 augments sous
+  // le seuil de chaque champion.
   const byAugment = new Map<number, Accumulator>();
-  for (const r of champRows) {
-    for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
+  if (set.patch && supabaseAdmin) {
+    for (const row of (await championAugmentsOf(set)).get(championIdLower) ?? []) {
+      byAugment.set(Number(row.augment_id), {
+        games: Number(row.games),
+        top1Wins: Number(row.top1_wins),
+        top3Wins: Number(row.top3_wins),
+        placementSum: Number(row.placement_sum),
+      });
+    }
+  } else {
+    for (const r of champRows) {
+      for (const augmentId of r.augments) accumulate(byAugment, augmentId, r.placement);
+    }
   }
+
   const augmentsByRarity: ChampionDetail["augmentsByRarity"] = { silver: [], gold: [], prismatic: [] };
   const allAugments: PackedStat[] = [];
   for (const [augmentId, s] of byAugment.entries()) {
     // Le seuil AVANT le tier, pour que le top 5 du résumé et l'onglet classent
-    // exactement le même lot — voir CHAMPION_LIST_MIN_GAMES.
+    // exactement le même lot — voir CHAMPION_LIST_MIN_GAMES. Redondant avec le
+    // filtre SQL, gardé pour le chemin de repli qui, lui, n'a pas filtré.
     if (s.games < CHAMPION_LIST_MIN_GAMES) continue;
     const rarity = rarityOf(augmentId);
     if (!rarity) continue;
     allAugments.push(packStat(augmentId, s));
     augmentsByRarity[rarity].push({ augmentId, ...toStat(s, champGames) });
   }
+  // Départage explicite des ex æquo, même raison que pour les slots de build.
+  //
+  // `allAugments` n'était pas trié : son ordre était celui d'arrivée des
+  // lignes, et c'est cet ordre-là que la page affiche — `augmentRowsByRarity`
+  // ne retrie pas. Deux augments à égalité de parties changeaient donc de
+  // place selon l'ordre de lecture de la base, à chiffres pourtant
+  // identiques. Le même défaut avait été mesuré sur les slots de build :
+  // 96 champions sur 173 voyaient leur build changer.
+  //
+  // Le tri est ici ET dans la requête SQL, pour que les deux chemins rendent
+  // exactement la même liste.
+  allAugments.sort((a, b) => b[1] - a[1] || a[0] - b[0]);
   for (const rarity of Object.keys(augmentsByRarity) as (keyof typeof augmentsByRarity)[]) {
     const stats = augmentsByRarity[rarity];
     const tierMap = computeTiers(stats.map((s) => ({ ...s, key: String(s.augmentId) })));
