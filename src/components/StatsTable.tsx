@@ -107,6 +107,18 @@ export type SortKey =
  */
 export const CARD_PAGE_SIZE = 40;
 
+/**
+ * Rows the desktop table renders up front; the rest arrive as its scrollport
+ * nears the bottom.
+ *
+ * "The table can afford to emit every row" stopped being true at the
+ * leaderboard's 1,000: 1.65 MB of HTML, 964 KB of it class attributes, ~15k
+ * DOM nodes — parsed on phones too, where the table is display:none. Growing
+ * on scroll keeps the one-scrollport feel; nobody reads row 900 without
+ * scrolling past 800 first, and the filter still searches every row.
+ */
+const TABLE_PAGE_SIZE = 100;
+
 export function ShowMoreButton({
   shown,
   total,
@@ -844,6 +856,8 @@ export function StatsTable({
   // effect — re-sorting reshuffles which rows are "the first 40", so keeping an
   // expanded count would silently change what the button means.
   const [cardLimit, setCardLimit] = useState(CARD_PAGE_SIZE);
+  // Desktop counterpart, see TABLE_PAGE_SIZE. Reset alongside cardLimit.
+  const [tableLimit, setTableLimit] = useState(TABLE_PAGE_SIZE);
 
   // Every row gets a fixed tier from the combined games/placement/top1/top3
   // score, independent of whatever sort is currently selected.
@@ -960,6 +974,7 @@ export function StatsTable({
 
   function cycleSort(key: SortKey) {
     setCardLimit(CARD_PAGE_SIZE);
+    setTableLimit(TABLE_PAGE_SIZE);
     if (key !== sortBy) {
       setSortBy(key);
       setSortDir("best");
@@ -1025,6 +1040,7 @@ export function StatsTable({
           onChange={(v) => {
             setFilter(v);
             setCardLimit(CARD_PAGE_SIZE);
+            setTableLimit(TABLE_PAGE_SIZE);
           }}
           placeholder={filterPlaceholder}
           shown={visible.length}
@@ -1110,6 +1126,14 @@ export function StatsTable({
           `top` offset forever instead of reacting to scroll. */}
       <div
         className={`max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle ${tableClass}`}
+        onScroll={(e) => {
+          if (tableLimit >= visible.length) return;
+          const el = e.currentTarget;
+          // Most of a viewport ahead, so the next rows exist before they're seen.
+          if (el.scrollTop + el.clientHeight > el.scrollHeight - 1200) {
+            setTableLimit((n) => n + TABLE_PAGE_SIZE);
+          }
+        }}
       >
         <table className={`w-full text-body ${compact ? "" : "min-w-[640px]"}`}>
           <thead>
@@ -1190,7 +1214,7 @@ export function StatsTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((row, i) => {
+            {visible.slice(0, tableLimit).map((row, i) => {
               const tier = showBands ? tierMap.get(row.key)!.tier : null;
               const isNewBand = bandStarts.has(row.key);
               return (

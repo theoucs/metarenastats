@@ -211,7 +211,7 @@ export default async function Home() {
           <p className="mt-4 font-mono text-small tabular-nums text-muted">
             <span className="text-secondary">{totalMatches}</span> matches ·{" "}
             <span className="text-secondary">{totalChampions}</span> champions ·{" "}
-            <span className="text-secondary">{totalPlayers}</span> players tracked
+            <span className="text-secondary">{totalPlayers}</span> players seen
           </p>
         </div>
       </section>

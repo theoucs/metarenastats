@@ -137,7 +137,7 @@ most of the data layer:
 
 Riot exposes no Arena MMR — checked, not assumed. The ladder is therefore computed here.
 
-Arena is eight teams of three with a full ranking, so a duel model like Elo doesn't apply.
+Arena is six teams of three with a full ranking, so a duel model like Elo doesn't apply.
 The rating is Weng-Lin / Plackett-Luce, replayed three times over the full history: a
 player's first games are otherwise judged against opponents still sitting at the default
 rating, so the result is real but the expectation it is compared against is worthless.

@@ -75,7 +75,7 @@ batch, which meant that on a single champion's augments — where every sample i
 it stopped protecting anything, and two-game outliers reached the top five.
 
 **Player ratings** — [`src/lib/rating.ts`](src/lib/rating.ts),
-[`src/lib/playerRatings.ts`](src/lib/playerRatings.ts). Arena is eight teams of three with
+[`src/lib/playerRatings.ts`](src/lib/playerRatings.ts). Arena is six teams of three with
 a full ranking, not a duel, so Elo doesn't apply. This is a Weng-Lin / Plackett-Luce
 rating computed in-house, replayed three times over the full history — a cheap
 approximation of TrueSkill Through Time, which removes the bias of judging a player's
