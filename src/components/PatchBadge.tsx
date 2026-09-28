@@ -15,6 +15,7 @@
  * lire que comme le sien. La tier list annonce « Sett, 1 122 games » ; sa page
  * dit maintenant la même chose.
  */
+import { formatCount } from "@/lib/statsDisplay";
 export function PatchBadge({ patch, games }: { patch: string; games?: number }) {
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -23,7 +24,7 @@ export function PatchBadge({ patch, games }: { patch: string; games?: number }) 
       </span>
       {games !== undefined && (
         <span className="text-small text-muted">
-          {games} game{games === 1 ? "" : "s"}
+          {formatCount(games)} game{games === 1 ? "" : "s"}
         </span>
       )}
     </span>

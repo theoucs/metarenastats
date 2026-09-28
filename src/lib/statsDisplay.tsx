@@ -5,9 +5,88 @@
 
 export type EntityRarity = "silver" | "gold" | "prismatic";
 
+/** « 126,814 » plutôt que « 126814 » : le site est en anglais, séparateur à la
+ *  virgule. Fixé à en-US pour que serveur et navigateur écrivent pareil. */
+export function formatCount(n: number) {
+  return n.toLocaleString("en-US");
+}
+
+/**
+ * Ce que « bon » et « mauvais » veulent dire DANS une liste donnée.
+ *
+ * Des seuils fixes ne tenaient pas : sur le 16.18 (lignes à 100 parties ou
+ * plus), 113 items sur 169 avaient un % Top 3 vert, contre 14 champions sur 173
+ * et aucun avg de champion. Les items achetés et les augments choisis partent
+ * d'un niveau plus haut que les champions, donc un seuil commun colorait
+ * presque tout d'un côté et presque rien de l'autre. Décidé avec Théo le
+ * 2026-09-28 : le vert marque les ~15 % meilleurs de la liste affichée, le rouge
+ * les ~15 % pires, le reste est neutre. Une couleur rare est une couleur qu'on
+ * lit.
+ */
+export type StatScale = {
+  avg: { good: number; bad: number };
+  top3: { good: number; bad: number };
+  top1: { good: number; bad: number };
+  /** Sous ce nombre de parties, une ligne ne reçoit pas de verdict : ses
+   *  chiffres bougent trop pour qu'un vert ou un rouge veuille dire quelque
+   *  chose, et elles occuperaient les extrêmes à la place des vraies. */
+  minGames: number;
+};
+
+const QUALITY_SHARE = 0.15;
+/** En dessous, pas assez de lignes pour parler de « 15 % » : seuils fixes. */
+const MIN_SCALE_ROWS = 10;
+
+type ScaleRow = { games: number; avgPlacement: number; top3Rate: number; top1Rate: number };
+
+function quantile(sorted: number[], q: number) {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+export function statScale(rows: ScaleRow[]): StatScale | undefined {
+  if (rows.length < MIN_SCALE_ROWS) return undefined;
+  const games = rows.map((r) => r.games).sort((a, b) => a - b);
+  // Un dixième de la médiane, et jamais moins de 20 parties.
+  const minGames = Math.max(20, Math.round(quantile(games, 0.5) / 10));
+  const eligible = rows.filter((r) => r.games >= minGames);
+  if (eligible.length < MIN_SCALE_ROWS) return undefined;
+  const sorted = (pick: (r: ScaleRow) => number) => eligible.map(pick).sort((a, b) => a - b);
+  const avg = sorted((r) => r.avgPlacement);
+  const top3 = sorted((r) => r.top3Rate);
+  const top1 = sorted((r) => r.top1Rate);
+  return {
+    // Plus bas = meilleur pour l'avg : le « bon » bord est le quantile bas.
+    avg: { good: quantile(avg, QUALITY_SHARE), bad: quantile(avg, 1 - QUALITY_SHARE) },
+    top3: { good: quantile(top3, 1 - QUALITY_SHARE), bad: quantile(top3, QUALITY_SHARE) },
+    top1: { good: quantile(top1, 1 - QUALITY_SHARE), bad: quantile(top1, QUALITY_SHARE) },
+    minGames,
+  };
+}
+
+const NEUTRAL = "text-primary";
+
+function scaledColor(
+  value: number,
+  band: { good: number; bad: number },
+  lowerIsBetter: boolean,
+  games: number | undefined,
+  minGames: number,
+) {
+  if (games !== undefined && games < minGames) return NEUTRAL;
+  if (lowerIsBetter ? value <= band.good : value >= band.good) return "text-stat-good";
+  if (lowerIsBetter ? value >= band.bad : value <= band.bad) return "text-stat-bad";
+  return NEUTRAL;
+}
+
+// Sans échelle (une stat seule, ou une liste trop courte), on retombe sur des
+// seuils fixes autour de l'espérance d'une partie à 6 équipes.
 // % Top 3 averages ~50% (3 of 6 teams) — thresholds centered on that.
 // Reserved colors: this is the only place green/red should ever appear.
-export function top3Color(rate: number) {
+export function top3Color(rate: number, scale?: StatScale, games?: number) {
+  if (scale) return scaledColor(rate, scale.top3, false, games, scale.minGames);
   if (rate >= 0.55) return "text-stat-good";
   if (rate >= 0.4) return "text-secondary";
   return "text-stat-bad";
@@ -20,7 +99,8 @@ export function top3Color(rate: number) {
 // into green, -3.7pp to drop into red. The previous 25% green cutoff was most
 // of a doubling above the baseline, which almost nothing reaches once a
 // champion has enough games for its rate to stop swinging.
-export function top1Color(rate: number) {
+export function top1Color(rate: number, scale?: StatScale, games?: number) {
+  if (scale) return scaledColor(rate, scale.top1, false, games, scale.minGames);
   if (rate >= 0.2) return "text-stat-good";
   if (rate >= 0.13) return "text-secondary";
   return "text-stat-bad";
@@ -30,7 +110,8 @@ export function top1Color(rate: number) {
 // around that: -0.3 to clear into green, +0.2 to drop into red. Comparisons are
 // inverted relative to top3Color/top1Color because here *lower* is better.
 // Same reserved-color rule: green/red only ever mean "this number is good/bad".
-export function avgPlacementColor(avg: number) {
+export function avgPlacementColor(avg: number, scale?: StatScale, games?: number) {
+  if (scale) return scaledColor(avg, scale.avg, true, games, scale.minGames);
   if (avg <= 3.2) return "text-stat-good";
   if (avg <= 3.7) return "text-secondary";
   return "text-stat-bad";

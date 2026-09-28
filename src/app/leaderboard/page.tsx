@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getLeaderboardStats } from "@/lib/aggregate";
+import { formatCount } from "@/lib/statsDisplay";
+import { getLeaderboardStats, getSiteStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -11,10 +12,13 @@ import { HeadlineRow, HeaderAside } from "@/components/HeadlineRow";
 export const revalidate = 1800;
 
 export default async function LeaderboardPage() {
-  const { totalMatches, players, totalRanked } = await readSnapshot(
-    "leaderboard",
-    getLeaderboardStats,
-  );
+  // The match count comes from the same "site" snapshot as the home page. The
+  // leaderboard snapshot carries its own copy, taken at its own refresh, and
+  // the two pages showed 126,814 and 126,094 for the same thing.
+  const [{ players, totalRanked }, { totalMatches }] = await Promise.all([
+    readSnapshot("leaderboard", getLeaderboardStats),
+    readSnapshot("site", getSiteStats),
+  ]);
 
   const rows: StatsRow[] = players.map((p) => ({
     key: p.puuid,
@@ -37,7 +41,7 @@ export default async function LeaderboardPage() {
               All patches
             </span>
             <span className="text-small text-muted">
-              <span className="tabular-nums text-secondary">{totalMatches}</span> matches tracked
+              <span className="tabular-nums text-secondary">{formatCount(totalMatches)}</span> matches tracked
             </span>
           </HeaderAside>
         }
@@ -58,7 +62,7 @@ export default async function LeaderboardPage() {
         >
           <p className="mt-2 text-small text-muted">
             Top <span className="tabular-nums text-secondary">{players.length}</span> of{" "}
-            <span className="tabular-nums text-secondary">{totalRanked}</span> ranked. Search any
+            <span className="tabular-nums text-secondary">{formatCount(totalRanked)}</span> ranked. Search any
             player to see their exact rank, wherever they sit.
           </p>
         </PageHeader>

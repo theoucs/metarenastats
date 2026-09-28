@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PatchContext } from "@/lib/patches";
+import { formatCount } from "@/lib/statsDisplay";
 import { HeadlineRow, HeaderAside } from "@/components/HeadlineRow";
 
 /**
@@ -91,7 +92,7 @@ export function PatchSwitch({
               taille de l'échantillon derrière la tier list affichée. */}
             {shown && (
               <span className="text-small text-muted">
-                <span className="tabular-nums text-secondary">{shown.matches}</span> matches on
+                <span className="tabular-nums text-secondary">{formatCount(shown.matches)}</span> matches on
                 this patch
               </span>
             )}

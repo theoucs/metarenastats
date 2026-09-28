@@ -23,6 +23,7 @@ import {
   avgPlacementColor,
   MiniStat,
   MiniStatHeader,
+  formatCount,
 } from "@/lib/statsDisplay";
 
 /**
@@ -41,7 +42,7 @@ export function StatTooltipContent({ stat }: { stat: Stat }) {
     <div className="text-left">
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-micro text-secondary">
         <span>Avg: {stat.avgPlacement.toFixed(2)}</span>
-        <span>Games: {stat.games}</span>
+        <span>Games: {formatCount(stat.games)}</span>
         <span>Top 1: {(stat.top1Rate * 100).toFixed(0)}%</span>
         <span>Top 3: {(stat.top3Rate * 100).toFixed(0)}%</span>
         <span>Played: {(stat.playRate * 100).toFixed(0)}%</span>

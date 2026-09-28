@@ -1,4 +1,5 @@
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import { formatCount } from "@/lib/statsDisplay";
 import { type StatsRow } from "@/components/StatsTable";
 import { unpackCombo } from "@/lib/aggregate";
 import { comboToRow } from "@/lib/comboDisplay";
@@ -53,7 +54,7 @@ export default async function ChampionCombosPage({
             />
           </div>
           <p className="mt-4 text-micro text-muted">
-            {shown} pairs shown, out of {detail.games} games. This is the thinnest surface on the
+            {shown} pairs shown, out of {formatCount(detail.games)} games. This is the thinnest surface on the
             site, and its threshold is the highest because of it: a champion forms hundreds of pairs,
             and the more candidates you rank the more the best one stands out for reasons that
             aren&apos;t merit. Pairs seen fewer than 10 times are left out, and only the best 60 per

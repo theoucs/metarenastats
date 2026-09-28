@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatCount } from "@/lib/statsDisplay";
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { StatsGrid } from "@/components/StatsGrid";
 import { loadChampionPage, ChampionShell, TabHeading } from "../championPage";
@@ -86,7 +87,7 @@ export default async function ChampionAnvilPage({
 
               <TabHeading title="Prismatic Items">
                 Ranked among anvil runs only — &quot;% of games&quot; is a share of the{" "}
-                {anvilGames} anvil games, not of every game.
+                {formatCount(anvilGames)} anvil games, not of every game.
               </TabHeading>
               {/* La grille seule, sans barre d'onglets : une enclume ne donne
                   que des prismatiques, un onglet unique n'offrirait aucun choix. */}
@@ -112,7 +113,7 @@ export default async function ChampionAnvilPage({
               </div>
 
               <p className="mt-4 text-micro text-muted">
-                Built on {anvilGames} anvil games. That is a small sample even for a much-played
+                Built on {formatCount(anvilGames)} anvil games. That is a small sample even for a much-played
                 champion, so the threshold here is 3 rather than 5 — the tiers are indicative, not a
                 verdict.
               </p>

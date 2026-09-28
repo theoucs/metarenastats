@@ -1,4 +1,5 @@
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import { formatCount } from "@/lib/statsDisplay";
 import { loadChampionPage, ChampionShell, TabHeading } from "../championPage";
 import { augmentRowsByRarity } from "../championSections";
 
@@ -42,7 +43,7 @@ export default async function ChampionAugmentsPage({
             />
           </div>
           <p className="mt-4 text-micro text-muted">
-            {shown} augments shown, out of {detail.games} games. Augments taken fewer than 5 times on
+            {shown} augments shown, out of {formatCount(detail.games)} games. Augments taken fewer than 5 times on
             this champion are left out: at that sample a placement average says nothing.
           </p>
         </>

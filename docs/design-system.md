@@ -22,6 +22,14 @@ becomes the site's signature instead of a generic gradient.
 That last row is the rule that does the most work. Green means "good number" in the
 % Top 1 and % Top 3 columns, so green used anywhere else would read as a verdict.
 
+**Green and red are relative to the list on screen** (since 2026-09-28): the best ~15 % of
+the list are green, the worst ~15 % red, everything else neutral. Rows under a minimum
+sample (a tenth of the median games, at least 20) get no verdict. Fixed thresholds made 67 %
+of items green and no champion's avg green, because bought items and picked augments start
+from a higher level than champions. See `statScale()` in `src/lib/statsDisplay.tsx`. A single
+number with no list around it (a champion's own stat pills) falls back to fixed thresholds
+around the 6-team expectation.
+
 ## Tokens
 
 ```css
@@ -99,6 +107,12 @@ below exist because something was actually wrong at one of those widths.
 - **A tier band is a heading, not a row.** Bands are sized to separate groups visually;
   the per-row badge stays because the band scrolls out of view.
 - **Focus is always visible**, and every contrast meets AA. Both were checked, not assumed.
+- **One gauge, thin, under Avg Placement.** Filled blocks behind every stat cell read as a
+  highlighted spreadsheet with no legible scale.
+- **Tables scroll with the page.** No inner scrollport: its bottom edge made the list look
+  finished after the first tier. The header sticks under the nav (`--nav-h`), and long
+  tables grow through a sentinel as the page nears their end.
+- **Counts are formatted** with `formatCount()` ("126,814"), never raw.
 
 ## Motion
 

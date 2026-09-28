@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { computeTiers, TIER_STYLES, type Tier, type TierInfo } from "@/lib/tiers";
 import { RankBadge } from "@/components/RankBadge";
 import type { Tier as RankTier } from "@/lib/rating";
@@ -9,8 +9,11 @@ import {
   top1Color,
   top3Color,
   avgPlacementColor,
+  formatCount,
+  statScale,
   EntityIcon,
   type EntityRarity,
+  type StatScale,
 } from "@/lib/statsDisplay";
 import { SlidingHighlight, useSlidingHighlight } from "@/components/SlidingHighlight";
 import { EntityTooltip, type EntityRef } from "@/components/EntityTooltip";
@@ -142,7 +145,7 @@ export function ShowMoreButton({
 export function SampleSizeBadge({ totalMatches }: { totalMatches: number }) {
   return (
     <p className="text-small text-muted">
-      Sample size: <span className="text-secondary">{totalMatches}</span> match
+      Sample size: <span className="text-secondary">{formatCount(totalMatches)}</span> match
       {totalMatches === 1 ? "" : "es"} tracked so far — data grows with every search
     </p>
   );
@@ -543,27 +546,18 @@ export function EmptyState({
   );
 }
 
-// Normalized-to-column-max bar width behind %Top3/%Top1, in percent of cell
-// width — capped so it never touches the far edge, floored so a near-zero
-// value still shows a visible sliver.
-//
-// The bar is anchored right (`right-0`), not left: the number it sits behind is
-// right-aligned, so a left-anchored bar stopped short of the digits on any low
-// value and read as a stray empty rectangle next to an orphan number.
-export function meterWidth(value: number, max: number) {
-  if (max <= 0) return 0;
-  return Math.max(3, Math.min(92, (value / max) * 92));
-}
-
-// Sibling of meterWidth for metrics where *lower* is better (avg placement).
-// Normalized against this batch's own best/worst rather than the theoretical
-// 1..6, so the bars actually spread out instead of all sitting near the middle.
+// Width of the thin Avg Placement gauge, in percent of its track. Lower is
+// better, and it is normalized against this batch's own best/worst rather than
+// the theoretical 1..6, so the bars actually spread out instead of all sitting
+// near the middle. Floored so the worst row still shows a sliver.
 export function placementMeterWidth(avg: number, best: number, worst: number) {
   if (worst - best < 1e-9) return 50;
   return Math.max(3, Math.min(92, ((worst - avg) / (worst - best)) * 92));
 }
 
-const stickyHeadCell = "sticky top-0 z-30 border-b border-default bg-inset py-3 font-medium";
+// Sticks under the site nav (--nav-h), since the table now scrolls with the page.
+const stickyHeadCell =
+  "sticky top-[var(--nav-h)] z-30 border-b border-default bg-inset py-3 font-medium";
 
 function DataRow({
   row,
@@ -572,8 +566,7 @@ function DataRow({
   tierMap,
   linkPrefix,
   linkSuffix,
-  maxTop3,
-  maxTop1,
+  scale,
   bestPlacement,
   worstPlacement,
   hideTierColumn,
@@ -586,8 +579,7 @@ function DataRow({
   tierMap: Map<string, TierInfo>;
   linkPrefix?: string;
   linkSuffix?: string;
-  maxTop3: number;
-  maxTop1: number;
+  scale?: StatScale;
   bestPlacement: number;
   worstPlacement: number;
   /** Suppressed while tier bands are shown — the band right above already says
@@ -639,37 +631,38 @@ function DataRow({
       {/* Avg Placement leads: it is the metric that outranks the others
           everywhere on this site (docs/design-audit-plan.md §3.6), and it is
           what computeTiers weights at 60%. */}
-      <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
-          style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
-        />
-        <span className={`relative ${avgPlacementColor(row.avgPlacement)}`}>
-          {row.avgPlacement.toFixed(2)}
-        </span>
-      </td>
-      <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
-          style={{ width: `${meterWidth(row.top3Rate, maxTop3)}%` }}
-        />
-        <span className={`relative ${top3Color(row.top3Rate)}`}>{(row.top3Rate * 100).toFixed(1)}%</span>
-      </td>
-      {variant === "tiers" && !compact && (
-        <td className={`relative ${cellX} py-1.5 text-right font-mono tabular-nums`}>
+      {/* Une seule jauge, fine, sous le chiffre qui mène. Les blocs pleins
+          derrière chaque colonne faisaient un tableur surligné, sans échelle
+          lisible ; les deux autres colonnes n'ont plus que leur chiffre. */}
+      <td className={`${cellX} py-1.5 text-right tabular-nums`}>
+        {/* The gauge hangs below the number (absolute) so the number keeps
+            the same baseline as every other cell in the row. */}
+        <span className="relative inline-block">
+          <span className={`font-medium ${avgPlacementColor(row.avgPlacement, scale, row.games)}`}>
+            {row.avgPlacement.toFixed(2)}
+          </span>
           <span
             aria-hidden="true"
-            className="absolute inset-y-[5px] right-0 rounded-[3px] bg-[color:var(--accent-muted)]"
-            style={{ width: `${meterWidth(row.top1Rate, maxTop1)}%` }}
-          />
-          <span className={`relative ${top1Color(row.top1Rate)}`}>{(row.top1Rate * 100).toFixed(1)}%</span>
+            className="absolute -bottom-[5px] right-0 block h-[3px] w-16 overflow-hidden rounded-full bg-inset"
+          >
+            <span
+              className="ml-auto block h-full rounded-full bg-[color:var(--accent)]/50"
+              style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
+            />
+          </span>
+        </span>
+      </td>
+      <td className={`${cellX} py-1.5 text-right tabular-nums`}>
+        <span className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</span>
+      </td>
+      {variant === "tiers" && !compact && (
+        <td className={`${cellX} py-1.5 text-right tabular-nums`}>
+          <span className={top1Color(row.top1Rate, scale, row.games)}>{(row.top1Rate * 100).toFixed(1)}%</span>
         </td>
       )}
-      <td className={`${cellX} py-1.5 text-right font-mono tabular-nums text-secondary`}>{row.games}</td>
+      <td className={`${cellX} py-1.5 text-right tabular-nums text-secondary`}>{formatCount(row.games)}</td>
       {variant === "tiers" && !compact && (
-        <td className={`${cellX} py-1.5 text-right font-mono tabular-nums text-secondary`}>
+        <td className={`${cellX} py-1.5 text-right tabular-nums text-secondary`}>
           {(row.playRate * 100).toFixed(1)}%
         </td>
       )}
@@ -682,8 +675,7 @@ function DataRow({
  *
  * The table needs ~640px to fit its 8 columns, so on a phone everything past
  * "Games" used to sit off-screen inside an `overflow-auto` with no scroll
- * affordance — i.e. a stats site showing no stats. Same numbers, stacked:
- * headline % Top 3 with its meter, then the rest on one line.
+ * affordance — i.e. a stats site showing no stats.
  */
 function MobileCard({
   row,
@@ -692,9 +684,7 @@ function MobileCard({
   tierInfo,
   linkPrefix,
   linkSuffix,
-  bestPlacement,
-  worstPlacement,
-  playRateLabel,
+  scale,
   hideTierBadge,
 }: {
   row: StatsRow;
@@ -706,9 +696,7 @@ function MobileCard({
   hideTierBadge: boolean;
   linkPrefix?: string;
   linkSuffix?: string;
-  bestPlacement: number;
-  worstPlacement: number;
-  playRateLabel: string;
+  scale?: StatScale;
 }) {
   const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "var(--border-default)";
 
@@ -716,11 +704,9 @@ function MobileCard({
   // halves rather than orphaning "Dragonheart" onto its own line under the
   // icon it doesn't belong to.
   const heading = row.roles ? (
-    <div className="min-w-0 flex-1">
-      <RoleChips roles={row.roles} />
-    </div>
+    <RoleChips roles={row.roles} />
   ) : (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
       <span className="flex min-w-0 items-center gap-2">
         {row.iconUrl && (
           <TooltipIcon entity={row.entity} name={row.name} iconUrl={row.iconUrl} rarity={row.rarity} />
@@ -748,64 +734,67 @@ function MobileCard({
     </div>
   );
 
+  // One compact line: name on the left, Avg Placement big on the right, the
+  // other numbers in one quiet line under the name. The "Avg placement" label
+  // is written once above the list (MobileListHeader), not on every card —
+  // 173 repetitions on the champions page.
   return (
     <div
       id={`entity-${row.key}`}
-      className="rounded-lg border border-subtle border-l-2 bg-raised/40 p-3"
+      className="flex items-center gap-2.5 rounded-lg border border-subtle border-l-2 bg-raised/40 px-3 py-2.5"
       style={{ borderLeftColor: railHex }}
     >
-      <div className="flex items-start gap-2.5">
-        <span className="mt-1.5 shrink-0 font-mono text-small tabular-nums text-muted">
-          {variant === "ranked" ? <RankCell rank={row.rank ?? rank + 1} /> : rank + 1}
-        </span>
+      <span className="w-6 shrink-0 text-small tabular-nums text-muted">
+        {variant === "ranked" ? <RankCell rank={row.rank ?? rank + 1} /> : rank + 1}
+      </span>
+
+      <div className="min-w-0 flex-1">
         {linkPrefix ? (
-          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex min-w-0 flex-1">
+          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex min-w-0">
             {heading}
           </Link>
         ) : (
           heading
         )}
-        {tierInfo && !hideTierBadge && <TierBadge tier={tierInfo.tier} />}
-        {row.rankTier && <RankBadge tier={row.rankTier} />}
+        <dl className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-micro tabular-nums text-muted">
+          <div className="flex items-baseline gap-1">
+            <dt>Top 3</dt>
+            <dd className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
+          </div>
+          {variant === "tiers" && (
+            <div className="flex items-baseline gap-1">
+              <dt>Top 1</dt>
+              <dd className={top1Color(row.top1Rate, scale, row.games)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
+            </div>
+          )}
+          <div className="flex items-baseline gap-1">
+            <dd className="text-secondary">{formatCount(row.games)}</dd>
+            <dt>games</dt>
+          </div>
+          {/* Play rate stays a desktop column: on a phone it pushed every card
+              onto a third line for the least-read number. It is still one tap
+              away through the sort control. */}
+        </dl>
       </div>
 
-      {/* Avg Placement is the headline number everywhere on this site — see
-          docs/design-audit-plan.md §3.6. % Top 3 drops into the row below. */}
-      <div className="mt-3 flex items-baseline gap-2">
-        <span className={`font-display text-h1 font-semibold ${avgPlacementColor(row.avgPlacement)}`}>
-          {row.avgPlacement.toFixed(2)}
-        </span>
-        <span className="text-micro uppercase tracking-wide text-muted">Avg Placement</span>
-      </div>
-      <div aria-hidden="true" className="mt-1.5 h-1 overflow-hidden rounded-full bg-inset">
-        <div
-          className="h-full rounded-full bg-[color:var(--accent)]/45"
-          style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
-        />
-      </div>
+      {tierInfo && !hideTierBadge && <TierBadge tier={tierInfo.tier} />}
+      {row.rankTier && <RankBadge tier={row.rankTier} />}
+      {/* Avg Placement leads, as everywhere on the site. */}
+      <span
+        className={`w-12 shrink-0 text-right font-display text-h2 font-semibold tabular-nums ${avgPlacementColor(row.avgPlacement, scale, row.games)}`}
+      >
+        {row.avgPlacement.toFixed(2)}
+      </span>
+    </div>
+  );
+}
 
-      <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-micro tabular-nums text-muted">
-        <div className="flex items-baseline gap-1">
-          <dt>Top 3</dt>
-          <dd className={top3Color(row.top3Rate)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
-        </div>
-        {variant === "tiers" && (
-          <div className="flex items-baseline gap-1">
-            <dt>Top 1</dt>
-            <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
-          </div>
-        )}
-        <div className="flex items-baseline gap-1">
-          <dt>Games</dt>
-          <dd className="text-secondary">{row.games}</dd>
-        </div>
-        {variant === "tiers" && (
-          <div className="flex items-baseline gap-1">
-            <dt>{playRateLabel.replace(/^%\s*/, "")}</dt>
-            <dd className="text-secondary">{(row.playRate * 100).toFixed(1)}%</dd>
-          </div>
-        )}
-      </dl>
+/** The card list's column labels, written once above it. */
+function MobileListHeader({ nameLabel }: { nameLabel: string }) {
+  return (
+    <div className="flex items-baseline justify-between px-3 text-micro uppercase tracking-wide text-muted">
+      <span className="pl-9">{nameLabel}</span>
+      <span>Avg placement</span>
     </div>
   );
 }
@@ -863,10 +852,12 @@ export function StatsTable({
   // score, independent of whatever sort is currently selected.
   const tierMap = useMemo(() => computeTiers(rows), [rows]);
 
-  const { maxTop3, maxTop1, bestPlacement, worstPlacement } = useMemo(
+  // Computed on every published row, not the filtered ones: typing in the
+  // filter must not recolor what stays on screen.
+  const scale = useMemo(() => statScale(rows), [rows]);
+
+  const { bestPlacement, worstPlacement } = useMemo(
     () => ({
-      maxTop3: rows.reduce((m, r) => Math.max(m, r.top3Rate), 0),
-      maxTop1: rows.reduce((m, r) => Math.max(m, r.top1Rate), 0),
       // "best" is the *lowest* average placement, hence the flipped reduces.
       bestPlacement: rows.reduce((m, r) => Math.min(m, r.avgPlacement), Infinity),
       worstPlacement: rows.reduce((m, r) => Math.max(m, r.avgPlacement), 0),
@@ -987,6 +978,26 @@ export function StatsTable({
     }
   }
 
+  // The desktop table grows as the page scrolls toward its end. It used to live
+  // in its own 75vh scrollport, a scroll inside the scroll whose bottom edge
+  // made the list look finished after the first tier. A sentinel under the
+  // table now asks for the next rows most of a viewport ahead. Re-observing
+  // after each growth re-fires the check, so a tall screen keeps filling.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const hasMoreRows = tableLimit < visible.length;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMoreRows) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setTableLimit((n) => n + TABLE_PAGE_SIZE);
+      },
+      { rootMargin: "1200px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreRows, tableLimit]);
+
   if (rows.length === 0) return <EmptyState />;
 
   const sortOptions: { key: SortKey; label: string }[] =
@@ -1084,7 +1095,8 @@ export function StatsTable({
           page flow so there's no scroll container nested inside the page
           scroll on a phone. */}
       <div className={cardsClass}>
-        <div className="flex flex-col gap-2">
+        <MobileListHeader nameLabel={variant === "ranked" ? "Player" : "Name"} />
+        <div className="mt-1.5 flex flex-col gap-1.5">
           {visible.slice(0, cardLimit).map((row, i) => {
             const tier = showBands ? tierMap.get(row.key)!.tier : null;
             const isNewBand = bandStarts.has(row.key);
@@ -1102,9 +1114,7 @@ export function StatsTable({
                   tierInfo={variant === "tiers" ? tierMap.get(row.key) : undefined}
                   linkPrefix={linkPrefix}
                   linkSuffix={linkSuffix}
-                  bestPlacement={bestPlacement}
-                  worstPlacement={worstPlacement}
-                  playRateLabel={playRateLabel}
+                  scale={scale}
                   hideTierBadge={showBands}
                 />
               </Fragment>
@@ -1118,23 +1128,12 @@ export function StatsTable({
         />
       </div>
 
-      {/* Bounded height + its own vertical scroll: sticky headers can only stick
-          relative to a genuinely-scrolling ancestor (position:sticky computes
-          against the nearest scroll container's own scrollport). An
-          overflow-x-auto div with unconstrained height never actually scrolls
-          internally, so a sticky child inside it just sits at a fixed
-          `top` offset forever instead of reacting to scroll. */}
-      <div
-        className={`max-h-[75vh] overflow-auto overscroll-contain rounded-lg border border-subtle ${tableClass}`}
-        onScroll={(e) => {
-          if (tableLimit >= visible.length) return;
-          const el = e.currentTarget;
-          // Most of a viewport ahead, so the next rows exist before they're seen.
-          if (el.scrollTop + el.clientHeight > el.scrollHeight - 1200) {
-            setTableLimit((n) => n + TABLE_PAGE_SIZE);
-          }
-        }}
-      >
+      {/* Scrolls with the page; the header sticks under the nav. `overflow-clip`
+          rather than hidden/auto on purpose: it rounds the corners without
+          creating a scroll container, and any scroll container here would
+          capture position:sticky and pin the header to a box that never
+          scrolls. The table only shows from md up, where its 640px fit. */}
+      <div className={`overflow-clip rounded-lg border border-subtle ${tableClass}`}>
         <table className={`w-full text-body ${compact ? "" : "min-w-[640px]"}`}>
           <thead>
             <tr className="text-left text-micro uppercase tracking-wide text-muted">
@@ -1229,8 +1228,7 @@ export function StatsTable({
                     tierMap={tierMap}
                     linkPrefix={linkPrefix}
                     linkSuffix={linkSuffix}
-                    maxTop3={maxTop3}
-                    maxTop1={maxTop1}
+                    scale={scale}
                     bestPlacement={bestPlacement}
                     worstPlacement={worstPlacement}
                     hideTierColumn={showBands}
@@ -1242,6 +1240,7 @@ export function StatsTable({
             })}
           </tbody>
         </table>
+        {hasMoreRows && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
       </div>
     </div>
   );

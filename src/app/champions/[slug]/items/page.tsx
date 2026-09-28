@@ -1,4 +1,5 @@
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
+import { formatCount } from "@/lib/statsDisplay";
 import { loadChampionPage, ChampionShell, TabHeading } from "../championPage";
 import { itemRowsByRarity, ItemSlotBlock } from "../championSections";
 
@@ -59,7 +60,7 @@ export default async function ChampionItemsPage({
             />
           </div>
           <p className="mt-4 text-micro text-muted">
-            {shown} items shown, out of {detail.games} games. Items seen fewer than 5 times on this
+            {shown} items shown, out of {formatCount(detail.games)} games. Items seen fewer than 5 times on this
             champion are left out.
           </p>
         </>

@@ -95,6 +95,9 @@
     0 4px 8px rgba(0, 0, 0, 0.5),
     0 16px 48px -12px rgba(0, 0, 0, 0.7);
 
+  /* Height of the sticky site nav. Table headers stick right under it. */
+  --nav-h: 65px;
+
   /* Kept for the body rule below */
   --background: var(--bg-base);
   --foreground: var(--text-primary);
@@ -201,10 +204,11 @@ html {
   }
 }
 
-/* Rows/cards are linked to by id from search results; the sticky header is
-   65px tall, so without this an anchor lands underneath it. */
+/* Rows/cards are linked to by id from search results. Both the site nav and
+   the table's own sticky header (~45px) sit on top of the page, so without
+   this an anchor lands underneath them. */
 [id^="entity-"] {
-  scroll-margin-top: 80px;
+  scroll-margin-top: calc(var(--nav-h) + 60px);
 }
 
 body {

@@ -7,8 +7,11 @@ import {
   top1Color,
   top3Color,
   avgPlacementColor,
+  formatCount,
+  statScale,
   EntityIcon,
   type EntityRarity,
+  type StatScale,
 } from "@/lib/statsDisplay";
 import {
   CARD_PAGE_SIZE,
@@ -69,6 +72,7 @@ function GridCard({
   row,
   rank,
   tier,
+  scale,
   bestPlacement,
   worstPlacement,
   playRateLabel,
@@ -79,6 +83,7 @@ function GridCard({
   row: StatsRow;
   rank: number;
   tier: Tier;
+  scale?: StatScale;
   bestPlacement: number;
   worstPlacement: number;
   playRateLabel: string;
@@ -149,36 +154,39 @@ function GridCard({
           ) : (
             <h3 className="text-body font-medium leading-snug text-primary">{row.name}</h3>
           )}
-          <p className="mt-1 font-mono text-micro tabular-nums text-muted">
-            #{rank + 1} · {row.games} {unitLabel}
+          <p className="mt-1 text-micro tabular-nums text-muted">
+            #{rank + 1} · {formatCount(row.games)} {unitLabel}
           </p>
         </div>
         {!hideTierBadge && <TierBadge tier={tier} />}
       </div>
 
-      {/* Avg Placement is the headline number everywhere on this site — see
-          docs/design-audit-plan.md §3.6. % Top 3 drops into the row below. */}
-      <div className="mt-3.5 flex items-baseline justify-between gap-2">
-        <span className={`font-display text-h1 font-semibold ${avgPlacementColor(row.avgPlacement)}`}>
+      {/* Avg Placement is the headline number everywhere on this site. "avg"
+          reads as its unit, the way "%" does; the uppercase "AVG PLACEMENT"
+          label it replaces was the loudest thing on every card. */}
+      <div className="mt-3.5 flex items-baseline gap-1.5">
+        <span
+          className={`font-display text-h1 font-semibold tabular-nums ${avgPlacementColor(row.avgPlacement, scale, row.games)}`}
+        >
           {row.avgPlacement.toFixed(2)}
         </span>
-        <span className="text-micro uppercase tracking-wide text-muted">Avg Placement</span>
+        <span className="text-small text-muted">avg</span>
       </div>
-      <div aria-hidden="true" className="mt-1.5 h-1 overflow-hidden rounded-full bg-inset">
+      <div aria-hidden="true" className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-inset">
         <div
           className="h-full rounded-full bg-[color:var(--accent)]/45"
           style={{ width: `${placementMeterWidth(row.avgPlacement, bestPlacement, worstPlacement)}%` }}
         />
       </div>
 
-      <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-micro tabular-nums text-muted">
+      <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-micro tabular-nums text-muted">
         <div className="flex items-baseline gap-1">
           <dt>Top 3</dt>
-          <dd className={top3Color(row.top3Rate)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
+          <dd className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
         </div>
         <div className="flex items-baseline gap-1">
           <dt>Top 1</dt>
-          <dd className={top1Color(row.top1Rate)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
+          <dd className={top1Color(row.top1Rate, scale, row.games)}>{(row.top1Rate * 100).toFixed(1)}%</dd>
         </div>
         <div className="flex items-baseline gap-1">
           <dt>{playRateLabel.replace(/^%\s*/, "")}</dt>
@@ -236,6 +244,9 @@ export function StatsGrid({
     }),
     [rows]
   );
+
+  // On every row, not the filtered ones: filtering must not recolor cards.
+  const scale = useMemo(() => statScale(rows), [rows]);
 
   const hasTiming = useMemo(() => rows.some((r) => r.timing), [rows]);
   const showTiming = sortBy === "later" || sortBy === "earlier";
@@ -367,6 +378,7 @@ export function StatsGrid({
                 row={row}
                 rank={i}
                 tier={tier}
+                scale={scale}
                 bestPlacement={bestPlacement}
                 worstPlacement={worstPlacement}
                 hideTierBadge={showBands}

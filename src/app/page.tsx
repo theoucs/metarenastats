@@ -4,7 +4,14 @@ import { readSnapshot } from "@/lib/statsSnapshot";
 import { getPatchContext } from "@/lib/patches";
 import { computeTiers, type Tier } from "@/lib/tiers";
 import { resolveChampion, heroSplashUrl } from "@/lib/gameData";
-import { EntityIcon, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
+import {
+  EntityIcon,
+  top3Color,
+  avgPlacementColor,
+  formatCount,
+  statScale,
+  type StatScale,
+} from "@/lib/statsDisplay";
 import { TierBadge } from "@/components/StatsTable";
 import { HomeSearch } from "@/components/HomeSearch";
 import { Wordmark } from "@/components/Wordmark";
@@ -48,7 +55,15 @@ type TopChampion = {
  * middle of the centered splash costs nothing here — it's centered on the
  * champion by definition — and gives ~2x the pixels besides.
  */
-function ChampionSpotlight({ champion, rank }: { champion: TopChampion; rank: number }) {
+function ChampionSpotlight({
+  champion,
+  rank,
+  scale,
+}: {
+  champion: TopChampion;
+  rank: number;
+  scale?: StatScale;
+}) {
   // Landscape on phones, and flatter than the source: three stacked portraits
   // would put ~1400px of champion art between the fold and the rest of the
   // page. At 3/2 a single card was still ~500px tall on a 390px screen — three
@@ -80,37 +95,45 @@ function ChampionSpotlight({ champion, rank }: { champion: TopChampion; rank: nu
           </span>
         </div>
         {/* Avg placement leads here too — see docs/design-audit-plan.md §3.6. */}
-        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-small tabular-nums">
-          <span className={avgPlacementColor(champion.avgPlacement)}>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-small tabular-nums">
+          <span className={avgPlacementColor(champion.avgPlacement, scale, champion.games)}>
             {champion.avgPlacement.toFixed(2)}
           </span>
-          <span className="text-micro uppercase tracking-wide text-muted">avg</span>
+          <span className="text-muted">avg</span>
           <span className="text-muted">·</span>
-          <span className={top3Color(champion.top3Rate)}>
+          <span className={top3Color(champion.top3Rate, scale, champion.games)}>
             {(champion.top3Rate * 100).toFixed(1)}%
           </span>
-          <span className="text-micro uppercase tracking-wide text-muted">top 3</span>
+          <span className="text-muted">top 3</span>
         </div>
       </div>
     </Link>
   );
 }
 
-function ChampionChip({ champion, rank }: { champion: TopChampion; rank: number }) {
+function ChampionChip({
+  champion,
+  rank,
+  scale,
+}: {
+  champion: TopChampion;
+  rank: number;
+  scale?: StatScale;
+}) {
   return (
     <Link
       href={`/champions/${champion.key}`}
       className="flex items-center gap-2.5 rounded-lg border border-subtle bg-raised/40 p-2.5 transition-colors hover:border-default hover:bg-overlay"
     >
-      <span className="w-3 shrink-0 font-mono text-micro tabular-nums text-muted">{rank}</span>
+      <span className="w-3 shrink-0 text-micro tabular-nums text-muted">{rank}</span>
       {champion.iconUrl && <EntityIcon iconUrl={champion.iconUrl} sizeClass="h-9 w-9" />}
       {/* No tier badge here on purpose: everything in the top 8 is the same
           tier by construction, so the badge would be five identical pills
           eating the width the champion name actually needs. */}
       <div className="min-w-0 flex-1">
         <div className="truncate text-small font-medium text-primary">{champion.name}</div>
-        <div className="whitespace-nowrap font-mono text-micro tabular-nums text-muted">
-          <span className={avgPlacementColor(champion.avgPlacement)}>
+        <div className="whitespace-nowrap text-micro tabular-nums text-muted">
+          <span className={avgPlacementColor(champion.avgPlacement, scale, champion.games)}>
             {champion.avgPlacement.toFixed(2)}
           </span>{" "}
           avg
@@ -146,6 +169,9 @@ export default async function Home() {
     };
   });
   const tierMap = computeTiers(rows);
+  // Same scale as the champions tier list, so a number is the same colour here
+  // and there.
+  const scale = statScale(rows);
   const topChampions: TopChampion[] = [...rows]
     .sort((a, b) => tierMap.get(b.key)!.score - tierMap.get(a.key)!.score)
     .slice(0, 8)
@@ -208,10 +234,10 @@ export default async function Home() {
             <HomeSearch />
           </div>
 
-          <p className="mt-4 font-mono text-small tabular-nums text-muted">
-            <span className="text-secondary">{totalMatches}</span> matches ·{" "}
-            <span className="text-secondary">{totalChampions}</span> champions ·{" "}
-            <span className="text-secondary">{totalPlayers}</span> players seen
+          <p className="mt-4 text-small tabular-nums text-muted">
+            <span className="text-secondary">{formatCount(totalMatches)}</span> matches ·{" "}
+            <span className="text-secondary">{formatCount(totalChampions)}</span> champions ·{" "}
+            <span className="text-secondary">{formatCount(totalPlayers)}</span> players seen
           </p>
         </div>
       </section>
@@ -230,7 +256,7 @@ export default async function Home() {
         {podium.length > 0 && (
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {podium.map((c, i) => (
-              <ChampionSpotlight key={c.key} champion={c} rank={i + 1} />
+              <ChampionSpotlight key={c.key} champion={c} rank={i + 1} scale={scale} />
             ))}
           </div>
         )}
@@ -238,7 +264,7 @@ export default async function Home() {
         {runnersUp.length > 0 && (
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {runnersUp.map((c, i) => (
-              <ChampionChip key={c.key} champion={c} rank={i + 4} />
+              <ChampionChip key={c.key} champion={c} rank={i + 4} scale={scale} />
             ))}
           </div>
         )}
