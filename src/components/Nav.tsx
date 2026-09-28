@@ -13,8 +13,8 @@ type NavItem = { href: string; label: string };
 // that only fitted from 1280px up. They live under one menu now (decided with
 // Théo, 2026-09-28), and Info & Tips moved to the footer.
 const TIER_LISTS: NavItem[] = [
-  // Also a top-level link (the most used page, one click away), but it IS a
-  // tier list and people open this menu expecting to find it there too.
+  // Only here, no top-level link of its own any more: it is a tier list like
+  // the others (Théo, 2026-09-28).
   { href: "/champions", label: "Champions" },
   { href: "/items", label: "Items" },
   { href: "/augments", label: "Augments" },
@@ -25,7 +25,6 @@ const TIER_LISTS: NavItem[] = [
   { href: "/anvil", label: "Anvil Run" },
   { href: "/combos", label: "Combos" },
 ];
-const CHAMPIONS: NavItem = { href: "/champions", label: "Champions" };
 const LEADERBOARD: NavItem = { href: "/leaderboard", label: "Leaderboard" };
 const TIER_LISTS_KEY = "tier-lists";
 
@@ -88,10 +87,7 @@ function TierListsMenu({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
-  // On /champions the top-level link carries the highlight, not this button.
-  const active = TIER_LISTS.some(
-    (item) => item.href !== CHAMPIONS.href && isActive(pathname, item.href),
-  );
+  const active = TIER_LISTS.some((item) => isActive(pathname, item.href));
 
   useEffect(() => {
     if (!open) return;
@@ -183,32 +179,27 @@ function TierListsMenu({
 // route: a translate/resize animation reads as far less templated than an
 // instant background swap.
 function NavLinkList({ pathname }: { pathname: string }) {
-  const championsRef = useRef<HTMLAnchorElement>(null);
   const tierListsRef = useRef<HTMLButtonElement>(null);
   const leaderboardRef = useRef<HTMLAnchorElement>(null);
   const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
-  const activeKey = isActive(pathname, CHAMPIONS.href)
-    ? CHAMPIONS.href
-    : isActive(pathname, LEADERBOARD.href)
-      ? LEADERBOARD.href
-      : TIER_LISTS.some((item) => isActive(pathname, item.href))
-        ? TIER_LISTS_KEY
-        : null;
+  const activeKey = isActive(pathname, LEADERBOARD.href)
+    ? LEADERBOARD.href
+    : TIER_LISTS.some((item) => isActive(pathname, item.href))
+      ? TIER_LISTS_KEY
+      : null;
 
   const listRef = useRef<HTMLUListElement>(null);
 
   // Measured against the list itself, not with offsetLeft: the Tier lists
   // button sits inside its own positioned wrapper, so its offsetLeft is 0 and
-  // the highlight landed on Champions.
+  // the highlight landed on the first entry.
   useLayoutEffect(() => {
     const el =
-      activeKey === CHAMPIONS.href
-        ? championsRef.current
-        : activeKey === LEADERBOARD.href
-          ? leaderboardRef.current
-          : activeKey === TIER_LISTS_KEY
-            ? tierListsRef.current
-            : null;
+      activeKey === LEADERBOARD.href
+        ? leaderboardRef.current
+        : activeKey === TIER_LISTS_KEY
+          ? tierListsRef.current
+          : null;
     const list = listRef.current;
     if (!el || !list) {
       setHighlight(null);
@@ -226,9 +217,6 @@ function NavLinkList({ pathname }: { pathname: string }) {
           style={{ left: highlight.left, width: highlight.width }}
         />
       )}
-      <li>
-        <NavLink item={CHAMPIONS} active={activeKey === CHAMPIONS.href} linkRef={championsRef} />
-      </li>
       <li>
         <TierListsMenu pathname={pathname} triggerRef={tierListsRef} />
       </li>
@@ -328,14 +316,9 @@ export function Nav() {
                 <NavSearch onNavigate={() => setOpen(false)} showShortcut={false} />
               </div>
             )}
-            <ul className="flex flex-col gap-1 text-sm">
-              <li>
-                <NavLink item={CHAMPIONS} active={isActive(pathname, CHAMPIONS.href)} onClick={() => setOpen(false)} staticActiveBg />
-              </li>
-            </ul>
-            <p className="mt-3 px-2.5 text-micro text-muted">Tier lists</p>
+            <p className="px-2.5 text-micro text-muted">Tier lists</p>
             <ul className="mt-1 flex flex-col gap-1 text-sm">
-              {TIER_LISTS.filter((item) => item.href !== CHAMPIONS.href).map((item) => (
+              {TIER_LISTS.map((item) => (
                 <li key={item.href}>
                   <NavLink item={item} active={isActive(pathname, item.href)} onClick={() => setOpen(false)} staticActiveBg />
                 </li>
