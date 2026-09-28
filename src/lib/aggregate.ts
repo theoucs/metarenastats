@@ -75,15 +75,39 @@ const PAGE_SIZE = 10000;
 
 // Ce chemin ne sert plus une requête utilisateur : depuis 2026-09-13 les pages
 // lisent des snapshots pré-calculés (lib/statsSnapshot.ts) et seul le job de
-// rafraîchissement appelle les agrégateurs. Il n'a pas de pression de latence,
-// d'où un plafond bien plus haut que les 30 pages d'avant (qui tronquaient dès
-// ~1 660 matchs).
+// rafraîchissement appelle les agrégateurs. Il n'a pas de pression de latence.
 //
-// 60 pages × 10 000 = 600 000 lignes ≈ 33 000 matchs, soit ~120 Mo en mémoire JS. Le
-// plafond reste un garde-fou mémoire, pas une limite de conception : au-delà,
-// l'agrégation doit passer en SQL (phase 3 du plan). La différence essentielle
-// avec l'ancienne version est que la troncature n'est plus muette.
-const MAX_PAGES = 60;
+// ─── UN GARDE-FOU MÉMOIRE, DÉSORMAIS RÉGLÉ SUR UNE MESURE ───────────────────
+//
+// La valeur précédente — 60 pages, 600 000 lignes — reposait sur une
+// estimation écrite ici même : « ~120 Mo en mémoire JS », soit 200 octets par
+// ligne. Mesuré le 2026-09-28 en production, sur 504 069 lignes réellement
+// chargées :
+//
+//   tas après lecture      211 Mo    →  439 octets par ligne
+//   tas en fin de job      237 Mo
+//   plafond du tas (V8)  2 036 Mo    →  le job en occupait 12 %
+//
+// L'estimation était 2,2 fois trop optimiste. Elle aurait pu l'être dans
+// l'autre sens, et c'est ce qui rend ce genre de chiffre dangereux : il décide
+// entre « il reste de la marge » et « ça plante sans message ».
+//
+// Ce qui rend le calcul non trivial : le job tient les participations des DEUX
+// patchs publiés en mémoire en même temps (voir refreshSnapshots). Le pire cas
+// est donc 2 × MAX_PAGES × PAGE_SIZE lignes.
+//
+// À 100 pages : 1 000 000 de lignes par patch, 2 000 000 au pire cas, soit
+// ~840 Mo pour les participations plus les structures d'agrégation — de
+// l'ordre de 950 Mo, moins de la moitié du plafond. Le patch 16.18, qui était
+// à 491 652 lignes et 82 % de l'ancien plafond, retombe à 49 % et a de quoi
+// doubler.
+//
+// Ce n'est pas une limite de conception, c'est un garde-fou : au-delà, il
+// faudra soit cesser de tenir les deux patchs à la fois — ils sont lus en
+// parallèle par choix, pas par nécessité — soit finir de descendre
+// l'agrégation en SQL. La troncature, elle, reste bruyante : elle fait passer
+// le job au rouge plutôt que de publier des chiffres partiels en silence.
+const MAX_PAGES = 100;
 
 /**
  * Wrapped in React's `cache` so a page that runs two aggregators pays for one
