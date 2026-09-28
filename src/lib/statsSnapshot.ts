@@ -176,6 +176,17 @@ export type RefreshReport = {
    *  était fausse. Vercel expose la révision ; la faire remonter coûte une
    *  ligne et supprime la question. */
   commit: string;
+  /**
+   * Tas JS occupé aux moments qui comptent, en mégaoctets.
+   *
+   * Le plafond de lecture (MAX_PAGES × PAGE_SIZE) est un garde-fou MÉMOIRE :
+   * le job tient les participations des deux patchs publiés en même temps. Il
+   * était jusqu'ici réglé sur une estimation — « 600 000 lignes ≈ 120 Mo » —
+   * jamais vérifiée. On ne peut pas décider de le relever sans savoir ce que
+   * coûte vraiment une ligne, et une estimation fausse d'un facteur deux fait
+   * la différence entre de la marge et un plantage sans message.
+   */
+  memoryMb: { apresLecture: number; fin: number; lignes: number };
   /** Millisecondes par phase. Permanent et non temporaire : ce job vit sous une
    *  limite dure de 300 s, et savoir CE QUI coûte est la seule façon de décider
    *  quoi alléger quand il s'en approche. */
@@ -266,6 +277,9 @@ const SNAPSHOT_WRITERS = 4;
  * 24 h. Tout le reste du site continue d'être recalculé chaque heure.
  */
 const COMBOS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Le tas occupé, arrondi au mégaoctet. */
+const heapMb = () => Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
 
 /** Ce qu'une page de champion garde d'une passe à l'autre quand les paires
  *  sont encore fraîches. Dérivé de la signature plutôt que réécrit : les deux
@@ -458,6 +472,11 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     const sets = await clock("lectureParticipants", () =>
       Promise.all(context.options.map((option) => readParticipantSetForPatch(option.patch))),
     );
+    // Mesuré ICI précisément : c'est le moment où les deux jeux de
+    // participations sont entièrement en mémoire, avant que les agrégations
+    // n'ajoutent leurs propres structures.
+    const heapApresLecture = heapMb();
+    const lignesEnMemoire = sets.reduce((n, s) => n + s.rows.length, 0);
 
     for (const [index, option] of context.options.entries()) {
       const set = sets[index];
@@ -611,6 +630,11 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       durationMs: Date.now() - startedAt,
       bytes,
       patches: published,
+      memoryMb: {
+        apresLecture: heapApresLecture,
+        fin: heapMb(),
+        lignes: lignesEnMemoire,
+      },
       rated: null,
       commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
       timings,
