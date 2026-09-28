@@ -1151,3 +1151,16 @@ create index if not exists players_riot_id_lower_idx on players (lower(riot_id))
 -- (`p.patch = target_patch` ne rattrape pas NULL). C'est volontaire : un match
 -- sans patch est un défaut d'ingestion, pas une donnée périmée.
 -- `scripts/find-patch-boundaries.mjs` sait les dater.
+
+-- ─── LA FILE SERT LES JOUEURS RÉCENTS D'ABORD (2026-09-28) ─────────────────
+--
+-- Remplace crawl_queue_next_idx. Le crawler lit chaque mode séparément
+-- (`priority = 0` puis `= 1`), donc l'ordre de la priorité dans l'index ne sert
+-- à rien ; ce qui compte est le départage parmi les jamais-visités, 315 000 sur
+-- 330 000 : les plus récemment découverts d'abord, parce qu'ils sortent de
+-- matchs récents et jouent encore. Mesuré : 0,14 ms pour servir 8 joueurs.
+-- Voir src/lib/crawler.ts (pickFrom, currentPatchStart).
+create index if not exists crawl_queue_next_recent_idx
+  on crawl_queue (priority, last_crawled_at nulls first, discovered_at desc)
+  where error_count < 5;
+drop index if exists crawl_queue_next_idx;

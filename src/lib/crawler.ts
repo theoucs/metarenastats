@@ -128,7 +128,14 @@ async function pendingMatchIds(limit: number): Promise<string[]> {
   });
 }
 
-/** Un bout de file, dans un seul mode. */
+/** Un bout de file, dans un seul mode.
+ *
+ *  À ancienneté de passage égale — c'est-à-dire parmi les jamais-visités, 315 000
+ *  sur 330 000 le 2026-09-28 — les joueurs vus le plus récemment passent
+ *  d'abord : ils sortent des matchs qu'on vient d'ingérer, donc ils jouent
+ *  encore. L'ordre d'arrivée seul faisait visiter en premier des joueurs
+ *  découverts il y a deux semaines, dont l'historique est sur des patchs déjà
+ *  archivés. */
 async function pickFrom(priority: number, limit: number): Promise<string[]> {
   if (limit <= 0) return [];
   return retryDb("lecture de la file", async () => {
@@ -138,6 +145,7 @@ async function pickFrom(priority: number, limit: number): Promise<string[]> {
       .lt("error_count", 5)
       .eq("priority", priority)
       .order("last_crawled_at", { ascending: true, nullsFirst: true })
+      .order("discovered_at", { ascending: false })
       .limit(limit);
     if (error) throw error;
     return (data ?? []).map((r) => r.puuid as string);
@@ -159,23 +167,75 @@ async function pickFrom(priority: number, limit: number): Promise<string[]> {
  * partage à parts égales — chaque moitié reprenant les places que l'autre
  * n'utilise pas.
  */
-async function pickPlayers(limit: number): Promise<string[]> {
+async function pickPlayers(limit: number): Promise<PickedPlayer[]> {
   const tracked = await pickFrom(1, Math.floor(limit / 2));
   const discovery = await pickFrom(0, limit - tracked.length);
-  const picked = [...tracked, ...discovery];
+  const picked: PickedPlayer[] = [
+    ...tracked.map((puuid) => ({ puuid, tracked: true })),
+    ...discovery.map((puuid) => ({ puuid, tracked: false })),
+  ];
   // Une découverte qui ne remplit pas sa moitié rend la main au suivi.
   if (picked.length < limit) {
     const extra = await pickFrom(1, limit - picked.length);
-    for (const puuid of extra) if (!picked.includes(puuid)) picked.push(puuid);
+    for (const puuid of extra) {
+      if (!picked.some((p) => p.puuid === puuid)) picked.push({ puuid, tracked: true });
+    }
   }
   return picked;
 }
 
-/** Historique Arena d'un joueur (100 = maximum autorisé par Riot en un appel). */
-async function fetchPlayerMatchIds(puuid: string): Promise<string[] | null> {
+type PickedPlayer = { puuid: string; tracked: boolean };
+
+/**
+ * Début du patch courant, en secondes, pour borner l'historique en découverte.
+ *
+ * Mesuré le 2026-09-28 : sans borne, 70 % des matchs ingérés tombaient sur des
+ * patchs déjà archivés — le 25/09, 7 742 sur 10 820, contre 360 sur le patch
+ * courant. Ils ne nourrissent aucune tier list : seul le classement les lit, et
+ * lui passe par le SUIVI, qui garde l'historique entier.
+ *
+ * Le patch COURANT et pas les deux publiés : le précédent est déjà épais (27 000
+ * matchs sur 16.18) et va sortir de la fenêtre, alors que le courant part de
+ * zéro — c'est lui qui a besoin de chaque appel. `null` quand on ne sait pas :
+ * on retombe sur l'historique entier plutôt que de ne rien crawler.
+ */
+async function currentPatchStart(): Promise<number | null> {
+  try {
+    return await retryDb("début du patch courant", async () => {
+      const { data: patches, error } = await db().rpc("patch_options", { min_matches: 5 });
+      if (error) throw error;
+      const current = (patches as { patch: string }[] | null)?.[0]?.patch;
+      if (!current) return null;
+      const { data, error: firstError } = await db()
+        .from("matches")
+        .select("game_creation")
+        .eq("patch", current)
+        .order("game_creation", { ascending: true })
+        .limit(1);
+      if (firstError) throw firstError;
+      const first = data?.[0]?.game_creation as string | undefined;
+      return first ? Math.floor(new Date(first).getTime() / 1000) : null;
+    });
+  } catch (error) {
+    console.error("[crawl] début du patch courant inconnu, historique entier :", error);
+    return null;
+  }
+}
+
+/** Numéro de partie d'un identifiant (« EUW1_7982040680 » → 7982040680).
+ *  Riot les attribue dans l'ordre : c'est une horloge gratuite. */
+function gameNumber(matchId: string): number {
+  const n = Number(matchId.slice(matchId.lastIndexOf("_") + 1));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Historique Arena d'un joueur (100 = maximum autorisé par Riot en un appel),
+ *  borné à `startTime` (secondes) quand il est donné. */
+async function fetchPlayerMatchIds(puuid: string, startTime: number | null): Promise<string[] | null> {
   const res = await riotFetch(
     `https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids` +
-      `?queue=${ARENA_QUEUE_ID}&start=0&count=100`,
+      `?queue=${ARENA_QUEUE_ID}&start=0&count=100` +
+      (startTime !== null ? `&startTime=${startTime}` : ""),
     apiKey(),
     { maxWaitMs: CRAWLER_MAX_WAIT_MS },
   );
@@ -304,12 +364,13 @@ export async function runCrawl({
   const crawled: { puuid: string; matchesFound: number }[] = [];
   const discoveredIds: string[] = [];
 
-  for (const puuid of players) {
+  const patchStart = await currentPatchStart();
+  for (const { puuid, tracked } of players) {
     if (Date.now() > deadline) {
       stoppedBy = "deadline";
       break;
     }
-    const ids = await fetchPlayerMatchIds(puuid);
+    const ids = await fetchPlayerMatchIds(puuid, tracked ? null : patchStart);
     riotCalls++;
     if (ids === null) continue;
     riotOk++;
@@ -317,7 +378,12 @@ export async function runCrawl({
     crawled.push({ puuid, matchesFound: ids.length });
   }
 
-  const newIds = await keepNewMatchIds(discoveredIds);
+  // Les plus récents d'abord. Le plafond de la passe (maxMatches) coupe la
+  // file ; sans ce tri, les historiques entiers du SUIVI — lus en premier — la
+  // remplissaient avant que la découverte, bornée au patch courant, ait son
+  // tour. Un vieux match laissé de côté n'est pas perdu : il revient au
+  // prochain passage de son joueur.
+  const newIds = (await keepNewMatchIds(discoveredIds)).sort((a, b) => gameNumber(b) - gameNumber(a));
   alreadyKnown = new Set(discoveredIds).size - newIds.length;
 
   // Les réparations d'abord, puis les découvertes, sans doublon.
