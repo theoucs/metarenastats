@@ -1,3 +1,4 @@
+import { getHeapStatistics } from "node:v8";
 import { supabaseAdmin } from "@/lib/supabase";
 import { championRole, itemCategory, resolveAugment } from "@/lib/gameData";
 import { getPatchContext, patchedKey } from "@/lib/patches";
@@ -186,7 +187,7 @@ export type RefreshReport = {
    * coûte vraiment une ligne, et une estimation fausse d'un facteur deux fait
    * la différence entre de la marge et un plantage sans message.
    */
-  memoryMb: { apresLecture: number; fin: number; lignes: number };
+  memoryMb: { apresLecture: number; fin: number; plafond: number; lignes: number };
   /** Millisecondes par phase. Permanent et non temporaire : ce job vit sous une
    *  limite dure de 300 s, et savoir CE QUI coûte est la seule façon de décider
    *  quoi alléger quand il s'en approche. */
@@ -280,6 +281,17 @@ const COMBOS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Le tas occupé, arrondi au mégaoctet. */
 const heapMb = () => Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+
+/**
+ * Le plafond du tas que V8 s'autorise, en mégaoctets.
+ *
+ * C'est la seule valeur qui rende la mesure d'occupation exploitable : savoir
+ * qu'on occupe 214 Mo ne dit rien tant qu'on ignore si le toit est à 500 Mo ou
+ * à 2 Go. Vercel le dérive de la mémoire configurée pour la fonction, qu'on ne
+ * lit nulle part dans le dépôt — autant le demander au moteur.
+ */
+const heapLimitMb = () =>
+  Math.round(getHeapStatistics().heap_size_limit / 1024 / 1024);
 
 /** Ce qu'une page de champion garde d'une passe à l'autre quand les paires
  *  sont encore fraîches. Dérivé de la signature plutôt que réécrit : les deux
@@ -633,6 +645,7 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
       memoryMb: {
         apresLecture: heapApresLecture,
         fin: heapMb(),
+        plafond: heapLimitMb(),
         lignes: lignesEnMemoire,
       },
       rated: null,
