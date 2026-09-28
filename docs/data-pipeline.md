@@ -405,3 +405,6 @@ stuck at `ingested_at` null whose detail 404s is retried every pass (0 such matc
 crawlers off `/players/` and `/api/`, and a search is capped at 5 per IP per 2 minutes
 (per instance, in memory — it stops a burst, not a distributed attack; beyond that, it
 falls back to stored data like an expired key does).
+
+What the same audit found but left for later — mostly what a production key and more data
+will bring — is noted in `docs/later.md`.
