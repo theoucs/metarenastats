@@ -26,6 +26,13 @@
 #               = 313 appels, étalés sur ~20 min de cycle
 #   Soit ~0,25 appel/s contre 0,83 autorisé → ON UTILISE UN QUART DE LA CLÉ.
 #
+#   2026-09-28 : DEUX passes de crawl par cycle. Depuis que la découverte est
+#   bornée au patch courant et les timelines aux patchs publiés, une passe ne
+#   coûte plus que ~80 appels (30 historiques + ~50 matchs, mesuré), et ses
+#   timelines ~50. Deux passes ≈ 160 + ~100 = ~260 appels : sous les 313 d'avant,
+#   donc la même part de la clé laissée aux visiteurs, pour deux fois plus de
+#   matchs du patch courant.
+#
 # Les trois quarts restants appartiennent en permanence aux visiteurs. C'est
 # strictement mieux qu'avant sur les DEUX tableaux : plus de matchs par jour, et
 # davantage de marge à chaque instant.
@@ -81,7 +88,7 @@ on:
       crawlPasses:
         description: "Passes de crawl par cycle (0 = timelines seules)"
         required: false
-        default: "1"
+        default: "2"
 
 # Un seul moteur à la fois. `cancel-in-progress: false` : un déclenchement qui
 # tombe pendant un moteur en cours attend son tour au lieu de le tuer — c'est ce
@@ -105,7 +112,7 @@ jobs:
           MINUTES: ${{ inputs.minutes || '330' }}
           CRAWL_MATCHES: ${{ inputs.crawlMatches || '120' }}
           TIMELINE_MATCHES: ${{ inputs.timelineMatches || '80' }}
-          CRAWL_PASSES: ${{ inputs.crawlPasses || '1' }}
+          CRAWL_PASSES: ${{ inputs.crawlPasses || '2' }}
           TIMELINE_PASSES: ${{ inputs.timelinePasses || '2' }}
         run: |
           set -euo pipefail

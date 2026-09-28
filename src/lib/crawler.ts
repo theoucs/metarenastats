@@ -467,14 +467,40 @@ export type TimelineReport = {
   stoppedBy: "deadline" | "maxMatches" | "exhausted" | "apiUnavailable";
 };
 
-/** Matchs complets dont le timeline reste à récupérer, les plus récents d'abord. */
-async function pendingTimelineIds(limit: number): Promise<string[]> {
+/**
+ * Les deux patchs publiés, seuls lecteurs de l'ordre d'achat.
+ *
+ * Un timeline de patch archivé ne sert à rien : l'archive ne garde que des
+ * compteurs par champion, et l'ordre d'achat part avec la participation. Le
+ * crawler en ramène pourtant (le SUIVI lit l'historique entier), et une fois
+ * le retard récent résorbé, les passes de timeline dépensaient leurs appels
+ * dessus. `null` quand on ne sait pas : pas de filtre, comme avant.
+ */
+async function publishedPatches(): Promise<string[] | null> {
+  try {
+    return await retryDb("patchs publiés", async () => {
+      const { data, error } = await db().rpc("patch_options", { min_matches: 5 });
+      if (error) throw error;
+      const patches = ((data ?? []) as { patch: string }[]).slice(0, 2).map((r) => r.patch);
+      return patches.length > 0 ? patches : null;
+    });
+  } catch (error) {
+    console.error("[timeline] patchs publiés inconnus, pas de filtre :", error);
+    return null;
+  }
+}
+
+/** Matchs complets dont le timeline reste à récupérer, les plus récents
+ *  d'abord — sur les patchs publiés seulement quand on les connaît. */
+async function pendingTimelineIds(limit: number, patches: string[] | null): Promise<string[]> {
   return retryDb("lecture des timelines à récupérer", async () => {
-    const { data, error } = await db()
+    let query = db()
       .from("matches")
       .select("match_id")
       .is("timeline_fetched_at", null)
-      .not("ingested_at", "is", null)
+      .not("ingested_at", "is", null);
+    if (patches) query = query.in("patch", patches);
+    const { data, error } = await query
       .order("game_creation", { ascending: false })
       .limit(limit);
     if (error) throw error;
@@ -520,7 +546,8 @@ export async function runTimelineCrawl({
   let participantsUpdated = 0;
   let stoppedBy: TimelineReport["stoppedBy"] = "exhausted";
 
-  const ids = await pendingTimelineIds(maxMatches);
+  const patches = await publishedPatches();
+  const ids = await pendingTimelineIds(maxMatches, patches);
 
   for (const matchId of ids) {
     if (Date.now() > deadline) {
@@ -594,11 +621,13 @@ export async function runTimelineCrawl({
   if (matchesDone >= maxMatches) stoppedBy = "maxMatches";
 
   const remaining = await retryDb("comptage des timelines restants", async () => {
-    const { count, error } = await db()
+    let query = db()
       .from("matches")
       .select("*", { count: "exact", head: true })
       .is("timeline_fetched_at", null)
       .not("ingested_at", "is", null);
+    if (patches) query = query.in("patch", patches);
+    const { count, error } = await query;
     if (error) throw error;
     return count ?? 0;
   });
