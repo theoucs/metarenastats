@@ -290,3 +290,28 @@ mattered: fields that did not exist (so `NULL` against `NULL`), two publications
 ratings pass between them (which rewrites the skill tiers the landmark references depend
 on), and a function checked in the database rather than through the path the application
 takes. All three answered "zero differences", and all three were wrong.
+
+## Crawling for the patch that needs it (2026-09-28)
+
+Measured on 25 September: of 10 820 matches ingested that day, **7 742 belonged to patches
+already archived** and 360 to the current one. `by-puuid/ids` returns a player's last 100
+Arena games with no date bound, and 315 000 of the 330 000 queued players had never been
+visited — so each first visit paid for a full history, mostly on patches no tier list reads.
+
+Three changes, each aimed at a different leak:
+
+- **Discovery is bounded to the current patch** (`startTime` = its first known game).
+  Tracking keeps full histories, because the ratings are the one reader of old matches.
+- **A pass ingests newest first.** Tracked players are read first and their histories used
+  to fill the 120-match cap before discovery got a turn. Match ids are issued in order, so
+  sorting them costs nothing.
+- **The queue serves recently discovered players first** among the never-visited: they came
+  out of recent games, so they still play.
+
+First ten matches after the deploy: ten on 16.19, against 18 % that morning.
+
+The default-patch threshold moved from 300 to **5 000 matches** the same day, on a
+measurement rather than a guess: a new patch's sample correlates with its own eventual
+tier list at 0.48 at 750 matches, 0.76 at 3 000 and 0.82 at 6 000 — while the *previous*
+patch predicts it at 0.80–0.90 across three measured pairs. Below ~5 000, the old patch
+is the better description of the new one. The table is in `src/lib/patches.ts`.

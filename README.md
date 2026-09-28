@@ -105,7 +105,9 @@ What matters more than the factor is that `match_participants` stops growing wit
 bound. Two patches, and that is all.
 
 **Known gap.** The crawler keeps backfilling matches on patches that were already
-archived — 269 000 raw participations belong to them today, read by nothing. The
+archived — 269 000 raw participations belong to them today, read by nothing but the
+ratings. Since 2026-09-28 only the ladder-tracking half of the crawl still reads full
+histories; discovery stops at the start of the current patch. The
 published figures stay correct (the archive holds what was deleted, the raw table holds
 the rest, every game counted once), but re-running `roll_up_patch` on such a patch would
 *replace* its totals with only the newly-crawled subset rather than add to them. Archiving
