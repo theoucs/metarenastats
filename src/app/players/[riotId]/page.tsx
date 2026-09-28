@@ -11,7 +11,7 @@ import { resolveChampion, profileIconUrl } from "@/lib/gameData";
 import { getPlayerRank } from "@/lib/playerRatings";
 import { RATING_MIN_GAMES } from "@/lib/rating";
 import { RankBadge } from "@/components/RankBadge";
-import { StatPill, top1Color, top3Color, avgPlacementColor } from "@/lib/statsDisplay";
+import { StatPill, top1Color, top3Color, avgPlacementColor, formatCount } from "@/lib/statsDisplay";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
 import { MatchCard } from "@/components/MatchCard";
 
@@ -144,7 +144,7 @@ export default async function PlayerPage({
                   <>
                     <RankBadge tier={rank.tier} size="lg" />
                     <span className="text-muted">
-                      #{rank.position} of {rank.outOf} ranked
+                      #{formatCount(rank.position)} of {formatCount(rank.outOf)} ranked
                     </span>
                   </>
                 ) : profile.games >= RATING_MIN_GAMES ? (
@@ -172,7 +172,7 @@ export default async function PlayerPage({
         <div className="relative z-10 -mt-8">
           {liveError && (
             <p className="mt-4 rounded-lg border border-[color:var(--warning-border)] bg-[color:var(--warning-muted)] px-4 py-2.5 text-small text-warning">
-              Couldn&apos;t refresh from Riot right now ({liveError}). Showing previously saved data.
+              Couldn&apos;t refresh from Riot right now: {liveError} Showing previously saved data.
             </p>
           )}
 

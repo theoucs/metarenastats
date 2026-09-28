@@ -778,7 +778,7 @@ function MobileCard({
       </div>
 
       {tierInfo && !hideTierBadge && <TierBadge tier={tierInfo.tier} />}
-      {row.rankTier && <RankBadge tier={row.rankTier} />}
+      {row.rankTier && <RankBadge tier={row.rankTier} iconOnly />}
       {/* Avg Placement leads, as everywhere on the site. */}
       <span
         className={`w-12 shrink-0 text-right font-display text-h2 font-semibold tabular-nums ${avgPlacementColor(row.avgPlacement, scale, row.games)}`}
@@ -1157,7 +1157,7 @@ export function StatsTable({
                   sortBy={sortBy}
                   sortDir={sortDir}
                   onSort={cycleSort}
-                  className={`${stickyHeadCell} w-28 px-4`}
+                  className={`${stickyHeadCell} w-40 px-4`}
                 />
               )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>

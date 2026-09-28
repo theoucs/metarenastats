@@ -1,14 +1,17 @@
 import { TieredStatsTabs } from "@/components/TieredStatsTabs";
 import { type StatsRow } from "@/components/StatsTable";
 import { comboToRow } from "@/lib/comboDisplay";
-import { MiniStatHeader } from "@/lib/statsDisplay";
+import { statScale } from "@/lib/statsDisplay";
 import { loadChampionPage, ChampionShell } from "./championPage";
 import {
   AugmentColumn,
   AnvilRunPanel,
   ItemSlotBlock,
-  PrismaticItemCard,
+  MiniStatTable,
   SeeAllLink,
+  augmentRowsByRarity,
+  itemRowsByRarity,
+  prismaticItemMiniRows,
 } from "./championSections";
 
 const COMBO_TABS = [
@@ -65,6 +68,12 @@ export default async function ChampionSummaryPage({
     }
   }
 
+  // Each summary list shows the best few; its colours are measured on the
+  // champion's whole list for that category (see MiniStatTable).
+  const augmentScales = detail ? augmentRowsByRarity(detail.allAugments, detail.games) : null;
+  const itemRows = detail ? itemRowsByRarity(detail.allItems, detail.games) : null;
+  const anvilItemRows = detail ? itemRowsByRarity(detail.anvilItems, detail.anvilStat.games) : null;
+
   return (
     <ChampionShell data={data} active="summary">
       {detail && (
@@ -74,9 +83,21 @@ export default async function ChampionSummaryPage({
               Among this champion&apos;s own games.
             </SectionHeading>
             <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-3">
-              <AugmentColumn title="Silver" stats={detail.augmentsByRarity.silver} />
-              <AugmentColumn title="Gold" stats={detail.augmentsByRarity.gold} />
-              <AugmentColumn title="Prismatic" stats={detail.augmentsByRarity.prismatic} />
+              <AugmentColumn
+                title="Silver"
+                stats={detail.augmentsByRarity.silver}
+                scale={statScale(augmentScales?.silver ?? [])}
+              />
+              <AugmentColumn
+                title="Gold"
+                stats={detail.augmentsByRarity.gold}
+                scale={statScale(augmentScales?.gold ?? [])}
+              />
+              <AugmentColumn
+                title="Prismatic"
+                stats={detail.augmentsByRarity.prismatic}
+                scale={statScale(augmentScales?.prismatic ?? [])}
+              />
             </div>
           </section>
 
@@ -96,26 +117,12 @@ export default async function ChampionSummaryPage({
                   </div>
                 )}
 
-                <div className="mt-6">
-                  <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">
-                    Top Prismatic Items
-                  </h3>
-                  {detail.topPrismaticItems.length > 0 && <MiniStatHeader />}
-                  {/* Single column, unlike before: the five stat labels are
-                      now written once above the list, and a 2-up grid would
-                      leave that header spanning both columns while the
-                      values sat under only the first. */}
-                  <div className="mt-1.5 grid gap-2">
-                    {detail.topPrismaticItems.length === 0 ? (
-                      <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
-                        No data yet.
-                      </p>
-                    ) : (
-                      detail.topPrismaticItems.map((s) => (
-                        <PrismaticItemCard key={s.itemId} stat={s} />
-                      ))
-                    )}
-                  </div>
+                <div className="mt-8">
+                  <h3 className="mb-2 text-small font-semibold text-secondary">Top prismatic items</h3>
+                  <MiniStatTable
+                    rows={prismaticItemMiniRows(detail.topPrismaticItems)}
+                    scale={statScale(itemRows?.prismatic ?? [])}
+                  />
                 </div>
               </div>
               {detail.anvilStat.games > 0 && (
@@ -124,6 +131,7 @@ export default async function ChampionSummaryPage({
                   shardbladeRate={detail.anvilShardbladeRate}
                   topPrismaticItems={detail.anvilTopPrismaticItems}
                   seeAllHref={tab("anvil")}
+                  scale={statScale(anvilItemRows?.prismatic ?? [])}
                 />
               )}
             </div>

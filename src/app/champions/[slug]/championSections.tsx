@@ -14,7 +14,7 @@ import {
   type Stat,
 } from "@/lib/aggregate";
 import { resolveItem, itemStatName, resolveAugment, itemCategory } from "@/lib/gameData";
-import { EntityTooltip } from "@/components/EntityTooltip";
+import { EntityTooltip, type EntityRef } from "@/components/EntityTooltip";
 import { type StatsRow } from "@/components/StatsTable";
 import {
   EntityIcon,
@@ -24,6 +24,8 @@ import {
   MiniStat,
   MiniStatHeader,
   formatCount,
+  type EntityRarity,
+  type StatScale,
 } from "@/lib/statsDisplay";
 
 /**
@@ -63,42 +65,141 @@ export function SeeAllLink({ href, children }: { href: string; children: React.R
   );
 }
 
-export function AugmentCard({ stat }: { stat: ChampionAugmentStat }) {
-  const info = resolveAugment(stat.augmentId);
-  if (!info) return null;
+/** One row of a MiniStatTable: an item or augment with its numbers. */
+export type MiniStatRow = {
+  key: string;
+  entity: EntityRef;
+  name: string;
+  iconUrl: string;
+  rarity?: EntityRarity;
+  stat: Stat;
+};
+
+/**
+ * The compact tables of the champion summary: one header, one line per entry,
+ * numbers packed to the right.
+ *
+ * They replace a card per entry, whose five numbers were spread over the full
+ * card width with their labels far above them: the eye lost the line.
+ * `columns="short"` keeps Avg, Top 3 and Games (Avg leads, as everywhere) for
+ * the narrow three-up augment columns and the anvil sidebar; the tab has the
+ * rest.
+ *
+ * `scale` comes from the champion's WHOLE list for that category, not from the
+ * five rows shown: those are the best by construction, and a scale built on
+ * them alone would paint the fifth best red.
+ */
+export function MiniStatTable({
+  rows,
+  columns = "full",
+  scale,
+}: {
+  rows: MiniStatRow[];
+  columns?: "full" | "short";
+  scale?: StatScale;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">No data yet.</p>
+    );
+  }
+  const full = columns === "full";
+  const num = "whitespace-nowrap py-2 pl-4 text-right tabular-nums";
   return (
-    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
-      <div className="flex items-center gap-2.5">
-        <EntityTooltip entity={{ type: "augment", id: stat.augmentId }} name={info.name}>
-          <EntityIcon iconUrl={info.iconUrl} rarity={info.tier as "silver" | "gold" | "prismatic"} />
-        </EntityTooltip>
-        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{info.name}</span>
-      </div>
-      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
-        <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
-        <MiniStat value={`${(stat.top1Rate * 100).toFixed(0)}%`} colorClass={top1Color(stat.top1Rate)} />
-        <MiniStat value={`${(stat.top3Rate * 100).toFixed(0)}%`} colorClass={top3Color(stat.top3Rate)} />
-        <MiniStat value={String(stat.games)} />
-        <MiniStat value={`${(stat.playRate * 100).toFixed(0)}%`} />
-      </div>
-    </div>
+    <table className="w-full border-collapse text-small">
+      <thead>
+        <tr className="border-b border-subtle text-micro uppercase tracking-wide text-muted">
+          <th className="pb-1.5 text-left font-medium">
+            <span className="sr-only">Name</span>
+          </th>
+          <th className="whitespace-nowrap pb-1.5 pl-4 text-right font-medium">Avg</th>
+          {full && <th className="whitespace-nowrap pb-1.5 pl-4 text-right font-medium">Top 1</th>}
+          <th className="whitespace-nowrap pb-1.5 pl-4 text-right font-medium">Top 3</th>
+          <th className="whitespace-nowrap pb-1.5 pl-4 text-right font-medium">Games</th>
+          {full && <th className="whitespace-nowrap pb-1.5 pl-4 text-right font-medium">Played</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ key, entity, name, iconUrl, rarity, stat }) => (
+          <tr key={key} className="border-b border-subtle last:border-0">
+            {/* w-full: the name takes the spare width and the numbers pack to
+                the right edge, instead of spreading across the table. Long
+                names wrap rather than truncate. */}
+            <td className="w-full py-2">
+              <span className="flex items-center gap-2">
+                <EntityTooltip entity={entity} name={name}>
+                  <EntityIcon iconUrl={iconUrl} rarity={rarity} sizeClass="h-7 w-7" />
+                </EntityTooltip>
+                <span className="font-medium leading-tight text-primary">{name}</span>
+              </span>
+            </td>
+            <td className={`${num} font-medium ${avgPlacementColor(stat.avgPlacement, scale, stat.games)}`}>
+              {stat.avgPlacement.toFixed(2)}
+            </td>
+            {full && (
+              <td className={`${num} ${top1Color(stat.top1Rate, scale, stat.games)}`}>
+                {(stat.top1Rate * 100).toFixed(0)}%
+              </td>
+            )}
+            <td className={`${num} ${top3Color(stat.top3Rate, scale, stat.games)}`}>
+              {(stat.top3Rate * 100).toFixed(0)}%
+            </td>
+            <td className={`${num} text-secondary`}>{formatCount(stat.games)}</td>
+            {full && <td className={`${num} text-secondary`}>{(stat.playRate * 100).toFixed(0)}%</td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
-export function AugmentColumn({ title, stats }: { title: string; stats: ChampionAugmentStat[] }) {
+export function augmentMiniRows(stats: ChampionAugmentStat[]): MiniStatRow[] {
+  return stats.flatMap((stat) => {
+    const info = resolveAugment(stat.augmentId);
+    if (!info) return [];
+    return [
+      {
+        key: String(stat.augmentId),
+        entity: { type: "augment" as const, id: stat.augmentId },
+        name: info.name,
+        iconUrl: info.iconUrl,
+        rarity: info.tier as EntityRarity,
+        stat,
+      },
+    ];
+  });
+}
+
+export function prismaticItemMiniRows(stats: ChampionItemSlotStat[]): MiniStatRow[] {
+  return stats.flatMap((stat) => {
+    const info = resolveItem(stat.itemId);
+    if (!info) return [];
+    return [
+      {
+        key: String(stat.itemId),
+        entity: { type: "item" as const, id: stat.itemId },
+        name: itemStatName(stat.itemId),
+        iconUrl: info.iconUrl,
+        rarity: "prismatic" as const,
+        stat,
+      },
+    ];
+  });
+}
+
+export function AugmentColumn({
+  title,
+  stats,
+  scale,
+}: {
+  title: string;
+  stats: ChampionAugmentStat[];
+  scale?: StatScale;
+}) {
   return (
-    <div>
-      <h3 className="mb-2 text-small font-semibold uppercase tracking-wide text-muted">{title}</h3>
-      {stats.length > 0 && <MiniStatHeader />}
-      <div className="mt-1.5 flex flex-col gap-2">
-        {stats.length === 0 ? (
-          <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
-            No data yet.
-          </p>
-        ) : (
-          stats.map((s) => <AugmentCard key={s.augmentId} stat={s} />)
-        )}
-      </div>
+    <div className="min-w-0">
+      <h3 className="mb-2 text-small font-semibold text-secondary">{title}</h3>
+      <MiniStatTable rows={augmentMiniRows(stats)} columns="short" scale={scale} />
     </div>
   );
 }
@@ -247,30 +348,6 @@ function OpeningCell({
   );
 }
 
-export function PrismaticItemCard({ stat }: { stat: ChampionItemSlotStat }) {
-  const info = resolveItem(stat.itemId);
-  if (!info) return null;
-  return (
-    <div className="rounded-lg border border-subtle bg-raised/40 p-3">
-      <div className="flex items-center gap-2.5">
-        <EntityTooltip entity={{ type: "item", id: stat.itemId }} name={itemStatName(stat.itemId)}>
-          <EntityIcon iconUrl={info.iconUrl} rarity="prismatic" />
-        </EntityTooltip>
-        <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">
-          {itemStatName(stat.itemId)}
-        </span>
-      </div>
-      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
-        <MiniStat value={stat.avgPlacement.toFixed(2)} colorClass={avgPlacementColor(stat.avgPlacement)} />
-        <MiniStat value={`${(stat.top1Rate * 100).toFixed(0)}%`} colorClass={top1Color(stat.top1Rate)} />
-        <MiniStat value={`${(stat.top3Rate * 100).toFixed(0)}%`} colorClass={top3Color(stat.top3Rate)} />
-        <MiniStat value={String(stat.games)} />
-        <MiniStat value={`${(stat.playRate * 100).toFixed(0)}%`} />
-      </div>
-    </div>
-  );
-}
-
 /** Les cinq chiffres d'une ligne « enclume », avec leur en-tête. */
 export function AnvilStatRow({ stat }: { stat: Stat }) {
   return (
@@ -295,11 +372,14 @@ export function AnvilRunPanel({
   shardbladeRate,
   topPrismaticItems,
   seeAllHref,
+  scale,
 }: {
   stat: Stat;
   shardbladeRate: number;
   topPrismaticItems: ChampionItemSlotStat[];
   seeAllHref: string;
+  /** Built on the champion's whole anvil item list, see MiniStatTable. */
+  scale?: StatScale;
 }) {
   return (
     <div>
@@ -312,20 +392,9 @@ export function AnvilRunPanel({
       <AnvilStatRow stat={stat} />
       <ShardbladeRateBlock rate={shardbladeRate} />
 
-      <div className="mt-3">
-        <h3 className="mb-1.5 text-small font-semibold uppercase tracking-wide text-muted">
-          Top Prismatic Items
-        </h3>
-        {topPrismaticItems.length > 0 && <MiniStatHeader />}
-        <div className="mt-1.5 flex flex-col gap-1.5">
-          {topPrismaticItems.length === 0 ? (
-            <p className="rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
-              No data yet.
-            </p>
-          ) : (
-            topPrismaticItems.map((s) => <PrismaticItemCard key={s.itemId} stat={s} />)
-          )}
-        </div>
+      <div className="mt-4">
+        <h3 className="mb-2 text-small font-semibold text-secondary">Top prismatic items</h3>
+        <MiniStatTable rows={prismaticItemMiniRows(topPrismaticItems)} columns="short" scale={scale} />
       </div>
     </div>
   );

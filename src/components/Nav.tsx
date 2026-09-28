@@ -43,7 +43,7 @@ function NavLink({
   item: NavItem;
   active: boolean;
   onClick?: () => void;
-  linkRef?: (el: HTMLElement | null) => void;
+  linkRef?: React.Ref<HTMLAnchorElement>;
   /** Give the active link its own background instead of relying on a sliding
    * highlight from a parent, for the mobile menu, which has no animated
    * indicator of its own. */
@@ -76,14 +76,14 @@ function NavLink({
  */
 function TierListsMenu({
   pathname,
-  buttonRef,
+  triggerRef,
 }: {
   pathname: string;
-  buttonRef: (el: HTMLElement | null) => void;
+  /** Owned by the parent, which also measures the button for its highlight. */
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const active = TIER_LISTS.some((item) => isActive(pathname, item.href));
 
@@ -127,10 +127,7 @@ function TierListsMenu({
       }}
     >
       <button
-        ref={(el) => {
-          triggerRef.current = el;
-          buttonRef(el);
-        }}
+        ref={triggerRef}
         type="button"
         aria-expanded={open}
         aria-controls="tier-lists-menu"
@@ -180,12 +177,10 @@ function TierListsMenu({
 // route: a translate/resize animation reads as far less templated than an
 // instant background swap.
 function NavLinkList({ pathname }: { pathname: string }) {
-  const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const championsRef = useRef<HTMLAnchorElement>(null);
+  const tierListsRef = useRef<HTMLButtonElement>(null);
+  const leaderboardRef = useRef<HTMLAnchorElement>(null);
   const [highlight, setHighlight] = useState<{ left: number; width: number } | null>(null);
-  const setRef = (key: string) => (el: HTMLElement | null) => {
-    if (el) itemRefs.current.set(key, el);
-    else itemRefs.current.delete(key);
-  };
   const activeKey = isActive(pathname, CHAMPIONS.href)
     ? CHAMPIONS.href
     : isActive(pathname, LEADERBOARD.href)
@@ -200,7 +195,14 @@ function NavLinkList({ pathname }: { pathname: string }) {
   // button sits inside its own positioned wrapper, so its offsetLeft is 0 and
   // the highlight landed on Champions.
   useLayoutEffect(() => {
-    const el = activeKey ? itemRefs.current.get(activeKey) : undefined;
+    const el =
+      activeKey === CHAMPIONS.href
+        ? championsRef.current
+        : activeKey === LEADERBOARD.href
+          ? leaderboardRef.current
+          : activeKey === TIER_LISTS_KEY
+            ? tierListsRef.current
+            : null;
     const list = listRef.current;
     if (!el || !list) {
       setHighlight(null);
@@ -219,13 +221,13 @@ function NavLinkList({ pathname }: { pathname: string }) {
         />
       )}
       <li>
-        <NavLink item={CHAMPIONS} active={activeKey === CHAMPIONS.href} linkRef={setRef(CHAMPIONS.href)} />
+        <NavLink item={CHAMPIONS} active={activeKey === CHAMPIONS.href} linkRef={championsRef} />
       </li>
       <li>
-        <TierListsMenu pathname={pathname} buttonRef={setRef(TIER_LISTS_KEY)} />
+        <TierListsMenu pathname={pathname} triggerRef={tierListsRef} />
       </li>
       <li>
-        <NavLink item={LEADERBOARD} active={activeKey === LEADERBOARD.href} linkRef={setRef(LEADERBOARD.href)} />
+        <NavLink item={LEADERBOARD} active={activeKey === LEADERBOARD.href} linkRef={leaderboardRef} />
       </li>
     </ul>
   );

@@ -8,7 +8,15 @@ import { getPatchContext } from "@/lib/patches";
 import { PatchBadge } from "@/components/PatchBadge";
 import { TierBadge } from "@/components/StatsTable";
 import { computeTiers, type Tier } from "@/lib/tiers";
-import { StatPill, avgPlacementColor, top1Color, top3Color } from "@/lib/statsDisplay";
+import {
+  StatPill,
+  avgPlacementColor,
+  top1Color,
+  top3Color,
+  formatCount,
+  statScale,
+  type StatScale,
+} from "@/lib/statsDisplay";
 
 /**
  * Le tronc commun des pages d'un champion.
@@ -42,6 +50,9 @@ export type ChampionPageData = {
    *  qu'un changement d'onglet ne ramène pas au patch par défaut. */
   patchParam: string | undefined;
   rank: { position: number; total: number; tier: Tier } | null;
+  /** The champions tier list's colour scale, so this champion's pills read
+   *  the same colour here as its row does there. */
+  scale: StatScale | undefined;
 };
 
 /** Tout ce dont une page de champion a besoin, quel que soit l'onglet. */
@@ -96,7 +107,7 @@ export async function loadChampionPage(
       })()
     : null;
 
-  return { slug, champInfo, detail, patch, patchParam: requested, rank };
+  return { slug, champInfo, detail, patch, patchParam: requested, rank, scale: statScale(rows) };
 }
 
 function ChampionTabNav({ data, active }: { data: ChampionPageData; active: ChampionTabKey }) {
@@ -141,7 +152,7 @@ export function ChampionShell({
   active: ChampionTabKey;
   children: ReactNode;
 }) {
-  const { champInfo, detail, patch, rank } = data;
+  const { champInfo, detail, patch, rank, scale } = data;
 
   return (
     <div>
@@ -230,20 +241,23 @@ export function ChampionShell({
                 <StatPill
                   label="Avg Placement"
                   value={detail.avgPlacement.toFixed(2)}
-                  colorClass={avgPlacementColor(detail.avgPlacement)}
+                  colorClass={avgPlacementColor(detail.avgPlacement, scale)}
                   emphasis
                 />
                 <StatPill
                   label="% Top 1"
                   value={`${(detail.top1Rate * 100).toFixed(1)}%`}
-                  colorClass={top1Color(detail.top1Rate)}
+                  colorClass={top1Color(detail.top1Rate, scale)}
                 />
                 <StatPill
                   label="% Top 3"
                   value={`${(detail.top3Rate * 100).toFixed(1)}%`}
-                  colorClass={top3Color(detail.top3Rate)}
+                  colorClass={top3Color(detail.top3Rate, scale)}
                 />
                 <StatPill label="% Played" value={`${(detail.playRate * 100).toFixed(1)}%`} />
+                {/* Fifth pill: four left an empty fifth of the row on desktop
+                    and a lone pill on the last line on phones. */}
+                <StatPill label="Games" value={formatCount(detail.games)} />
               </div>
 
               <div className="mt-8">
