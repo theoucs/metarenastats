@@ -518,26 +518,12 @@ CREATE OR REPLACE FUNCTION public.leaderboard_top(max_rows integer)
  LANGUAGE sql
  STABLE
 AS $function$
-  with top as (
-    select r.puuid, r.riot_id, r.rank_position, r.tier, pl.id as player_id
-    from player_ratings r
-    join players pl on pl.puuid = r.puuid
-    order by r.rank_position
-    limit max_rows
-  )
-  select
-    top.puuid,
-    top.riot_id,
-    count(p.*) as games,
-    count(p.*) filter (where p.placement <= 3) as top3_wins,
-    count(p.*) filter (where p.placement = 1) as top1_wins,
-    sum(p.placement) as placement_sum,
-    top.rank_position,
-    top.tier
-  from top
-  join participants_clean p on p.player_id = top.player_id
-  group by top.puuid, top.riot_id, top.rank_position, top.tier
-  order by top.rank_position
+  select r.puuid, r.riot_id,
+         r.games::bigint, r.top3_wins::bigint, r.top1_wins::bigint, r.placement_sum::bigint,
+         r.rank_position, r.tier
+  from player_ratings r
+  order by r.rank_position
+  limit max_rows
 $function$
 ;
 
