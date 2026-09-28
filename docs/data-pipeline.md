@@ -429,3 +429,28 @@ participations if it is still there, from `player_champion_totals` otherwise, ne
 σ = √(35/12), a uniform over six places, which matches the per-champion spread measured on
 16.18 (~1.7). Pages read that snapshot without a compute fallback: an absent snapshot means
 "nothing to report", not "re-read 500,000 rows".
+
+## The clock moves to the database (2026-09-28)
+
+GitHub's scheduler kept being the weak link: on 28/09 it served no slot between 09:35 and
+17:00, so crawling stopped when the morning's engine ended (16:02) and nothing published
+either. A `workflow_dispatch`, by contrast, starts within seconds. So Postgres now keeps the
+time: `pg_cron` runs `ops.dispatch_workflow('engine.yml')` at :09 and
+`ops.dispatch_workflow('refresh-stats.yml')` at :17 every hour, which asks GitHub's API to
+start the workflow (`pg_net`, answer 204 when accepted). The GitHub `schedule:` entries stay
+as a backup; the `riot-api` concurrency group turns a second engine trigger into a queued run
+that starts when the current one ends, which is exactly continuous coverage.
+
+The token is a fine-grained GitHub token limited to this repository and to Actions
+read/write, stored in the Supabase Vault as `github_dispatch_token` (never in the repo). It
+expires (a year at most, so by 2026-09-28 + 1 year): when it does, the dispatches start
+answering 401 and the site falls back to GitHub's own schedule. To check:
+
+```sql
+select status_code, created from net._http_response order by id desc limit 5;  -- 204 = ok
+select jobname, status, start_time from cron.job_run_details order by start_time desc limit 5;
+```
+
+To renew: create a new token with the same scope and replace the secret's value in the
+Supabase dashboard (Integrations → Vault). `ops` is a private schema, not exposed by PostgREST,
+and the function is revoked from `anon` and `authenticated`.

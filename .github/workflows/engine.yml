@@ -66,6 +66,10 @@ on:
     # documenté par GitHub comme « best-effort », et rien dans ce fichier ne le
     # corrige. La seule variable qu'on maîtrise, c'est ce qu'un déclenchement
     # SERVI parvient à couvrir : d'où MINUTES ci-dessous.
+    #
+    # 2026-09-28 : l'horloge principale est désormais pg_cron, dans Supabase,
+    # qui envoie un workflow_dispatch à :09 (voir data-pipeline.md, « The clock
+    # moves to the database »). Ce cron-ci reste en filet.
     - cron: "9,39 * * * *"
   workflow_dispatch:
     inputs:
