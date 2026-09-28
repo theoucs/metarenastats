@@ -1,20 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Bricolage_Grotesque } from "next/font/google";
+import { Chakra_Petch, IBM_Plex_Sans } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Chosen by Théo on 2026-09-28 from captures of four pairings. Geist +
+// Bricolage had become a default pairing of recent generated sites.
+//
+// IBM Plex Sans for UI text and every figure: open, very legible at 11-13px,
+// with real tabular figures for the stat columns.
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-body",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-// Display face for headings, big stat numbers, and the wordmark — Geist Sans
-// alone is the #1 tell of an unmodified Next.js template (see
-// docs/design-refresh-plan.md §1). Used sparingly, not for body copy.
-const bricolage = Bricolage_Grotesque({
-  variable: "--font-bricolage",
+// Chakra Petch for headings, big stat numbers and the wordmark: its clipped
+// corners echo the game's hextech UI. Used sparingly, never for body copy.
+const chakra = Chakra_Petch({
+  variable: "--font-heading",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
   display: "swap",
 });
 
@@ -27,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${plexSans.variable} ${chakra.variable} h-full antialiased`}
     >
       {/* Background/color come from the `body` rule in globals.css (tokens),
           not Tailwind classes here — keeps a single source of truth. */}

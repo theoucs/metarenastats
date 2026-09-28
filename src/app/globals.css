@@ -127,8 +127,8 @@
   --color-stat-good: var(--stat-good);
   --color-stat-bad: var(--stat-bad);
 
-  --font-sans: var(--font-geist-sans);
-  --font-display: var(--font-bricolage), var(--font-geist-sans);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-heading), var(--font-body);
 
   /* Type scale — see docs/design-refresh-plan.md §3.3 */
   --text-display-lg: 3rem;

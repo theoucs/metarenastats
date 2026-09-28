@@ -90,3 +90,4 @@ Fichiers : `src/lib/statsDisplay.tsx`, `src/components/StatsTable.tsx`, `src/com
   Mesures 16.18 (lignes ≥ 100 parties), % Top 3 en vert avec les anciens seuils fixes : items 113/169, augments 82/233, champions 14/173 (et aucun avg de champion vert).
   Reporté en phase 3 : les mini-listes de la fiche champion gardent les seuils fixes jusqu'à leur refonte.
 - À noter pour la phase 5 : seuls les snapshots 16.18 et 16.19 existent en base, il n'y a plus de 16.17. Pour les évolutions d'un patch à l'autre, il faudra conserver le snapshot du patch précédent.
+- **Phase 2 faite (2026-09-28).** Sur-titres, pastilles NEW des titres, tirets longs des textes affichés, section Explore et police mono retirés. Typo choisie par Théo sur captures : **Chakra Petch** (titres, gros chiffres) + **IBM Plex Sans** (texte, chiffres des tableaux). Logo : **le dé est gardé** (Théo : il rappelle l'aléatoire de l'Arena, les 3 points les équipes de 3, et il a son animation).

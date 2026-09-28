@@ -74,11 +74,12 @@ sixth hue to "fix" it would break the descent, which is the thing that carries m
 
 ## Typography
 
-Two families, each with a job. **Bricolage Grotesque** for display (headings, large
-numbers, wordmark) and **Geist Sans** for UI text — a single well-made sans used alone is
-the strongest signal of an untouched template, and adding a display face is enough to
-break it. Table numbers use **Geist Mono** with explicit `tabular-nums` everywhere figures
-align in a column.
+Two families, each with a job, chosen by Théo on 2026-09-28 from captures of four pairings.
+**Chakra Petch** for display (headings, large numbers, wordmark): its clipped corners echo
+the game's hextech UI. **IBM Plex Sans** for UI text and every figure, with explicit
+`tabular-nums` wherever figures align in a column. No monospace face: it made the tables read
+like a developer dashboard. Geist + Bricolage were dropped for being a default pairing of
+recent generated sites.
 
 | Token | Size / leading | Tracking | Family |
 |---|---|---|---|
