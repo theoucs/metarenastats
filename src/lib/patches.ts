@@ -18,11 +18,24 @@ import { supabaseAdmin } from "@/lib/supabase";
  * dessous de ce seuil, le site reste sur le patch précédent en le disant, et
  * bascule tout seul une fois le seuil franchi.
  *
- * 300 est un point de départ assumé : à 173 champions ça fait moins de deux
- * parties par champion, donc c'est un plancher, pas un gage de fiabilité. Le
- * sélecteur permet de toute façon de revenir au patch précédent.
+ * Le seuil répond à une seule question : à partir de quand le nouveau patch
+ * décrit-il mieux sa propre méta que l'ancien ? Mesuré le 2026-09-28, en
+ * corrélant l'Avg Placement des 173 champions avec une référence disjointe
+ * (les ~15 000 autres matchs du même patch) :
+ *
+ *     matchs du nouveau patch   300    750   1 500  3 000  6 000  12 000
+ *     corrélation              0,35   0,48   0,61   0,76   0,82   0,87
+ *
+ *     patch précédent entier   16.14→15 : 0,80 · 15→16 : 0,84 · 16→17 : 0,89
+ *                              16.17 → référence 16.18 : 0,90
+ *
+ * L'ancien patch prédit le nouveau à 0,80–0,90 : un patch ne rebat qu'une
+ * poignée de champions. Le nouvel échantillon ne le rattrape que vers 5 000 à
+ * 6 000 matchs. L'ancien seuil de 300 (0,35) affichait donc surtout du bruit —
+ * Lillia n° 1 sur 90 parties, le 28/09. Le sélecteur garde le nouveau patch à
+ * un clic pour qui veut voir ce qui bouge.
  */
-export const PATCH_MIN_MATCHES = 300;
+export const PATCH_MIN_MATCHES = 5000;
 
 /**
  * Plancher pour qu'un patch soit seulement *reconnu comme existant*.
