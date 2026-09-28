@@ -4,6 +4,13 @@ How match data gets from Riot's API to a tier list, and why each part is shaped 
 it is. The code is the source of truth; this note explains the reasoning that isn't
 visible from any single file.
 
+**Read it top to bottom.** Like `supabase/schema.sql`, it is a journal: sections are
+dated and a later one supersedes an earlier one where they disagree. What was replaced is
+kept, because the measurement that justified a decision is worth more than the decision.
+Two places where that matters: "Publishing" and "The 300-second ceiling" describe a single
+hourly invocation, which became two on 2026-09-22; and the read ceiling they assume was
+raised on 2026-09-28 (see "The two ceilings").
+
 ```
 Riot API ──> crawler ──> Postgres ──> hourly job ──> snapshots ──> ISR pages
 ```
@@ -85,12 +92,19 @@ count as a buy, and a sold item would appear in a build it is no longer part of.
 Every page used to aggregate the whole database on load — 3.7 MB of egress per page view
 at 900 matches, with a silent truncation past 30 000 rows. Now an hourly job computes each
 aggregate once and stores it as a row in `stats_snapshots`; pages read a single row and
-revalidate every 30 minutes.
+revalidate every 30 minutes. *(That job became two invocations on 2026-09-22.)*
 
 Only **two patches are published** — the current one and the previous one. A tier list
 from a stale patch is worse than no tier list, since an augment nerfed by 20 % keeps its
 old numbers. Older data still feeds player history and the ladder, which legitimately span
-everything known.
+everything known — since 2026-09-24 it does so from a summary rather than from the raw
+participations (see *Retention* in the README).
+
+Verified in production on 2026-09-24, when 16.19 arrived: the rotation needs no
+intervention. `patch_options()` puts the new patch first, the materialized view rebuilds
+on the same rule, the snapshots for the patch that fell out are pruned by the job's own
+housekeeping, and the site keeps showing the previous patch — and says so — until the new
+one clears 300 matches.
 
 The patch comes from Riot's own `gameVersion`, not from a guess based on dates: Riot
 deploys per region and in stages, so a match carries the version its server was running.
@@ -99,7 +113,10 @@ threshold the site stays on the previous one and says so.
 
 ## The 300-second ceiling
 
-The whole job has to fit in a single serverless invocation. That single constraint shapes
+*Superseded in part on 2026-09-22 — the job is now two invocations, each with its own
+300 s. The three design consequences below still hold.*
+
+The whole job had to fit in a single serverless invocation. That single constraint shapes
 most of the data layer:
 
 - **Keyset pagination, by match.** Paging by primary key looked natural, but the patch
@@ -141,13 +158,135 @@ observed on the test set, which is a coincidence rather than a measurement.
 
 ## What it costs to run
 
-| Service | Free until | What starts billing | Price |
+Supabase moved to **Pro** on 2026-09-22, when the free plan's 500 MB was exceeded by 2.4×
+and the disk filled: the materialized-view refresh had nowhere to write its temporary
+files, and publishing stopped. The trap that makes it urgent rather than gradual is that
+**a full disk cannot be recovered from in place** — `vacuum full` needs as much free space
+as the table it rewrites, and a `delete` returns nothing to the disk. Dropping an index
+is the only thing that frees space immediately.
+
+| Service | Included | What starts billing | Price |
 |---|---|---|---|
 | GitHub Actions | unlimited (public repo) | never at this scale | — |
 | Vercel Hobby | current traffic | commercial use | $20/mo |
-| Supabase | 500 MB DB, 5 GB egress | ~59 000 matches raw | $25/mo → 8 GB |
-| Supabase compute | Micro (1 GB RAM), included | aggregates over millions of rows | +$15–60/mo |
+| Supabase Pro | 8 GB disk, 250 GB egress, $10 compute credit | disk or egress above those | $25/mo |
+| Supabase compute | Micro, covered by the credit | a second project, or a larger size | Small +$5/mo net |
 
-The trap is that storage is not what costs money ($0.125/GB is negligible) — **compute
-is**. A 40 GB database on the included Micro instance would be unusable for aggregation
-long before the storage bill mattered.
+Two things were measured rather than assumed. The project ran on **Nano** compute while
+being billed at Micro price — Pro includes the upgrade for free, and the dashboard says so
+in a dismissable popup. On Nano the database became unreachable for an hour under two
+catch-up autovacuums. And the compute line is **not covered by the spend cap**, unlike
+disk and egress; since sizes only change by hand, that is a fact to know rather than a
+risk to manage.
+
+Storage is not what costs money — $0.125/GB is negligible. Compute is, and egress after
+it: each publication used to pull ~400 000 rows out of Postgres, which is what the SQL
+migration below is really about.
+
+## Compressing the participations (2026-09-22)
+
+`match_participants` was 720 MB of a 1 218 MB database. Measured on 20 000 rows, a
+participation weighed 322 bytes, of which **79 were the puuid** — repeated on every row,
+while `players` already mapped it to an integer and `match_rating_rows` already used that
+integer. Those 79 bytes were also why the unique index on (match_id, puuid) was 208 MB,
+the single largest object in the database.
+
+The table was rebuilt rather than altered: adding a column and filling it would leave a
+dead version of every row, so the table would double before shrinking — and `vacuum full`,
+which reclaims it, needs that space again. Writing the final shape costs it once.
+
+    bytes/row     322 → 186
+    total      1 273 MB → 390 MB
+    database   1 751 MB → 932 MB
+
+Not done, and on purpose: `match_id` text → integer (~15 MB) touches the foreign key, the
+crawler and the timeline fetcher; `champion` → smallint (~7 MB) would need a lookup table,
+so the database would stop describing itself. The first two lines of the ledger carry 90 %
+of the gain for 20 % of the risk.
+
+## Splitting the hourly job (2026-09-22)
+
+The job did two jobs in one 300-second invocation: replaying the ratings, then publishing.
+Measured once the disk was freed — mmr 96 s, promote 167 s, then the timeout, with the
+materialization (~92 s) and the aggregations (~150 s) never reached.
+
+They meet at exactly one point: the materialized view freezes the skill tier the ratings
+pass just wrote. So the order matters and the simultaneity does not, because the state
+lives in the database between them. Split into `?only=ratings` then `?only=snapshots`,
+each gets its own 300 s.
+
+`promote_tracked_players` was the 167 s: a full join between `crawl_queue` and `players`
+on a 79-byte puuid, whose hash table did not fit in the 2.1 MB of `work_mem` and spilled to
+disk — to promote, most hours, nobody at all. A `materialized` CTE forces the small side
+first; the function carries its own `work_mem`. **166 s → 0.8 s.**
+
+## Moving the aggregation into Postgres (2026-09-24 → 28)
+
+The principle: **SQL groups, JavaScript scores.** What goes down is the reduction — 400 000
+participations to 173 counters. What stays up is everything that took measurement to get
+right: the landmark-bias correction, the shrinkage, the tier k-means. Rewriting those in
+SQL would risk wrong numbers for no gain, since arithmetic on a few hundred rows is free.
+So the functions return **raw counters, never rates**, and `toStat` remains the only place
+in the codebase where a rate is computed.
+
+Down in Postgres: champion stats, augment stats, team-comp archetypes and coverage, the
+four anvil aggregates, augment timing, the item acquisition grid with its landmark
+baselines, and per-champion augments. Reference data (item categories, augment rarities,
+champion roles) lives in `ref_items` / `ref_augments` / `ref_champions`, *generated* from
+`src/lib/data/*.json` by `npm run sql:reference` — never hand-written, or it would diverge
+at the first patch.
+
+Still in JavaScript: the rest of `getChampionDetail` (items, build slots, anvil subsets)
+and the combo pairs. Measured, and this is the part worth knowing: moving them would **not
+help**. A per-champion item grid is 234 711 rows against 491 652 participations — half the
+rows, twice the width, a wash on transport. The win would have to come from moving the
+*scoring* down too, which is a separate piece of work.
+
+The pairs are the same story from the other end. `combo_stats()` is written and verified,
+and it is **not wired**: 36.8 s in SQL against ~8 s in JavaScript on the same patch, and
+~320 s extrapolated to a full patch — for a 300 s budget. The answer there was not the
+language but the **cadence**: an item pair does not change value in sixty minutes, so they
+are recomputed once a day. Aggregation 38 s → 29 s.
+
+## The two ceilings, and what they are worth
+
+**Read ceiling.** `MAX_PAGES × PAGE_SIZE` bounds how many rows one patch may return; past
+it the read truncates and the job goes red. It was 600 000, set on an estimate written in
+the code — "≈ 120 MB in JS memory", or 200 bytes per row. Measured in production on
+504 069 rows actually loaded: **439 bytes per row**, 211 MB after the read, against a V8
+heap limit of **2 036 MB**. The estimate was 2.2× optimistic; it could as easily have been
+wrong the other way, which is what makes that kind of number dangerous. Raised to
+1 000 000 rows per patch — the job holds *both* published patches at once, so the worst
+case is twice that, ~950 MB, under half the ceiling.
+
+**Egress.** Each publication pulls the published patches out of Postgres: ~72 GB/month,
+against 5 GB on the free plan and 250 GB on Pro. This is the number the SQL migration
+actually reduces.
+
+## Silent truncation, twice
+
+PostgREST caps every response at `pgrst.db_max_rows` — 20 000 here — and **says nothing**
+when it cuts. `champion_augment_stats` returns 27 851 rows; 20 000 were published and
+7 851 vanished, leaving the champions past the cut with short augment tabs and no error
+anywhere. Every SQL-function read now paginates and stops only on an *incomplete* page,
+which is the only proof there was nothing left: a full page is never an ending, it is a
+suspicion.
+
+The same shape had already been fixed for the participation read ("truncation is no longer
+mute") and simply had not been applied to functions, because they used to return short
+lists. `item_acquisitions` sits at 6 903 rows and will triple with the patch.
+
+## Verifying a rewrite
+
+`npm run verify capture <file>` then `npm run verify compare <file>` publishes and diffs
+the snapshots **structurally** — walking both documents and comparing the leaves it finds,
+naming no field. That property is the whole point: a comparison that names fields can
+silently find none. It refuses to conclude when the leaf count is zero, refuses to run
+while the crawler is live, and its `capture` mode publishes twice and demands the two be
+identical — if the environment moves, no later comparison means anything.
+
+Three rewrites were validated on comparisons that measured something adjacent to what
+mattered: fields that did not exist (so `NULL` against `NULL`), two publications with a
+ratings pass between them (which rewrites the skill tiers the landmark references depend
+on), and a function checked in the database rather than through the path the application
+takes. All three answered "zero differences", and all three were wrong.

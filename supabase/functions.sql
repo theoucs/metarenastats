@@ -9,7 +9,7 @@
 -- Pour modifier une de ces fonctions : écrire une migration, l'appliquer, puis
 -- relancer le script. Éditer ce fichier ne changerait rien à la base.
 --
--- Vidé le 2026-09-25.
+-- Vidé le 2026-09-28.
 
 CREATE OR REPLACE FUNCTION public.anvil_champions(target_patch text)
  RETURNS TABLE(champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint, total_games bigint)
@@ -172,6 +172,32 @@ AS $function$
   from picks k
   where k.slot <= slots
   group by k.slot, k.augment_id
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.champion_augment_stats(target_patch text, min_games integer)
+ RETURNS TABLE(champion text, augment_id integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select
+    a.champion,
+    a.augment_id,
+    count(*),
+    count(*) filter (where a.placement = 1),
+    count(*) filter (where a.placement <= 3),
+    sum(a.placement)::bigint
+  from (
+    select p.champion, unnest(p.augments) as augment_id, p.placement
+    from participants_published p
+    where p.patch = target_patch
+  ) a
+  where not exists (
+    select 1 from ref_augments r
+    where r.id = a.augment_id and r.category = 'excluded'
+  )
+  group by a.champion, a.augment_id
+  having count(*) >= min_games
 $function$
 ;
 
