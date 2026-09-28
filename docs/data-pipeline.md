@@ -308,7 +308,22 @@ Three changes, each aimed at a different leak:
 - **The queue serves recently discovered players first** among the never-visited: they came
   out of recent games, so they still play.
 
-First ten matches after the deploy: ten on 16.19, against 18 % that morning.
+Two follow-ups, once the first passes were measured. At 15 players a pass found only 40
+current-patch matches for 120 places — a player bounded to the current patch brings a few
+days of games — so a pass now reads **30 players**: one call each, not a hundred. And a
+pass had become cheap (~80 calls: 30 histories and ~50 matches, against 151 before), so
+the engine runs **two crawl passes per cycle**: ~260 calls with their timelines, still
+under the 313 the cycle was sized for, which keeps the visitors' share of the key.
+
+Share of the current patch among ingested matches, same morning:
+
+| | matches | 16.19 | 16.18 | archived patches |
+|---|---|---|---|---|
+| before | 499 | 18 % | 34 % | 48 % |
+| bounded discovery, 15 players | 240 | 39 % | 40 % | 21 % |
+| 30 players | 170 | 98 % | 2 % | 0 % |
+
+The last row covers a single hour; the throughput per day is still to be measured.
 
 The default-patch threshold moved from 300 to **5 000 matches** the same day, on a
 measurement rather than a guess: a new patch's sample correlates with its own eventual
@@ -344,3 +359,22 @@ few hourly passes.
 The same day, timeline passes were restricted to the published patches: once the recent
 backlog is clear they were spending calls on the purchase order of archived matches,
 which the archive does not keep.
+
+**What archiving silently broke.** After the 24 September pass, `participants_clean`
+only holds the published patches — and `leaderboard_top` was still counting each
+player's games there. For four days the leaderboard showed its #1 at 4 games and 1.00
+instead of 35 and 1.37, and dropped every ranked player without a recent game (911 rows
+instead of 1 000). No error anywhere: the query was right for the data it used to see. It
+now reads the career counters `player_ratings` already holds, like the leaderboard
+search. Any reader of `participants_clean` or `match_participants` that means "a
+player's whole history" is wrong since that date. The two known whole-history readers
+are built for it (player profile: archive + live; ratings: `match_rating_rows`); an audit
+should still grep for the others.
+
+**Not yet verified in production:**
+- a full patch leaving the window (16.18, when 16.20 lands around 8 October): after a few
+  hourly passes, no 16.18 row should remain in `match_participants`;
+- a whole day of crawling with two passes of 30 players — matches per day on the current
+  patch, and whether visitor searches still get through;
+- the freed space is reused, not returned to the disk (no `vacuum full`: not worth
+  rewriting the table at 12 % of the disk used).
