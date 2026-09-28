@@ -518,6 +518,49 @@ type DerivedSet = {
 const derivedStore = new WeakMap<ParticipantRow[], DerivedSet>();
 
 /**
+ * ─── UNE LECTURE DE FONCTION SQL NE DOIT JAMAIS ÊTRE TRONQUÉE EN SILENCE ────
+ *
+ * PostgREST plafonne CHAQUE réponse — `pgrst.db_max_rows`, relevé à 20 000 sur
+ * ce projet. Au-delà, il ne rend pas d'erreur : il rend 20 000 lignes et se
+ * tait. Livré le 2026-09-28, `champion_augment_stats` en renvoyait 27 851 :
+ * 7 851 lignes ont disparu, et les champions situés au-delà de la coupure ont
+ * publié des pages d'augments amputées, sans le moindre signal.
+ *
+ * C'est exactement la panne que le reste du dépôt combat déjà pour la lecture
+ * des participations — « la troncature n'est plus muette ». Ce n'était pas
+ * appliqué aux fonctions SQL, qui rendaient jusqu'ici des listes courtes ;
+ * `item_acquisitions` est à 6 903 lignes aujourd'hui et triplera avec le
+ * patch.
+ *
+ * Le correctif est donc général et non ponctuel : toute lecture de fonction
+ * passe par ici, pagine, et s'arrête sur une page incomplète — la seule
+ * preuve qu'il n'y avait plus rien à lire. Une page pleine n'est jamais une
+ * fin, c'est un soupçon.
+ */
+const RPC_PAGE_SIZE = 10_000;
+/** Un million de lignes pour une agrégation, c'est un défaut de conception,
+ *  pas un gros patch. On lève plutôt que de boucler sans fin. */
+const RPC_MAX_PAGES = 100;
+
+async function rpcRows<T>(fn: string, args: Record<string, unknown>): Promise<T[]> {
+  if (!supabaseAdmin) return [];
+  const rows: T[] = [];
+  for (let page = 0; page < RPC_MAX_PAGES; page++) {
+    const { data, error } = await supabaseAdmin
+      .rpc(fn, args)
+      .range(page * RPC_PAGE_SIZE, (page + 1) * RPC_PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < RPC_PAGE_SIZE) return rows;
+  }
+  throw new Error(
+    `${fn} a dépassé ${RPC_MAX_PAGES * RPC_PAGE_SIZE} lignes — agrégation à revoir plutôt qu'à paginer davantage.`,
+  );
+}
+
+
+/**
  * ─── LES AGRÉGATS PAR CHAMPION, CHARGÉS UNE FOIS POUR LES 173 ───────────────
  *
  * `getChampionDetail` est appelée une fois par champion. Une requête par appel
@@ -562,12 +605,11 @@ async function championAugmentsOf(set: ParticipantSet): Promise<Map<string, Cham
   derived.championAugments ??= (async () => {
     const byChampion = new Map<string, ChampionAugmentRow[]>();
     if (!set.patch || !supabaseAdmin) return byChampion;
-    const { data, error } = await supabaseAdmin.rpc("champion_augment_stats", {
+    const data = await rpcRows<ChampionAugmentRow>("champion_augment_stats", {
       target_patch: set.patch,
       min_games: CHAMPION_LIST_MIN_GAMES,
     });
-    if (error) throw error;
-    for (const row of (data ?? []) as ChampionAugmentRow[]) {
+    for (const row of data) {
       const key = row.champion.toLowerCase();
       const list = byChampion.get(key);
       if (list) list.push(row);
@@ -779,15 +821,14 @@ function accumulate(map: Map<string | number, Accumulator>, key: string | number
 export async function getChampionStats() {
   const set = await fetchParticipantSet();
   if (set.patch && supabaseAdmin) {
-    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
-      supabaseAdmin.rpc("champion_stats", { target_patch: set.patch }),
+    const [data, { data: matchCount, error: countError }] = await Promise.all([
+      rpcRows<ChampionStatsRow>("champion_stats", { target_patch: set.patch }),
       supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
     ]);
-    if (error) throw error;
     if (countError) throw countError;
 
     const totalMatches = Number(matchCount ?? 0);
-    const champions = ((data ?? []) as ChampionStatsRow[])
+    const champions = data
       .map((r) => ({
         champion: r.champion,
         ...toStat(
@@ -964,22 +1005,18 @@ export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) 
   const set = await fetchParticipantSet();
   if (set.patch && supabaseAdmin) {
     const openerIds = [...ANVIL_OPENER_AUGMENTS];
-    const [champRes, overallRes, openerRes, openerChampRes] = await Promise.all([
-      supabaseAdmin.rpc("anvil_champions", { target_patch: set.patch }),
-      supabaseAdmin.rpc("anvil_overall", { target_patch: set.patch }),
-      supabaseAdmin.rpc("anvil_openers", { target_patch: set.patch, opener_ids: openerIds }),
-      supabaseAdmin.rpc("anvil_opener_champions", {
+    const [champRows, overallRows, openerRows, openerChampRows] = await Promise.all([
+      rpcRows<AnvilChampionRow>("anvil_champions", { target_patch: set.patch }),
+      rpcRows<AnvilOverallRow>("anvil_overall", { target_patch: set.patch }),
+      rpcRows<AnvilOpenerRow>("anvil_openers", { target_patch: set.patch, opener_ids: openerIds }),
+      rpcRows<AnvilOpenerChampionRow>("anvil_opener_champions", {
         target_patch: set.patch,
         opener_ids: openerIds,
         min_games: ANVIL_OPENER_MIN_GAMES,
       }),
     ]);
-    for (const r of [champRes, overallRes, openerRes, openerChampRes]) {
-      if (r.error) throw r.error;
-    }
 
-    const champRows = (champRes.data ?? []) as AnvilChampionRow[];
-    const over = ((overallRes.data ?? []) as AnvilOverallRow[])[0];
+    const over = overallRows[0];
 
     const champions = champRows
       .map((r) => ({
@@ -993,8 +1030,6 @@ export async function getAnvilChampionStats(itemCategoryOf: ItemCategoryLookup) 
 
     // Dénominateur des colonnes par ouvreur : les anvil runs DE CE CHAMPION.
     const anvilGamesOf = new Map(champRows.map((r) => [r.champion, Number(r.games)]));
-    const openerRows = (openerRes.data ?? []) as AnvilOpenerRow[];
-    const openerChampRows = (openerChampRes.data ?? []) as AnvilOpenerChampionRow[];
 
     const openers: AnvilOpenerStats[] = ANVIL_OPENER_AUGMENTS.map((augmentId) => {
       const o = openerRows.find((r) => Number(r.augment_id) === augmentId);
@@ -1594,20 +1629,18 @@ function itemGridFromRows_sql(rows: ItemAcquisitionRow[]): ItemGrid {
 export async function getItemStats(categoryOf: ItemCategoryLookup) {
   const set = await fetchParticipantSet();
   if (set.patch && supabaseAdmin) {
-    const [acqRes, baseRes, countRes] = await Promise.all([
-      supabaseAdmin.rpc("item_acquisitions", { target_patch: set.patch }),
-      supabaseAdmin.rpc("landmark_baselines", { target_patch: set.patch }),
+    const [acquisitions, baselines, countRes] = await Promise.all([
+      rpcRows<ItemAcquisitionRow>("item_acquisitions", { target_patch: set.patch }),
+      rpcRows<LandmarkBaselineRow>("landmark_baselines", { target_patch: set.patch }),
       supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
     ]);
-    if (acqRes.error) throw acqRes.error;
-    if (baseRes.error) throw baseRes.error;
     if (countRes.error) throw countRes.error;
 
     const totalMatches = Number(countRes.data ?? 0);
     const items = adjustedItemStatsFromGrid(
-      itemGridFromRows_sql((acqRes.data ?? []) as ItemAcquisitionRow[]),
+      itemGridFromRows_sql(acquisitions),
       categoryOf,
-      landmarkBaselinesFromRows((baseRes.data ?? []) as LandmarkBaselineRow[]),
+      landmarkBaselinesFromRows(baselines),
       totalMatches * PARTICIPANTS_PER_MATCH,
     ).sort((a, b) => b.top3Rate - a.top3Rate);
     return { totalMatches, items };
@@ -1638,15 +1671,14 @@ export async function getItemStats(categoryOf: ItemCategoryLookup) {
 export async function getAugmentStats() {
   const set = await fetchParticipantSet();
   if (set.patch && supabaseAdmin) {
-    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
-      supabaseAdmin.rpc("augment_stats", { target_patch: set.patch }),
+    const [data, { data: matchCount, error: countError }] = await Promise.all([
+      rpcRows<AugmentStatsRow>("augment_stats", { target_patch: set.patch }),
       supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
     ]);
-    if (error) throw error;
     if (countError) throw countError;
 
     const totalMatches = Number(matchCount ?? 0);
-    const augments = ((data ?? []) as AugmentStatsRow[])
+    const augments = data
       .map((r) => ({
         augmentId: Number(r.augment_id),
         ...toStat(
@@ -2439,15 +2471,14 @@ export async function getAugmentTimingStats(): Promise<AugmentTimingStats> {
   let totalMatches: number;
 
   if (set.patch && supabaseAdmin) {
-    const [{ data, error }, { data: matchCount, error: countError }] = await Promise.all([
-      supabaseAdmin.rpc("augment_timing", { target_patch: set.patch, slots: TIMING_SLOTS }),
+    const [data, { data: matchCount, error: countError }] = await Promise.all([
+      rpcRows<AugmentTimingRow>("augment_timing", { target_patch: set.patch, slots: TIMING_SLOTS }),
       supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
     ]);
-    if (error) throw error;
     if (countError) throw countError;
 
     totalMatches = Number(matchCount ?? 0);
-    for (const r of (data ?? []) as AugmentTimingRow[]) {
+    for (const r of data) {
       const index = Number(r.slot) - 1;
       if (index < 0 || index >= TIMING_SLOTS) continue;
       perSlot[index].set(
@@ -2608,24 +2639,22 @@ export async function getCompStats(
 ): Promise<CompStats> {
   const set = await fetchParticipantSet();
   if (set.patch && supabaseAdmin) {
-    const [archetypeRes, coverageRes, matchCountRes] = await Promise.all([
-      supabaseAdmin.rpc("comp_archetypes", {
+    const [archetypeRows, coverageRows, matchCountRes] = await Promise.all([
+      rpcRows<CompArchetypeRow>("comp_archetypes", {
         target_patch: set.patch,
         min_teams: ARCHETYPE_MIN_TEAMS,
       }),
-      supabaseAdmin.rpc("comp_coverage", {
+      rpcRows<CompCoverageRow>("comp_coverage", {
         target_patch: set.patch,
         duo_usable_teams: DUO_USABLE_TEAMS,
       }),
       supabaseAdmin.rpc("patch_match_count", { target_patch: set.patch }),
     ]);
-    if (archetypeRes.error) throw archetypeRes.error;
-    if (coverageRes.error) throw coverageRes.error;
     if (matchCountRes.error) throw matchCountRes.error;
 
-    const cover = ((coverageRes.data ?? []) as CompCoverageRow[])[0];
+    const cover = coverageRows[0];
     const totalTeams = Number(cover?.total_teams ?? 0);
-    const archetypes = ((archetypeRes.data ?? []) as CompArchetypeRow[])
+    const archetypes = archetypeRows
       .map((r) => ({
         roles: r.roles,
         ...toStat(
