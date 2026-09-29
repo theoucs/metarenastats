@@ -1825,6 +1825,7 @@ type LeaderboardRpcRow = {
   mu: number;
   teammate_mu: number | null;
   opponent_mu: number | null;
+  top_champions: string[] | null;
 };
 
 /** Combien de joueurs le classement publie.
@@ -1876,6 +1877,7 @@ export async function getLeaderboardStats() {
     mmr: r.mu,
     teammateMmr: r.teammate_mu,
     opponentMmr: r.opponent_mu,
+    topChampions: r.top_champions ?? [],
     ...toStat(
       {
         games: Number(r.games),

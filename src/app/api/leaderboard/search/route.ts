@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { toStat } from "@/lib/aggregate";
+import { resolveChampion } from "@/lib/gameData";
 
 /**
  * Cherche un joueur dans TOUT le classement, pas seulement dans le millier
@@ -40,6 +41,23 @@ export async function GET(request: Request) {
     .limit(MAX_RESULTS);
   if (error) throw error;
 
+  // Rangés par la phase classement pour le top 1 000 seulement : ici on les
+  // calcule, sur 25 joueurs au plus (~10 ms chacun).
+  const puuids = (data ?? []).map((r) => r.puuid as string);
+  const { data: champRows, error: champError } = puuids.length
+    ? await supabaseAdmin.rpc("player_top_champions", { p_puuids: puuids })
+    : { data: [], error: null };
+  if (champError) throw champError;
+  const championsOf = new Map(
+    ((champRows ?? []) as { puuid: string; champions: string[] | null }[]).map((r) => [
+      r.puuid,
+      (r.champions ?? []).map((name) => {
+        const info = resolveChampion(name);
+        return { id: info?.id ?? name, name: info?.name ?? name, iconUrl: info?.iconUrl };
+      }),
+    ]),
+  );
+
   const players = (data ?? []).map((r) => ({
     puuid: r.puuid as string,
     riotId: r.riot_id as string,
@@ -48,6 +66,7 @@ export async function GET(request: Request) {
     mmr: r.mu as number,
     teammateMmr: r.teammate_mu as number | null,
     opponentMmr: r.opponent_mu as number | null,
+    champions: championsOf.get(r.puuid as string) ?? [],
     // Dénominateur 0 : `playRate` vaut alors 0, et le classement ne l'affiche
     // pas (c'est une colonne des tier lists). Le calculer demandait
     // `site_totals`, qui compte trois valeurs distinctes sur 217 000 lignes —

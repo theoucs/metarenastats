@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { TOP3_PLACEMENT_THRESHOLD } from "@/lib/aggregate";
+import { LEADERBOARD_MAX_ROWS, TOP3_PLACEMENT_THRESHOLD } from "@/lib/aggregate";
 import {
   RATING_MIN_GAMES,
   SIGMA,
@@ -414,6 +414,18 @@ export const LADDER_TRACKED_TOP = 2000;
 export async function markLadderTop(): Promise<number> {
   if (!supabaseAdmin) return 0;
   const { data, error } = await supabaseAdmin.rpc("mark_ladder_top", { top_n: LADDER_TRACKED_TOP });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/** Range les trois champions les plus joués du top du classement (voir la
+ *  migration 20260929-champions-du-classement.sql) : ~10 s à froid pour 1 000
+ *  joueurs, trop pour la publication, qui les relit tels quels. */
+export async function refreshLadderChampions(): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  const { data, error } = await supabaseAdmin.rpc("refresh_ladder_champions", {
+    top_n: LEADERBOARD_MAX_ROWS,
+  });
   if (error) throw error;
   return (data as number) ?? 0;
 }

@@ -50,6 +50,11 @@ export type StatsRow = {
    *  that Avg Placement doesn't. */
   teammateMmr?: number;
   opponentMmr?: number;
+  /** The player's most-played champions, most first (leaderboard only). */
+  champions?: { id: string; name: string; iconUrl?: string }[];
+  /** Where the name links to, when it isn't `${linkPrefix}${key}` — the
+   *  leaderboard keys rows by puuid but player pages live at their Riot ID. */
+  href?: string;
   /** Item ou augment que représente la ligne : fait apparaître sa description
    *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
    *  ont pas — l'infobulle se réduit alors au nom. */
@@ -334,6 +339,7 @@ type LeaderboardSearchRow = {
   mmr?: number;
   teammateMmr?: number | null;
   opponentMmr?: number | null;
+  champions?: { id: string; name: string; iconUrl?: string }[];
   games: number;
   top3Rate: number;
   top1Rate: number;
@@ -350,6 +356,8 @@ function searchRowToStatsRow(p: LeaderboardSearchRow): StatsRow {
     mmr: p.mmr,
     teammateMmr: p.teammateMmr ?? undefined,
     opponentMmr: p.opponentMmr ?? undefined,
+    champions: p.champions,
+    href: playerHref(p.riotId),
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
@@ -505,6 +513,31 @@ function TooltipIcon({
   );
 }
 
+/** A player's page, by Riot ID — the same URL the search bar builds. */
+function playerHref(riotId: string) {
+  return `/players/${encodeURIComponent(riotId)}`;
+}
+
+/** Where a row's name links to, if anywhere. */
+function rowHref(row: StatsRow, linkPrefix?: string, linkSuffix?: string) {
+  return row.href ?? (linkPrefix ? `${linkPrefix}${row.key}${linkSuffix ?? ""}` : undefined);
+}
+
+/** Most-played champions as small icons, after a player's name. */
+function ChampionMinis({ champions }: { champions: NonNullable<StatsRow["champions"]> }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {champions.map((c) =>
+        c.iconUrl ? (
+          <span key={c.id} title={c.name} className="flex">
+            <EntityIcon iconUrl={c.iconUrl} sizeClass="h-5 w-5" />
+          </span>
+        ) : null,
+      )}
+    </span>
+  );
+}
+
 function NameCellContent({ row }: { row: StatsRow }) {
   if (row.roles) return <RoleChips roles={row.roles} />;
   if (row.secondaryName) {
@@ -652,8 +685,14 @@ function DataRow({
         {/* The mover badge sits on the name's line: under it, it made the
             few rows that carry one taller than the rest. */}
         <div className="flex items-center gap-2.5">
-          {linkPrefix ? (
-            <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex items-center gap-2.5 hover:underline">
+          {rowHref(row, linkPrefix, linkSuffix) ? (
+            // No prefetch: a player page costs ~30 Riot calls and is never
+            // cached, and the leaderboard puts a thousand of them on screen.
+            <Link
+              href={rowHref(row, linkPrefix, linkSuffix)!}
+              prefetch={row.href ? false : undefined}
+              className="flex items-center gap-2.5 hover:underline"
+            >
               <NameCellContent row={row} />
             </Link>
           ) : (
@@ -661,6 +700,7 @@ function DataRow({
               <NameCellContent row={row} />
             </div>
           )}
+          {row.champions && row.champions.length > 0 && <ChampionMinis champions={row.champions} />}
           {row.mover && (
             <MoverBadge
               avgPlacement={row.avgPlacement}
@@ -812,13 +852,20 @@ function MobileCard({
       </span>
 
       <div className="min-w-0 flex-1">
-        {linkPrefix ? (
-          <Link href={`${linkPrefix}${row.key}${linkSuffix ?? ""}`} className="flex min-w-0">
-            {heading}
-          </Link>
-        ) : (
-          heading
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          {rowHref(row, linkPrefix, linkSuffix) ? (
+            <Link
+              href={rowHref(row, linkPrefix, linkSuffix)!}
+              prefetch={row.href ? false : undefined}
+              className="flex min-w-0"
+            >
+              {heading}
+            </Link>
+          ) : (
+            heading
+          )}
+          {row.champions && row.champions.length > 0 && <ChampionMinis champions={row.champions} />}
+        </div>
         {row.mover && (
           <div className="mt-0.5">
             <MoverBadge

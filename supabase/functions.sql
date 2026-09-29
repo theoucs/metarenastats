@@ -612,14 +612,14 @@ $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.leaderboard_top(max_rows integer)
- RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text, mu double precision, teammate_mu double precision, opponent_mu double precision)
+ RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text, mu double precision, teammate_mu double precision, opponent_mu double precision, top_champions text[])
  LANGUAGE sql
  STABLE
 AS $function$
   select r.puuid, r.riot_id,
          r.games::bigint, r.top3_wins::bigint, r.top1_wins::bigint, r.placement_sum::bigint,
          r.rank_position, r.tier, r.mu::double precision,
-         r.teammate_mu::double precision, r.opponent_mu::double precision
+         r.teammate_mu::double precision, r.opponent_mu::double precision, r.top_champions
   from player_ratings r
   order by r.rank_position
   limit max_rows
@@ -680,6 +680,33 @@ AS $function$
   group by m.patch
   having count(*) >= min_matches
   order by string_to_array(m.patch, '.')::int[] desc
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.player_top_champions(p_puuids text[])
+ RETURNS TABLE(puuid text, champions text[])
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select pl.puuid, tc.champions
+  from players pl
+  cross join lateral (
+    select array_agg(c.champion order by c.games desc, c.champion) as champions
+    from (
+      select x.champion, sum(x.games) as games
+      from (
+        select mp.champion, count(*) as games
+        from match_participants mp where mp.player_id = pl.id group by mp.champion
+        union all
+        select t.champion, sum(t.games) from player_champion_totals t
+        where t.player_id = pl.id group by t.champion
+      ) x
+      group by x.champion
+      order by 2 desc, 1
+      limit 3
+    ) c
+  ) tc
+  where pl.puuid = any(p_puuids)
 $function$
 ;
 
@@ -778,6 +805,29 @@ AS $function$
   where pl.games >= min_games and pl.id > after_idx
   order by pl.id
   limit page_size
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.refresh_ladder_champions(top_n integer)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+ SET statement_timeout TO '120s'
+AS $function$
+declare
+  touched integer;
+begin
+  update player_ratings r
+  set top_champions = c.champions
+  from player_top_champions(
+    array(select puuid from player_ratings where rank_position <= top_n)
+  ) c
+  where r.puuid = c.puuid
+    and r.top_champions is distinct from c.champions;
+  get diagnostics touched = row_count;
+  return touched;
+end;
 $function$
 ;
 

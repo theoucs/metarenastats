@@ -3,6 +3,7 @@ import { formatCount } from "@/lib/statsDisplay";
 import { getLeaderboardStats, getSiteStats } from "@/lib/aggregate";
 import { readSnapshot } from "@/lib/statsSnapshot";
 import { StatsTable, type StatsRow } from "@/components/StatsTable";
+import { resolveChampion } from "@/lib/gameData";
 import { PageHeader } from "@/components/PageHeader";
 import { HeadlineRow, HeaderAside } from "@/components/HeadlineRow";
 
@@ -28,6 +29,11 @@ export default async function LeaderboardPage() {
     mmr: p.mmr,
     teammateMmr: p.teammateMmr ?? undefined,
     opponentMmr: p.opponentMmr ?? undefined,
+    champions: (p.topChampions ?? []).map((name) => {
+      const info = resolveChampion(name);
+      return { id: info?.id ?? name, name: info?.name ?? name, iconUrl: info?.iconUrl };
+    }),
+    href: `/players/${encodeURIComponent(p.riotId)}`,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,

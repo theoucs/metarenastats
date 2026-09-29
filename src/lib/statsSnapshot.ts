@@ -2,7 +2,12 @@ import { getHeapStatistics } from "node:v8";
 import { supabaseAdmin } from "@/lib/supabase";
 import { championRole, itemCategory, resolveAugment } from "@/lib/gameData";
 import { getPatchContext, patchedKey } from "@/lib/patches";
-import { markLadderTop, promoteTrackedPlayers, refreshPlayerRatings } from "@/lib/playerRatings";
+import {
+  markLadderTop,
+  promoteTrackedPlayers,
+  refreshLadderChampions,
+  refreshPlayerRatings,
+} from "@/lib/playerRatings";
 import {
   readParticipantSetForPatch,
   refreshPublishedParticipants,
@@ -467,6 +472,10 @@ export async function refreshRatings(): Promise<RatingsReport> {
   const ladderMarked = await markLadderTop();
   timings.ladderTop = Date.now() - ladderAt;
   if (ladderMarked) console.log(`[stats] ${ladderMarked} joueur(s) entré(s) dans le suivi du haut du classement`);
+
+  const championsAt = Date.now();
+  await refreshLadderChampions();
+  timings.ladderChampions = Date.now() - championsAt;
 
   const archiveAt = Date.now();
   const archived = await archiveOldMatches(startedAt);
