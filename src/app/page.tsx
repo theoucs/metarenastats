@@ -242,41 +242,14 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="font-display text-h1 font-semibold text-primary">
-            Best champions{patch.defaultPatch ? ` on ${patch.defaultPatch}` : ""}
-          </h2>
-          <Link href="/champions" className="text-small text-accent hover:underline">
-            Full tier list →
-          </Link>
-        </div>
-
-        {podium.length > 0 && (
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {podium.map((c, i) => (
-              <ChampionSpotlight key={c.key} champion={c} rank={i + 1} scale={scale} />
-            ))}
-          </div>
-        )}
-
-        {runnersUp.length > 0 && (
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {runnersUp.map((c, i) => (
-              <ChampionChip key={c.key} champion={c} rank={i + 4} scale={scale} />
-            ))}
-          </div>
-        )}
-      </section>
-
       {/* Only champions whose Avg Placement moved beyond noise since the
           previous patch (three standard errors, see getChampionMovers). Most
           patches have none to four, so the section simply isn't there when
           nothing real happened. */}
       {movers.movers.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
+        <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6 sm:pt-14">
           <h2 className="font-display text-h1 font-semibold text-primary">
-            What changed{movers.previousPatch ? ` since ${movers.previousPatch}` : ""}
+            What changed since last patch
           </h2>
           <ul className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {movers.movers.slice(0, 8).map((m) => {
@@ -306,6 +279,34 @@ export default async function Home() {
           </ul>
         </section>
       )}
+
+      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="font-display text-h1 font-semibold text-primary">
+            Best champions{patch.defaultPatch ? ` on ${patch.defaultPatch}` : ""}
+          </h2>
+          <Link href="/champions" className="text-small text-accent hover:underline">
+            Full tier list →
+          </Link>
+        </div>
+
+        {podium.length > 0 && (
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {podium.map((c, i) => (
+              <ChampionSpotlight key={c.key} champion={c} rank={i + 1} scale={scale} />
+            ))}
+          </div>
+        )}
+
+        {runnersUp.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {runnersUp.map((c, i) => (
+              <ChampionChip key={c.key} champion={c} rank={i + 4} scale={scale} />
+            ))}
+          </div>
+        )}
+      </section>
+
     </div>
   );
 }
