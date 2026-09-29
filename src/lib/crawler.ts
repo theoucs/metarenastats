@@ -136,14 +136,16 @@ async function pendingMatchIds(limit: number): Promise<string[]> {
  *  encore. L'ordre d'arrivée seul faisait visiter en premier des joueurs
  *  découverts il y a deux semaines, dont l'historique est sur des patchs déjà
  *  archivés. */
-async function pickFrom(priority: number, limit: number): Promise<string[]> {
+async function pickFrom(priority: number, limit: number, crawledBefore?: string): Promise<string[]> {
   if (limit <= 0) return [];
   return retryDb("lecture de la file", async () => {
-    const { data, error } = await db()
+    let query = db()
       .from("crawl_queue")
       .select("puuid")
       .lt("error_count", 5)
-      .eq("priority", priority)
+      .eq("priority", priority);
+    if (crawledBefore) query = query.or(`last_crawled_at.is.null,last_crawled_at.lt."${crawledBefore}"`);
+    const { data, error } = await query
       .order("last_crawled_at", { ascending: true, nullsFirst: true })
       .order("discovered_at", { ascending: false })
       .limit(limit);
@@ -168,7 +170,13 @@ async function pickFrom(priority: number, limit: number): Promise<string[]> {
  * n'utilise pas.
  */
 async function pickPlayers(limit: number): Promise<PickedPlayer[]> {
-  const tracked = await pickFrom(1, Math.floor(limit / 2));
+  // Le haut du classement (priority 2, voir markLadderTop) passe avant le suivi
+  // ordinaire, dans la même moitié. Pas avant REVISIT_AFTER_H : un joueur revu
+  // il y a une heure n'a presque rien joué depuis, sa place sert mieux ailleurs.
+  const half = Math.floor(limit / 2);
+  const revisitBefore = new Date(Date.now() - REVISIT_AFTER_H * 3_600_000).toISOString();
+  const ladder = await pickFrom(2, half, revisitBefore);
+  const tracked = [...ladder, ...(await pickFrom(1, half - ladder.length))];
   const discovery = await pickFrom(0, limit - tracked.length);
   const picked: PickedPlayer[] = [
     ...tracked.map((puuid) => ({ puuid, tracked: true })),
@@ -185,6 +193,11 @@ async function pickPlayers(limit: number): Promise<PickedPlayer[]> {
 }
 
 type PickedPlayer = { puuid: string; tracked: boolean };
+
+/** Délai minimal entre deux visites d'un joueur du haut du classement. Une
+ *  visite coûte un appel et ramène ses parties depuis la dernière : à 6 h, un
+ *  joueur actif en a quelques-unes, et le top 2 000 tient dans le budget. */
+const REVISIT_AFTER_H = 6;
 
 /**
  * Début du patch courant, en secondes, pour borner l'historique en découverte.

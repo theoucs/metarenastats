@@ -45,6 +45,11 @@ export type StatsRow = {
    *  because Avg Placement alone can't explain the order — teammates' strength
    *  weighs on it. Absent from snapshots published before 2026-09-29. */
   mmr?: number;
+  /** Average MMR of the player's teammates / opponents over their known games
+   *  (leaderboard only). Replace % Top 3 there: they are what explains a rank
+   *  that Avg Placement doesn't. */
+  teammateMmr?: number;
+  opponentMmr?: number;
   /** Item ou augment que représente la ligne : fait apparaître sa description
    *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
    *  ont pas — l'infobulle se réduit alors au nom. */
@@ -327,6 +332,8 @@ type LeaderboardSearchRow = {
   tier: string;
   position: number;
   mmr?: number;
+  teammateMmr?: number | null;
+  opponentMmr?: number | null;
   games: number;
   top3Rate: number;
   top1Rate: number;
@@ -341,6 +348,8 @@ function searchRowToStatsRow(p: LeaderboardSearchRow): StatsRow {
     rankTier: p.tier as RankTier,
     rank: p.position,
     mmr: p.mmr,
+    teammateMmr: p.teammateMmr ?? undefined,
+    opponentMmr: p.opponentMmr ?? undefined,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
@@ -585,6 +594,7 @@ function DataRow({
   hideTierColumn,
   showRankColumn,
   showMmrColumn,
+  showEntourage,
   showPlacements,
   compact,
 }: {
@@ -604,6 +614,8 @@ function DataRow({
   showRankColumn: boolean;
   /** The leaderboard's MMR column, present when the rows carry one. */
   showMmrColumn: boolean;
+  /** Teammates/Opponents MMR columns, in place of % Top 3 (leaderboard). */
+  showEntourage: boolean;
   /** The "Finishes" column, present when the rows carry a distribution. */
   showPlacements: boolean;
   /** See StatsTable's `compact` — must drop the same columns as the header. */
@@ -692,9 +704,20 @@ function DataRow({
           </span>
         </span>
       </td>
-      <td className={`${cellX} py-1.5 text-right tabular-nums`}>
-        <span className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</span>
-      </td>
+      {showEntourage ? (
+        <>
+          <td className={`${cellX} py-1.5 text-right tabular-nums text-secondary`}>
+            {row.teammateMmr != null ? Math.round(row.teammateMmr) : "—"}
+          </td>
+          <td className={`${cellX} py-1.5 text-right tabular-nums text-secondary`}>
+            {row.opponentMmr != null ? Math.round(row.opponentMmr) : "—"}
+          </td>
+        </>
+      ) : (
+        <td className={`${cellX} py-1.5 text-right tabular-nums`}>
+          <span className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</span>
+        </td>
+      )}
       {variant === "tiers" && !compact && (
         <td className={`${cellX} py-1.5 text-right tabular-nums`}>
           <span className={top1Color(row.top1Rate, scale, row.games)}>{(row.top1Rate * 100).toFixed(1)}%</span>
@@ -812,10 +835,23 @@ function MobileCard({
               <dd className="font-medium text-primary">{Math.round(row.mmr)}</dd>
             </div>
           )}
-          <div className="flex items-baseline gap-1">
-            <dt>Top 3</dt>
-            <dd className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
-          </div>
+          {row.teammateMmr != null && row.opponentMmr != null ? (
+            <>
+              <div className="flex items-baseline gap-1">
+                <dt>Mates</dt>
+                <dd className="text-secondary">{Math.round(row.teammateMmr)}</dd>
+              </div>
+              <div className="flex items-baseline gap-1">
+                <dt>Opp.</dt>
+                <dd className="text-secondary">{Math.round(row.opponentMmr)}</dd>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-baseline gap-1">
+              <dt>Top 3</dt>
+              <dd className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
+            </div>
+          )}
           {variant === "tiers" && (
             <div className="flex items-baseline gap-1">
               <dt>Top 1</dt>
@@ -924,6 +960,8 @@ export function StatsTable({
   // tout neuf, une colonne vide poserait une question sans y répondre.
   const showRankColumn = variant === "ranked" && rows.some((r) => r.rankTier);
   const showMmrColumn = variant === "ranked" && rows.some((r) => r.mmr != null);
+  // Tant qu'un snapshot antérieur est servi, le classement garde son % Top 3.
+  const showEntourage = variant === "ranked" && rows.some((r) => r.teammateMmr != null);
   const showPlacements = !compact && rows.some((r) => r.placements?.length === 6);
 
   const sorted = useMemo(() => {
@@ -1069,7 +1107,7 @@ export function StatsTable({
         ]
       : [
           ...(showRankColumn ? [{ key: "rank" as SortKey, label: "Rank" }] : []),
-          { key: "top3Rate", label: "% Top 3" },
+          ...(showEntourage ? [] : [{ key: "top3Rate" as SortKey, label: "% Top 3" }]),
           { key: "avgPlacement", label: "Avg Placement" },
           { key: "games", label: "Games" },
         ];
@@ -1089,6 +1127,7 @@ export function StatsTable({
     (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) +
     (showRankColumn ? 1 : 0) +
     (showMmrColumn ? 1 : 0) +
+    (showEntourage ? 1 : 0) +
     (showPlacements ? 1 : 0);
   const cellX = compact ? "px-2" : "px-4";
 
@@ -1241,15 +1280,32 @@ export function StatsTable({
                 align="right"
                 className={`${stickyHeadCell} ${cellX} text-right`}
               />
-              <SortableHead
-                label="% Top 3"
-                sortKey="top3Rate"
-                sortBy={sortBy}
-                sortDir={sortDir}
-                onSort={cycleSort}
-                align="right"
-                className={`${stickyHeadCell} ${cellX} text-right`}
-              />
+              {showEntourage ? (
+                <>
+                  <th
+                    className={`${stickyHeadCell} ${cellX} text-right`}
+                    title="Average MMR of this player's teammates, over their known games"
+                  >
+                    Teammates
+                  </th>
+                  <th
+                    className={`${stickyHeadCell} ${cellX} text-right`}
+                    title="Average MMR of this player's opponents, over their known games"
+                  >
+                    Opponents
+                  </th>
+                </>
+              ) : (
+                <SortableHead
+                  label="% Top 3"
+                  sortKey="top3Rate"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={cycleSort}
+                  align="right"
+                  className={`${stickyHeadCell} ${cellX} text-right`}
+                />
+              )}
               {variant === "tiers" && !compact && (
                 <SortableHead
                   label="% Top 1"
@@ -1305,6 +1361,7 @@ export function StatsTable({
                     hideTierColumn={showBands}
                     showRankColumn={showRankColumn}
                     showMmrColumn={showMmrColumn}
+                    showEntourage={showEntourage}
                     showPlacements={showPlacements}
                     compact={compact}
                   />

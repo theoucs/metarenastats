@@ -467,3 +467,21 @@ cap. Each reads a whole patch, so its duration follows patch size — not a quer
 `refresh_published_participants`; the route's real budget is 300 s, of which aggregation takes
 ~72 s. Ordinary queries keep 30 s. Visitors can't use the longer cap: anon and authenticated
 have no read on `participants_published`.
+
+## Following the top of the ladder (2026-09-29)
+
+`priority = 1` was meant to deepen ranked players, but anyone with 3 known games enters it:
+180,000 players on 29/09, 92 % never visited, against ~2,500 visits a day. Oldest visit first
+means never-visited first, so nobody was ever seen twice. 8 of the top 10 had never been crawled
+themselves (all their games came from other players' histories), and 45 of the top 100 had no
+tracked game in 14 days.
+
+Now the ratings phase marks the top 2,000 as `priority = 2` (`mark_ladder_top`, those leaving it
+drop back to 1). The crawler fills the tracked half of each pass from priority 2 first, skipping
+anyone visited under 6 h ago, then from priority 1. At ~15 tracked slots a pass that revisits the
+top 2,000 about once a day at worst. Until the first sweep is done, their full histories (up to
+100 ids each) compete with current-patch discovery for the pass's match cap, most recent first.
+
+The same phase now stores each player's `teammate_mu` and `opponent_mu`: the average final MMR of
+their teammates and opponents over their known games. The leaderboard shows them instead of
+% Top 3, since they are what explains a rank that Avg Placement doesn't.

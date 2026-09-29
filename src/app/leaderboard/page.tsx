@@ -26,6 +26,8 @@ export default async function LeaderboardPage() {
     rankTier: (p.tier as StatsRow["rankTier"]) ?? undefined,
     rank: p.position ?? undefined,
     mmr: p.mmr,
+    teammateMmr: p.teammateMmr ?? undefined,
+    opponentMmr: p.opponentMmr ?? undefined,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,

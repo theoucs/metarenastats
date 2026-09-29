@@ -612,16 +612,47 @@ $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.leaderboard_top(max_rows integer)
- RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text, mu double precision)
+ RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text, mu double precision, teammate_mu double precision, opponent_mu double precision)
  LANGUAGE sql
  STABLE
 AS $function$
   select r.puuid, r.riot_id,
          r.games::bigint, r.top3_wins::bigint, r.top1_wins::bigint, r.placement_sum::bigint,
-         r.rank_position, r.tier, r.mu::double precision
+         r.rank_position, r.tier, r.mu::double precision,
+         r.teammate_mu::double precision, r.opponent_mu::double precision
   from player_ratings r
   order by r.rank_position
   limit max_rows
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.mark_ladder_top(top_n integer)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  marked integer;
+begin
+  update crawl_queue q
+  set priority = 1
+  where q.priority = 2
+    and not exists (
+      select 1 from player_ratings r
+      where r.puuid = q.puuid and r.rank_position <= top_n
+    );
+
+  insert into crawl_queue (puuid, priority)
+  select r.puuid, 2
+  from player_ratings r
+  where r.rank_position <= top_n
+  on conflict (puuid) do update
+    set priority = 2
+    where crawl_queue.priority <> 2;
+  get diagnostics marked = row_count;
+  return marked;
+end;
 $function$
 ;
 

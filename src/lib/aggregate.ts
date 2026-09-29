@@ -1823,6 +1823,8 @@ type LeaderboardRpcRow = {
   rank_position: number;
   tier: string;
   mu: number;
+  teammate_mu: number | null;
+  opponent_mu: number | null;
 };
 
 /** Combien de joueurs le classement publie.
@@ -1872,6 +1874,8 @@ export async function getLeaderboardStats() {
     tier: r.tier,
     position: r.rank_position,
     mmr: r.mu,
+    teammateMmr: r.teammate_mu,
+    opponentMmr: r.opponent_mu,
     ...toStat(
       {
         games: Number(r.games),

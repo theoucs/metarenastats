@@ -233,6 +233,34 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   }
   timings.passes = Date.now() - passesStartedAt;
 
+  // L'entourage de chaque joueur : MMR moyen de ses coéquipiers et de ses
+  // adversaires, sur toutes ses parties connues. Lu avec les notes FINALES et non
+  // celles du moment de la partie : la question est « avec qui a-t-il joué »,
+  // pas « ce qu'on savait d'eux alors ». Un tour de plus sur les parties déjà en
+  // mémoire, sans appel réseau.
+  const entourage: { mateSum: number; mates: number; oppSum: number; opps: number }[] = [];
+  for (const match of matches) {
+    let lobbySum = 0;
+    const subteamSum = new Map<number, number>();
+    const subteamSize = new Map<number, number>();
+    for (let i = 0; i < match.players.length; i++) {
+      const mu = at(match.players[i]).mu;
+      lobbySum += mu;
+      subteamSum.set(match.subteams[i], (subteamSum.get(match.subteams[i]) ?? 0) + mu);
+      subteamSize.set(match.subteams[i], (subteamSize.get(match.subteams[i]) ?? 0) + 1);
+    }
+    for (let i = 0; i < match.players.length; i++) {
+      const mu = at(match.players[i]).mu;
+      const teamSum = subteamSum.get(match.subteams[i])!;
+      const teamSize = subteamSize.get(match.subteams[i])!;
+      const e = (entourage[match.players[i]] ??= { mateSum: 0, mates: 0, oppSum: 0, opps: 0 });
+      e.mateSum += teamSum - mu;
+      e.mates += teamSize - 1;
+      e.oppSum += lobbySum - teamSum;
+      e.opps += match.players.length - teamSize;
+    }
+  }
+
   // Curseur, pour la même raison que rating_matches : `Range` s'applique après
   // la requête, donc chaque page réagrégeait les 230 000 participations (4,3 s
   // l'une, douze pages). Et un curseur sur un identifiant croissant ne peut pas
@@ -297,6 +325,8 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
     sigma: entry.rating.sigma,
     rank_position: i + 1,
     tier: tiers[i],
+    teammate_mu: averageOf(entourage[entry.player_idx]?.mateSum, entourage[entry.player_idx]?.mates),
+    opponent_mu: averageOf(entourage[entry.player_idx]?.oppSum, entourage[entry.player_idx]?.opps),
     updated_at: stamp,
   }));
 
@@ -345,6 +375,10 @@ export async function refreshPlayerRatings(): Promise<RatingReport> {
   return { matches: matches.length, players: ratings.length, rated: rows.length, timings };
 }
 
+function averageOf(sum: number | undefined, n: number | undefined): number | null {
+  return sum !== undefined && n ? sum / n : null;
+}
+
 /** Le seuil à partir duquel un joueur passe en « suivi » dans la file de crawl.
  *  Plus bas que RATING_MIN_GAMES : on veut approfondir ceux qui APPROCHENT du
  *  classement, pas seulement ceux qui y sont déjà. */
@@ -362,6 +396,24 @@ export async function promoteTrackedPlayers(): Promise<number> {
   const { data, error } = await supabaseAdmin.rpc("promote_tracked_players", {
     min_games: TRACKED_FROM_GAMES,
   });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/** Combien de joueurs du haut du classement le crawler revisite en priorité.
+ *
+ *  Le budget : ~15 visites de suivi par passe de crawl, deux passes par cycle
+ *  du moteur, soit de l'ordre de 3 000 visites par jour — le top 2 000 est
+ *  revu environ une fois par jour et demi au pire, bien plus souvent en
+ *  pratique puisqu'un joueur revu il y a moins de REVISIT_AFTER_H cède sa
+ *  place au suivi ordinaire. */
+export const LADDER_TRACKED_TOP = 2000;
+
+/** Pose `priority = 2` sur le haut du classement (voir la migration
+ *  20260929-suivi-du-haut-du-classement.sql). Renvoie les lignes changées. */
+export async function markLadderTop(): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  const { data, error } = await supabaseAdmin.rpc("mark_ladder_top", { top_n: LADDER_TRACKED_TOP });
   if (error) throw error;
   return (data as number) ?? 0;
 }

@@ -2,7 +2,7 @@ import { getHeapStatistics } from "node:v8";
 import { supabaseAdmin } from "@/lib/supabase";
 import { championRole, itemCategory, resolveAugment } from "@/lib/gameData";
 import { getPatchContext, patchedKey } from "@/lib/patches";
-import { promoteTrackedPlayers, refreshPlayerRatings } from "@/lib/playerRatings";
+import { markLadderTop, promoteTrackedPlayers, refreshPlayerRatings } from "@/lib/playerRatings";
 import {
   readParticipantSetForPatch,
   refreshPublishedParticipants,
@@ -461,6 +461,12 @@ export async function refreshRatings(): Promise<RatingsReport> {
   const promoted = await promoteTrackedPlayers();
   timings.promote = Date.now() - promoteAt;
   if (promoted) console.log(`[stats] ${promoted} joueur(s) passé(s) en suivi dans la file`);
+
+  // Après le classement qu'on vient d'écrire : c'est lui qui dit qui est en haut.
+  const ladderAt = Date.now();
+  const ladderMarked = await markLadderTop();
+  timings.ladderTop = Date.now() - ladderAt;
+  if (ladderMarked) console.log(`[stats] ${ladderMarked} joueur(s) entré(s) dans le suivi du haut du classement`);
 
   const archiveAt = Date.now();
   const archived = await archiveOldMatches(startedAt);
