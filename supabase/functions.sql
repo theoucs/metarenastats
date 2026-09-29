@@ -612,13 +612,13 @@ $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.leaderboard_top(max_rows integer)
- RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text)
+ RETURNS TABLE(puuid text, riot_id text, games bigint, top3_wins bigint, top1_wins bigint, placement_sum bigint, rank_position integer, tier text, mu double precision)
  LANGUAGE sql
  STABLE
 AS $function$
   select r.puuid, r.riot_id,
          r.games::bigint, r.top3_wins::bigint, r.top1_wins::bigint, r.placement_sum::bigint,
-         r.rank_position, r.tier
+         r.rank_position, r.tier, r.mu::double precision
   from player_ratings r
   order by r.rank_position
   limit max_rows

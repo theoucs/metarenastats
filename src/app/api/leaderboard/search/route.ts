@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("player_ratings")
-    .select("puuid, riot_id, games, top3_wins, top1_wins, placement_sum, rank_position, tier")
+    .select("puuid, riot_id, games, top3_wins, top1_wins, placement_sum, rank_position, tier, mu")
     .ilike("riot_id", `%${escaped}%`)
     .order("rank_position", { ascending: true })
     .limit(MAX_RESULTS);
@@ -45,6 +45,7 @@ export async function GET(request: Request) {
     riotId: r.riot_id as string,
     tier: r.tier as string,
     position: r.rank_position as number,
+    mmr: r.mu as number,
     // Dénominateur 0 : `playRate` vaut alors 0, et le classement ne l'affiche
     // pas (c'est une colonne des tier lists). Le calculer demandait
     // `site_totals`, qui compte trois valeurs distinctes sur 217 000 lignes —

@@ -41,6 +41,10 @@ export type StatsRow = {
    *  57e, 203e et 891e. Les tier lists n'en ont pas — leur numéro EST la
    *  position dans le tri courant, et c'est ce qu'on veut y lire. */
   rank?: number;
+  /** Arena MMR (`mu`, leaderboard only): what the ladder is sorted by. Shown
+   *  because Avg Placement alone can't explain the order — teammates' strength
+   *  weighs on it. Absent from snapshots published before 2026-09-29. */
+  mmr?: number;
   /** Item ou augment que représente la ligne : fait apparaître sa description
    *  au survol de l'icône. Absent pour les champions et les joueurs, qui n'en
    *  ont pas — l'infobulle se réduit alors au nom. */
@@ -322,6 +326,7 @@ type LeaderboardSearchRow = {
   riotId: string;
   tier: string;
   position: number;
+  mmr?: number;
   games: number;
   top3Rate: number;
   top1Rate: number;
@@ -335,6 +340,7 @@ function searchRowToStatsRow(p: LeaderboardSearchRow): StatsRow {
     name: p.riotId,
     rankTier: p.tier as RankTier,
     rank: p.position,
+    mmr: p.mmr,
     games: p.games,
     top3Rate: p.top3Rate,
     top1Rate: p.top1Rate,
@@ -578,6 +584,7 @@ function DataRow({
   worstPlacement,
   hideTierColumn,
   showRankColumn,
+  showMmrColumn,
   showPlacements,
   compact,
 }: {
@@ -595,6 +602,8 @@ function DataRow({
   hideTierColumn: boolean;
   /** Colonne du rang Arena : présente dès qu'au moins un joueur est classé. */
   showRankColumn: boolean;
+  /** The leaderboard's MMR column, present when the rows carry one. */
+  showMmrColumn: boolean;
   /** The "Finishes" column, present when the rows carry a distribution. */
   showPlacements: boolean;
   /** See StatsTable's `compact` — must drop the same columns as the header. */
@@ -649,6 +658,11 @@ function DataRow({
           )}
         </div>
       </td>
+      {showMmrColumn && (
+        <td className={`${cellX} py-1.5 text-right tabular-nums font-medium text-primary`}>
+          {row.mmr != null ? Math.round(row.mmr) : null}
+        </td>
+      )}
       {showPlacements && (
         <td className={`${cellX} py-1.5 text-center`}>
           {row.placements && <PlacementSparkline counts={row.placements} />}
@@ -792,6 +806,12 @@ function MobileCard({
           </div>
         )}
         <dl className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-micro tabular-nums text-muted">
+          {row.mmr != null && (
+            <div className="flex items-baseline gap-1">
+              <dt>MMR</dt>
+              <dd className="font-medium text-primary">{Math.round(row.mmr)}</dd>
+            </div>
+          )}
           <div className="flex items-baseline gap-1">
             <dt>Top 3</dt>
             <dd className={top3Color(row.top3Rate, scale, row.games)}>{(row.top3Rate * 100).toFixed(1)}%</dd>
@@ -903,6 +923,7 @@ export function StatsTable({
   // La colonne n'apparaît que s'il y a un rang à montrer : sur un classement
   // tout neuf, une colonne vide poserait une question sans y répondre.
   const showRankColumn = variant === "ranked" && rows.some((r) => r.rankTier);
+  const showMmrColumn = variant === "ranked" && rows.some((r) => r.mmr != null);
   const showPlacements = !compact && rows.some((r) => r.placements?.length === 6);
 
   const sorted = useMemo(() => {
@@ -1067,6 +1088,7 @@ export function StatsTable({
   const colCount =
     (variant === "tiers" ? (showBands ? 7 : 8) - (compact ? 2 : 0) : 5) +
     (showRankColumn ? 1 : 0) +
+    (showMmrColumn ? 1 : 0) +
     (showPlacements ? 1 : 0);
   const cellX = compact ? "px-2" : "px-4";
 
@@ -1199,6 +1221,12 @@ export function StatsTable({
                 />
               )}
               <th className={`${stickyHeadCell} px-4`}>Name</th>
+              {/* Not sortable on its own: sorting by MMR is sorting by Rank. */}
+              {showMmrColumn && (
+                <th className={`${stickyHeadCell} ${cellX} text-right`} title="Arena MMR — what the ladder is sorted by">
+                  MMR
+                </th>
+              )}
               {showPlacements && (
                 <th className={`${stickyHeadCell} ${cellX} text-center`} title="Share of games finished 1st to 6th">
                   Finishes
@@ -1276,6 +1304,7 @@ export function StatsTable({
                     worstPlacement={worstPlacement}
                     hideTierColumn={showBands}
                     showRankColumn={showRankColumn}
+                    showMmrColumn={showMmrColumn}
                     showPlacements={showPlacements}
                     compact={compact}
                   />

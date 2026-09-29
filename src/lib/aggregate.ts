@@ -1822,6 +1822,7 @@ type LeaderboardRpcRow = {
   placement_sum: number;
   rank_position: number;
   tier: string;
+  mu: number;
 };
 
 /** Combien de joueurs le classement publie.
@@ -1870,6 +1871,7 @@ export async function getLeaderboardStats() {
     riotId: r.riot_id,
     tier: r.tier,
     position: r.rank_position,
+    mmr: r.mu,
     ...toStat(
       {
         games: Number(r.games),
