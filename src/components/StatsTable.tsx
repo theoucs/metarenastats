@@ -885,11 +885,11 @@ function MobileCard({
           {row.teammateMmr != null && row.opponentMmr != null ? (
             <>
               <div className="flex items-baseline gap-1">
-                <dt>Mates</dt>
+                <dt>Mates MMR</dt>
                 <dd className="text-secondary">{Math.round(row.teammateMmr)}</dd>
               </div>
               <div className="flex items-baseline gap-1">
-                <dt>Opp.</dt>
+                <dt>Opp. MMR</dt>
                 <dd className="text-secondary">{Math.round(row.opponentMmr)}</dd>
               </div>
             </>
@@ -1333,13 +1333,13 @@ export function StatsTable({
                     className={`${stickyHeadCell} ${cellX} text-right`}
                     title="Average MMR of this player's teammates, over their known games"
                   >
-                    Teammates
+                    Teammates MMR
                   </th>
                   <th
                     className={`${stickyHeadCell} ${cellX} text-right`}
                     title="Average MMR of this player's opponents, over their known games"
                   >
-                    Opponents
+                    Opponents MMR
                   </th>
                 </>
               ) : (
