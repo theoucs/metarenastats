@@ -9,12 +9,13 @@
 -- Pour modifier une de ces fonctions : écrire une migration, l'appliquer, puis
 -- relancer le script. Éditer ce fichier ne changerait rien à la base.
 --
--- Vidé le 2026-09-28.
+-- Vidé le 2026-09-29.
 
 CREATE OR REPLACE FUNCTION public.anvil_champions(target_patch text)
  RETURNS TABLE(champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint, total_games bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with libres as (
     select array_agg(id) as ids from ref_items where category in ('prismatic', 'excluded')
@@ -45,6 +46,7 @@ CREATE OR REPLACE FUNCTION public.anvil_opener_champions(target_patch text, open
  RETURNS TABLE(augment_id integer, champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with libres as (
     select array_agg(id) as ids from ref_items where category in ('prismatic', 'excluded')
@@ -69,6 +71,7 @@ CREATE OR REPLACE FUNCTION public.anvil_openers(target_patch text, opener_ids in
  RETURNS TABLE(augment_id integer, anvil_games bigint, anvil_top1 bigint, anvil_top3 bigint, anvil_placement_sum bigint, bought_games bigint, bought_top1 bigint, bought_top3 bigint, bought_placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with libres as (
     select array_agg(id) as ids from ref_items where category in ('prismatic', 'excluded')
@@ -98,6 +101,7 @@ CREATE OR REPLACE FUNCTION public.anvil_overall(target_patch text)
  RETURNS TABLE(total_matches bigint, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with libres as (
     select array_agg(id) as ids from ref_items where category in ('prismatic', 'excluded')
@@ -225,6 +229,7 @@ CREATE OR REPLACE FUNCTION public.augment_stats(target_patch text)
  RETURNS TABLE(augment_id integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   select
     a.augment_id,
@@ -249,6 +254,7 @@ CREATE OR REPLACE FUNCTION public.augment_timing(target_patch text, slots intege
  RETURNS TABLE(slot integer, augment_id integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with picks as (
     select
@@ -283,6 +289,7 @@ CREATE OR REPLACE FUNCTION public.champion_augment_stats(target_patch text, min_
  RETURNS TABLE(champion text, augment_id integer, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   select
     a.champion,
@@ -309,6 +316,7 @@ CREATE OR REPLACE FUNCTION public.champion_stats(target_patch text)
  RETURNS TABLE(champion text, games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint, placement_counts bigint[])
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   select
     p.champion,
@@ -336,6 +344,7 @@ CREATE OR REPLACE FUNCTION public.combo_stats(target_patch text, min_games integ
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
  SET work_mem TO '96MB'
+ SET statement_timeout TO '120s'
 AS $function$
   with choix as (
     select p.match_id, p.player_id, p.placement,
@@ -403,6 +412,7 @@ CREATE OR REPLACE FUNCTION public.comp_archetypes(target_patch text, min_teams i
  RETURNS TABLE(roles text[], games bigint, top1_wins bigint, top3_wins bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with equipes as (
     select
@@ -434,6 +444,7 @@ CREATE OR REPLACE FUNCTION public.comp_coverage(target_patch text, duo_usable_te
  RETURNS TABLE(total_teams bigint, trios_distincts bigint, trios_repetes bigint, duos_distincts bigint, duos_exploitables bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with equipes as (
     select
@@ -502,6 +513,7 @@ CREATE OR REPLACE FUNCTION public.item_acquisitions(target_patch text)
  RETURNS TABLE(item_id integer, kind text, landmark integer, skill_bucket smallint, n bigint, placement_sum bigint, top1_wins bigint, top3_wins bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with prismatiques as (
     select coalesce(array_agg(id), '{}'::integer[]) as ids
@@ -551,6 +563,7 @@ CREATE OR REPLACE FUNCTION public.landmark_baselines(target_patch text)
  RETURNS TABLE(kind text, landmark integer, skill_bucket smallint, n bigint, placement_sum bigint, top1_wins bigint, top3_wins bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with prismatiques as (
     select coalesce(array_agg(id), '{}'::integer[]) as ids
@@ -643,6 +656,7 @@ CREATE OR REPLACE FUNCTION public.previous_patch_champion_totals(target_patch te
  RETURNS TABLE(patch text, champion text, games bigint, placement_sum bigint)
  LANGUAGE sql
  STABLE
+ SET statement_timeout TO '120s'
 AS $function$
   with known as (
     select r.patch from rolled_patches r

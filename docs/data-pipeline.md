@@ -455,3 +455,15 @@ select jobname, status, start_time from cron.job_run_details order by start_time
 To renew: create a new token with the same scope and replace the secret's value in the
 Supabase dashboard (Integrations → Vault). `ops` is a private schema, not exposed by PostgREST,
 and the function is revoked from `anon` and `authenticated`.
+
+## Aggregation timeouts (2026-09-29)
+
+The `snapshots` phase failed about one hour in six (09:17 and 13:17 UTC on 29/09) with a
+statement timeout: `item_acquisitions` and `landmark_baselines` on 16.18 (572,000
+participations) run 25–30 s alongside the six other aggregations, against service_role's 30 s
+cap. Each reads a whole patch, so its duration follows patch size — not a query defect, and
+16.19 will grow there too. The per-patch aggregation functions now carry their own
+`statement_timeout = '120s'` (migration `20260929-delai-agregations.sql`), like
+`refresh_published_participants`; the route's real budget is 300 s, of which aggregation takes
+~72 s. Ordinary queries keep 30 s. Visitors can't use the longer cap: anon and authenticated
+have no read on `participants_published`.
