@@ -11,7 +11,8 @@ type NavItem = { href: string; label: string };
 
 // Five of the seven pages are tier lists; listing them flat made an 8-link bar
 // that only fitted from 1280px up. They live under one menu now (decided with
-// Théo, 2026-09-28), and Info & Tips moved to the footer.
+// Théo, 2026-09-28). Info & Tips went to the footer that day and came back on
+// 2026-09-30, on the right next to the search: nobody found it down there.
 const TIER_LISTS: NavItem[] = [
   // Only here, no top-level link of its own any more: it is a tier list like
   // the others (Théo, 2026-09-28).
@@ -26,6 +27,7 @@ const TIER_LISTS: NavItem[] = [
   { href: "/combos", label: "Combos" },
 ];
 const LEADERBOARD: NavItem = { href: "/leaderboard", label: "Leaderboard" };
+const INFO: NavItem = { href: "/info", label: "Info & Tips" };
 const TIER_LISTS_KEY = "tier-lists";
 
 function isActive(pathname: string, href: string) {
@@ -269,11 +271,15 @@ export function Nav() {
 
         <NavLinkList pathname={pathname} />
 
-        {/* Three entries leave room for the search from md up, pushed to the
-            right edge. Below md both the links and the search go behind the
-            burger. */}
+        {/* Reference reading, so apart from the two destinations on the left:
+            pushed to the right edge, just before the search. Its own static
+            background when active, since the sliding highlight lives in the
+            left-hand list. Below md it goes behind the burger with the rest. */}
+        <div className="ml-auto hidden text-sm md:block">
+          <NavLink item={INFO} active={isActive(pathname, INFO.href)} staticActiveBg />
+        </div>
         {showSearch && (
-          <div className="ml-auto hidden md:block">
+          <div className="hidden md:block">
             <NavSearch />
           </div>
         )}
@@ -327,6 +333,9 @@ export function Nav() {
             <ul className="mt-3 flex flex-col gap-1 border-t border-subtle pt-3 text-sm">
               <li>
                 <NavLink item={LEADERBOARD} active={isActive(pathname, LEADERBOARD.href)} onClick={() => setOpen(false)} staticActiveBg />
+              </li>
+              <li>
+                <NavLink item={INFO} active={isActive(pathname, INFO.href)} onClick={() => setOpen(false)} staticActiveBg />
               </li>
             </ul>
           </div>

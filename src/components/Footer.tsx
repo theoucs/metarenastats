@@ -11,11 +11,10 @@ export function Footer() {
         properties. Riot Games and League of Legends are trademarks or registered trademarks of
         Riot Games, Inc.
       </p>
-      {/* Info & Tips lived in the top nav until 2026-09-28. It is reference
-          reading, the kind people look for at the bottom of a page. */}
+      {/* Also in the top nav; kept here under the page's own name. */}
       <p className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 text-small">
         <Link href="/info" className="text-accent hover:underline">
-          How the stats work
+          Info &amp; Tips
         </Link>
         <Link href="/privacy" className="text-accent hover:underline">
           Privacy Policy &amp; Terms of Service
