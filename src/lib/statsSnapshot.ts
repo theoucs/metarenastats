@@ -495,7 +495,31 @@ export async function refreshRatings(): Promise<RatingsReport> {
 }
 
 /**
- * La publication : matérialisation, agrégations, écriture des snapshots.
+ * La matérialisation de `participants_published`, en phase à part.
+ *
+ * Elle ouvrait la publication, qui a atteint 279 s sur 300 le 2026-09-30 à
+ * mesure que 16.19 grossissait : ~90 s de matérialisation, ~65 s de lecture,
+ * ~95 s d'agrégation. Détachée, elle a ses propres 300 s, et la publication
+ * retrouve ~90 s de marge.
+ *
+ * APRÈS la phase classement, qui réécrit `player_ratings` : la table fige le
+ * `skill_bucket` qui en dérive. AVANT la publication, qui la lit. Si elle
+ * échoue, la publication tourne quand même, sur la matérialisation de l'heure
+ * précédente — des stats d'une heure valent mieux que pas de stats.
+ */
+export async function refreshMaterialized(): Promise<{ ok: true; durationMs: number; commit: string }> {
+  const startedAt = Date.now();
+  if (!supabaseAdmin) throw new Error("Supabase n'est pas configuré (SUPABASE_SERVICE_ROLE_KEY manquante)");
+  await refreshPublishedParticipants();
+  return {
+    ok: true,
+    durationMs: Date.now() - startedAt,
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+  };
+}
+
+/**
+ * La publication : agrégations, écriture des snapshots.
  *
  * Lit `player_ratings` tel qu'il est en base — donc tel que `refreshRatings()`
  * l'a laissé au passage précédent. C'est le seul couplage entre les deux
@@ -553,11 +577,8 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     // `id` pour demander la page suivante), donc elle passe son temps à
     // attendre. Deux flux, ce n'est pas la lecture parallèle en soixante-cinq
     // requêtes qui avait saturé la base — c'est exactement deux.
-    // APRÈS la passe MMR, qui vient de réécrire `player_ratings` : la table
-    // matérialisée fige le `skill_bucket`, elle doit donc figer le tout dernier.
-    // Et AVANT la lecture, évidemment — c'est elle qu'on va lire.
-    await clock("materialisation", () => refreshPublishedParticipants());
-
+    // La table matérialisée qu'on lit ici est rafraîchie par sa propre phase
+    // (refreshMaterialized), appelée juste avant : voir là-bas pourquoi.
     const sets = await clock("lectureParticipants", () =>
       Promise.all(context.options.map((option) => readParticipantSetForPatch(option.patch))),
     );

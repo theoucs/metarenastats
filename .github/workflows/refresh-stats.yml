@@ -83,6 +83,12 @@ jobs:
             exit 1
           fi
 
+          # Phase à part depuis le 2026-09-30 (la publication frôlait ses 300 s).
+          # Pas fatale : la publication relit alors la matérialisation d'avant.
+          if ! phase materialize; then
+            echo "::warning::Matérialisation échouée — publication sur celle de l'heure précédente."
+          fi
+
           if ! phase snapshots; then
             echo "::error::La publication a échoué."
             exit 1

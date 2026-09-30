@@ -485,3 +485,15 @@ top 2,000 about once a day at worst. Until the first sweep is done, their full h
 The same phase now stores each player's `teammate_mu` and `opponent_mu`: the average final MMR of
 their teammates and opponents over their known games. The leaderboard shows them instead of
 % Top 3, since they are what explains a rank that Avg Placement doesn't.
+
+## Materialization gets its own phase (2026-09-30)
+
+The `snapshots` phase climbed from ~175 s (29/09 morning) to 279 s (30/09, 08:23 UTC) as 16.19
+grew: ~90 s refreshing `participants_published`, ~65 s reading it, ~95 s aggregating. One more
+day and Vercel would have killed it at 300 s, stopping publication. The refresh now runs as its
+own call, `?only=materialize`, between `ratings` and `snapshots` (both workflows). Not fatal if it
+fails: `snapshots` then reads the previous hour's materialization.
+
+This buys ~90 s, not a fix: reading and aggregating still grow with the current patch. The lasting
+fix is the one already noted — aggregating in SQL instead of reading every participation through
+PostgREST.

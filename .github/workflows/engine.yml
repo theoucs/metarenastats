@@ -224,6 +224,8 @@ jobs:
             # fraîches avec un classement d'il y a une heure valent mieux que
             # rien de frais du tout.
             refresh_phase ratings || true
+            # Phase à part depuis le 2026-09-30 (voir refreshMaterialized).
+            refresh_phase materialize || true
             if refresh_phase snapshots; then
               # Le bail de publication (voir la route) : si refresh-stats.yml
               # publiait au même moment, la phase rend la main sans rien faire.

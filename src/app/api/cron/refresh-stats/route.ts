@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { refreshRatings, refreshSiteCounters, refreshSnapshots } from "@/lib/statsSnapshot";
+import {
+  refreshMaterialized,
+  refreshRatings,
+  refreshSiteCounters,
+  refreshSnapshots,
+} from "@/lib/statsSnapshot";
 
 /**
  * Recalcule tous les snapshots de stats (voir lib/statsSnapshot.ts).
@@ -127,8 +132,21 @@ async function runPhase(only: string | null) {
     }
   }
 
+  if (only === "materialize") {
+    try {
+      const report = await refreshMaterialized();
+      console.log(`[cron] participations publiées matérialisées en ${report.durationMs} ms`);
+      return NextResponse.json(report);
+    } catch (error) {
+      return NextResponse.json(failure(error), { status: 500 });
+    }
+  }
+
   try {
-    if (only !== "snapshots") await refreshRatings();
+    if (only !== "snapshots") {
+      await refreshRatings();
+      await refreshMaterialized();
+    }
     const report = await refreshSnapshots();
     console.log(
       `[cron] ${report.snapshots} snapshots écrits en ${report.durationMs} ms ` +
