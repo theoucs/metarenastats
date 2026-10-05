@@ -497,3 +497,28 @@ fails: `snapshots` then reads the previous hour's materialization.
 This buys ~90 s, not a fix: reading and aggregating still grow with the current patch. The lasting
 fix is the one already noted — aggregating in SQL instead of reading every participation through
 PostgREST.
+
+## The jobs leave Vercel (2026-10-05)
+
+On 2026-10-02 around 18:00 UTC Vercel blocked the Hobby team for exceeding fair-use limits:
+every call to `/api/cron/*` answered 402, so crawl and publication stopped, and the only way
+offered to unblock was upgrading to Pro. The workflows had only ever been `curl`s: the crawler,
+the timelines, the ratings and the publication all ran as Vercel functions. Measured on one
+5.5 h engine run, ~2.5 h of function time; plus ~6 min of CPU-heavy publication twice an hour.
+Well over 15 h of 2 GB functions a day.
+
+Both workflows now check out the repo and run `scripts/jobs.ts` themselves (`npx tsx`), with
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `RIOT_API_KEY` as GitHub secrets. Free and
+unlimited for a public repo, 7 GB of memory, no 300 s cap per call: the publication alone took
+292 s on the day of the move, it would not have fit anyway. Same code, same pacing.
+
+Two changes ride along:
+- The engine no longer publishes. `refresh-stats.yml` is the only full publication, hourly at
+  :17 from pg_cron; the engine refreshes the home counters each cycle. Publishing twice an hour
+  doubled the load on the database for nothing.
+- `patch_match_count` gets the 120 s timeout the other aggregations got on 29/09; it had been
+  left out and was what made the publication fail on 2 and 5 October.
+
+The `/api/cron/*` routes stay in place (the player search still shares their code) but nothing
+calls them. The Riot key now lives in two places: GitHub secrets for the jobs, Vercel for the
+player search on the site.
