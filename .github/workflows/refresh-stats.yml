@@ -41,7 +41,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      # `npm install` et non `npm ci` : le lock, généré sur macOS, ne liste pas
+      # certains paquets optionnels propres à Linux, et `npm ci` refuse alors.
+      - run: npm install --no-audit --no-fund
       # Classement → matérialisation → snapshots, sous le bail de publication
       # (voir scripts/jobs.ts). Rouge si la publication elle-même échoue.
       - name: Recalculer et publier
