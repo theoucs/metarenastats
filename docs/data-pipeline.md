@@ -522,3 +522,28 @@ Two changes ride along:
 The `/api/cron/*` routes stay in place (the player search still shares their code) but nothing
 calls them. The Riot key now lives in two places: GitHub secrets for the jobs, Vercel for the
 player search on the site.
+
+## Materialization moves to pg_cron (2026-10-08)
+
+The publication failed 20 times out of 22 between 7 and 8 October, and `participants_published`
+had not refreshed since 5 October: it still held 16.18 + 16.19 after 16.20 appeared, and 16.19
+was 280,000 rows behind. The site was publishing three-day-old numbers.
+
+Cause: 16.19 reached 1.19 M participations and the `concurrently` refresh averaged 66 s (180 s at
+worst). Called over RPC, it went through Supabase's HTTP gateway, which answers `upstream request
+timeout` past about a minute, while the refresh kept running in the database during the
+publication. `site_totals` and `leaderboard_top` then hit service_role's 30 s.
+
+Fix: pg_cron runs the refresh at :11, inside the database, and the job no longer calls it.
+A full refresh instead of `concurrently`: 23 s instead of 66, since the only reader is the :17
+publication, which never overlaps :11. Trap found along the way: `alter function … set
+statement_timeout` does not lift the limit, because the timer starts with the statement. The
+`set` has to be a separate statement in the cron command (first try cut at the database's 2 min).
+
+Same day, player pages: a search loads the last 30 games from Riot, but the key's rate limit is
+shared with the crawler and some calls come back 429. Those games were silently missing from the
+stats. Seen in practice: a 3rd-place Kled missing from a friend's Top Champions. The page now
+says how many games are missing, and the player goes to the front of the crawler's queue
+(`crawl_queue.requested_at`, `request_player_crawl` / `pick_requested_players`, at most 10 per
+pass). Until then, a searched player was effectively never visited: 202,713 tracked players had
+never been crawled, for ~15 slots per pass.
