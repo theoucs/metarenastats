@@ -27,6 +27,7 @@ export function TieredStatsTabs({
   display = "table",
   unitLabel,
   gamesBonus,
+  neutralColors,
 }: {
   tabs: readonly StatsTab[];
   rowsByTier: Record<string, StatsRow[]>;
@@ -43,6 +44,8 @@ export function TieredStatsTabs({
   unitLabel?: string;
   /** See TierOptions — grid display only. */
   gamesBonus?: boolean;
+  /** See StatsTable — table display only. */
+  neutralColors?: boolean;
 }) {
   const [active, setActive] = useState(
     defaultTab ?? tabs.find((t) => !t.comingSoon)?.key ?? tabs[0].key
@@ -103,6 +106,7 @@ export function TieredStatsTabs({
           linkSuffix={linkSuffix}
           playRateLabel={playRateLabel}
           filterPlaceholder={filterPlaceholder}
+          neutralColors={neutralColors}
         />
       )}
       </div>

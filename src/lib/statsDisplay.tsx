@@ -81,11 +81,14 @@ function scaledColor(
   return NEUTRAL;
 }
 
+// `null` = pas de couleur du tout (les Combos : une liste de meilleures paires,
+// où du rouge sur un 2.5 dirait « mauvais » à tort).
 // Sans échelle (une stat seule, ou une liste trop courte), on retombe sur des
 // seuils fixes autour de l'espérance d'une partie à 6 équipes.
 // % Top 3 averages ~50% (3 of 6 teams) — thresholds centered on that.
 // Reserved colors: this is the only place green/red should ever appear.
-export function top3Color(rate: number, scale?: StatScale, games?: number) {
+export function top3Color(rate: number, scale?: StatScale | null, games?: number) {
+  if (scale === null) return NEUTRAL;
   if (scale) return scaledColor(rate, scale.top3, false, games, scale.minGames);
   if (rate >= 0.55) return "text-stat-good";
   if (rate >= 0.4) return "text-secondary";
@@ -99,7 +102,8 @@ export function top3Color(rate: number, scale?: StatScale, games?: number) {
 // into green, -3.7pp to drop into red. The previous 25% green cutoff was most
 // of a doubling above the baseline, which almost nothing reaches once a
 // champion has enough games for its rate to stop swinging.
-export function top1Color(rate: number, scale?: StatScale, games?: number) {
+export function top1Color(rate: number, scale?: StatScale | null, games?: number) {
+  if (scale === null) return NEUTRAL;
   if (scale) return scaledColor(rate, scale.top1, false, games, scale.minGames);
   if (rate >= 0.2) return "text-stat-good";
   if (rate >= 0.13) return "text-secondary";
@@ -110,7 +114,8 @@ export function top1Color(rate: number, scale?: StatScale, games?: number) {
 // around that: -0.3 to clear into green, +0.2 to drop into red. Comparisons are
 // inverted relative to top3Color/top1Color because here *lower* is better.
 // Same reserved-color rule: green/red only ever mean "this number is good/bad".
-export function avgPlacementColor(avg: number, scale?: StatScale, games?: number) {
+export function avgPlacementColor(avg: number, scale?: StatScale | null, games?: number) {
+  if (scale === null) return NEUTRAL;
   if (scale) return scaledColor(avg, scale.avg, true, games, scale.minGames);
   if (avg <= 3.2) return "text-stat-good";
   if (avg <= 3.7) return "text-secondary";

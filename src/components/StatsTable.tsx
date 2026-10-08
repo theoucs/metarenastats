@@ -637,7 +637,7 @@ function DataRow({
   tierMap: Map<string, TierInfo>;
   linkPrefix?: string;
   linkSuffix?: string;
-  scale?: StatScale;
+  scale?: StatScale | null;
   bestPlacement: number;
   worstPlacement: number;
   /** Suppressed while tier bands are shown — the band right above already says
@@ -799,7 +799,7 @@ function MobileCard({
   hideTierBadge: boolean;
   linkPrefix?: string;
   linkSuffix?: string;
-  scale?: StatScale;
+  scale?: StatScale | null;
 }) {
   const railHex = tierInfo ? TIER_STYLES[tierInfo.tier].hex : "var(--border-default)";
 
@@ -946,6 +946,7 @@ export function StatsTable({
   filterPlaceholder = "Search\u2026",
   searchBeyondUrl,
   compact = false,
+  neutralColors = false,
 }: {
   rows: StatsRow[];
   variant?: "tiers" | "ranked";
@@ -969,6 +970,9 @@ export function StatsTable({
    *  380px track). Drops the 640px floor and the two least important columns
    *  rather than clipping the table mid-cell behind a scrollbar nobody sees. */
   compact?: boolean;
+  /** Pas de vert/rouge sur les stats : pour une liste déjà filtrée sur les
+   *  meilleures lignes (Combos), où le rouge dirait « mauvais » à tort. */
+  neutralColors?: boolean;
 }) {
   // Le tri de repos : celui auquel le troisième clic sur une colonne ramène.
   const defaultSortKey: SortKey =
@@ -992,7 +996,7 @@ export function StatsTable({
 
   // Computed on every published row, not the filtered ones: typing in the
   // filter must not recolor what stays on screen.
-  const scale = useMemo(() => statScale(rows), [rows]);
+  const scale = useMemo(() => (neutralColors ? null : statScale(rows)), [rows, neutralColors]);
 
   const { bestPlacement, worstPlacement } = useMemo(
     () => ({

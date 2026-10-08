@@ -159,6 +159,7 @@ export default async function ChampionSummaryPage({
                 rowsByTier={comboRowsByTier}
                 defaultTab="item-augment"
                 filterPlaceholder="Search an item or augment"
+                neutralColors
               />
             </div>
           </section>

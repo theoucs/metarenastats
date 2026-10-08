@@ -51,6 +51,7 @@ export default async function ChampionCombosPage({
               rowsByTier={rowsByTier}
               defaultTab="item-augment"
               filterPlaceholder="Search an item or augment"
+                neutralColors
             />
           </div>
           <p className="mt-4 text-micro text-muted">
