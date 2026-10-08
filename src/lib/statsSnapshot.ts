@@ -495,17 +495,11 @@ export async function refreshRatings(): Promise<RatingsReport> {
 }
 
 /**
- * La matérialisation de `participants_published`, en phase à part.
+ * La matérialisation de `participants_published`, à la main.
  *
- * Elle ouvrait la publication, qui a atteint 279 s sur 300 le 2026-09-30 à
- * mesure que 16.19 grossissait : ~90 s de matérialisation, ~65 s de lecture,
- * ~95 s d'agrégation. Détachée, elle a ses propres 300 s, et la publication
- * retrouve ~90 s de marge.
- *
- * APRÈS la phase classement, qui réécrit `player_ratings` : la table fige le
- * `skill_bucket` qui en dérive. AVANT la publication, qui la lit. Si elle
- * échoue, la publication tourne quand même, sur la matérialisation de l'heure
- * précédente — des stats d'une heure valent mieux que pas de stats.
+ * Le rythme horaire, lui, passe par pg_cron à :11 (voir scripts/jobs.ts) :
+ * appelée d'ici, la requête traverse la passerelle HTTP, qui la coupe passé la
+ * minute. Reste pour la route /api/cron/refresh-stats?only=materialize.
  */
 export async function refreshMaterialized(): Promise<{ ok: true; durationMs: number; commit: string }> {
   const startedAt = Date.now();
@@ -577,8 +571,8 @@ export async function refreshSnapshots(): Promise<RefreshReport> {
     // `id` pour demander la page suivante), donc elle passe son temps à
     // attendre. Deux flux, ce n'est pas la lecture parallèle en soixante-cinq
     // requêtes qui avait saturé la base — c'est exactement deux.
-    // La table matérialisée qu'on lit ici est rafraîchie par sa propre phase
-    // (refreshMaterialized), appelée juste avant : voir là-bas pourquoi.
+    // La table matérialisée qu'on lit ici est rafraîchie par pg_cron à :11,
+    // avant cette publication de :17 (voir scripts/jobs.ts).
     const sets = await clock("lectureParticipants", () =>
       Promise.all(context.options.map((option) => readParticipantSetForPatch(option.patch))),
     );

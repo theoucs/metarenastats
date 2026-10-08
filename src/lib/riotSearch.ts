@@ -68,6 +68,9 @@ export type SearchPlayerResult =
       ok: true;
       account: { puuid: string; gameName: string; tagLine: string };
       matches: MatchCardData[];
+      /** Parties récentes que Riot n'a pas rendues cette fois (débit saturé,
+       *  le plus souvent) : absentes de l'historique comme des stats. */
+      missing: number;
     }
   | { ok: false; status: number; error: string };
 
@@ -291,6 +294,13 @@ export async function searchPlayerMatches(
   // Awaited (unlike the old fire-and-forget version) so that the player page's
   // subsequent "overall stats" / "top champions" queries see this match data.
   await persistMatches(matches).catch((err) => console.error("Supabase save error:", err));
+  const missing = fetched.filter((m) => m === null).length;
+
+  // Le joueur passe en tête de file du crawler, qui lit son historique entier
+  // au passage suivant — y compris les parties manquées ici. Sans ça, un
+  // joueur consulté n'avait aucune chance d'être visité : 200 000 joueurs
+  // suivis attendaient avant lui (2026-10-08).
+  await requestPlayerCrawl(account.puuid);
 
   // Group every match's 18 participants into their 6 teams, sorted by
   // placement, so the UI can show the searched player's team by default and
@@ -320,7 +330,15 @@ export async function searchPlayerMatches(
     };
   });
 
-  return { ok: true, account, matches: displayMatches };
+  return { ok: true, account, matches: displayMatches, missing };
+}
+
+/** Voir `request_player_crawl` (supabase/migrations/20261008-joueurs-consultes-en-tete.sql).
+ *  Un échec ne doit pas casser la page : on le note et on continue. */
+async function requestPlayerCrawl(puuid: string) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin.rpc("request_player_crawl", { p_puuid: puuid });
+  if (error) console.error(`[search] mise en tête de file impossible : ${error.message}`);
 }
 
 export type SummonerProfile = { profileIconId: number; summonerLevel: number };

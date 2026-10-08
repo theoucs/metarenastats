@@ -175,8 +175,14 @@ async function pickPlayers(limit: number): Promise<PickedPlayer[]> {
   // il y a une heure n'a presque rien joué depuis, sa place sert mieux ailleurs.
   const half = Math.floor(limit / 2);
   const revisitBefore = new Date(Date.now() - REVISIT_AFTER_H * 3_600_000).toISOString();
-  const ladder = await pickFrom(2, half, revisitBefore);
-  const tracked = [...ladder, ...(await pickFrom(1, half - ladder.length))];
+  // Les joueurs dont quelqu'un vient d'ouvrir la page passent avant tout le
+  // monde : c'est la seule visite qu'un lecteur attend vraiment.
+  const requested = await pickRequested(Math.min(REQUESTED_PER_PASS, half));
+  const ladder = (await pickFrom(2, half - requested.length, revisitBefore)).filter(
+    (puuid) => !requested.includes(puuid),
+  );
+  const tracked = [...requested, ...ladder];
+  tracked.push(...(await pickFrom(1, half - tracked.length)).filter((puuid) => !tracked.includes(puuid)));
   const discovery = await pickFrom(0, limit - tracked.length);
   const picked: PickedPlayer[] = [
     ...tracked.map((puuid) => ({ puuid, tracked: true })),
@@ -193,6 +199,28 @@ async function pickPlayers(limit: number): Promise<PickedPlayer[]> {
 }
 
 type PickedPlayer = { puuid: string; tracked: boolean };
+
+/** Plafond par passe des joueurs consultés, pour qu'un afflux de visites ne
+ *  prenne pas toute la moitié du suivi. */
+const REQUESTED_PER_PASS = 10;
+
+/** Joueurs dont la page a été ouverte depuis leur dernière visite du crawler
+ *  (voir request_player_crawl). La comparaison entre deux colonnes ne
+ *  s'exprime pas en filtre PostgREST, d'où la fonction SQL. */
+async function pickRequested(limit: number): Promise<string[]> {
+  if (limit <= 0) return [];
+  try {
+    return await retryDb("lecture des joueurs consultés", async () => {
+      const { data, error } = await db().rpc("pick_requested_players", { max_rows: limit });
+      if (error) throw error;
+      return ((data ?? []) as { puuid: string }[]).map((r) => r.puuid);
+    });
+  } catch (error) {
+    // Un bonus, pas le cœur du crawl : en échec, la passe continue sans.
+    console.error("[crawl] joueurs consultés illisibles, passe sans eux :", error);
+    return [];
+  }
+}
 
 /** Délai minimal entre deux visites d'un joueur du haut du classement. Une
  *  visite coûte un appel et ramène ses parties depuis la dernière : à 6 h, un

@@ -26,7 +26,6 @@ import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 import { runCrawl, runTimelineCrawl } from "@/lib/crawler";
 import {
-  refreshMaterialized,
   refreshRatings,
   refreshSiteCounters,
   refreshSnapshots,
@@ -89,10 +88,14 @@ async function withPublishLock<T>(run: () => Promise<T>): Promise<T | "busy"> {
 }
 
 /**
- * Classement, matérialisation, snapshots — dans cet ordre (la matérialisation
- * fige le `skill_bucket` que le classement vient d'écrire). Une étape en échec
- * n'empêche pas les suivantes : des tier lists d'une heure valent mieux que
- * pas de tier lists. Renvoie false si la publication elle-même a échoué.
+ * Classement puis snapshots. Une étape en échec n'empêche pas la suivante : des
+ * tier lists d'une heure valent mieux que pas de tier lists. Renvoie false si
+ * la publication elle-même a échoué.
+ *
+ * La matérialisation de `participants_published` n'est plus ici : pg_cron la
+ * lance dans la base à :11 (supabase/migrations/20261008-materialisation-par-pg-cron.sql).
+ * Appelée en RPC, la passerelle HTTP la coupait dès qu'elle dépassait la
+ * minute, et elle continuait de tourner côté base en pleine publication.
  */
 async function publish(): Promise<boolean> {
   const result = await withPublishLock(async () => {
@@ -101,12 +104,6 @@ async function publish(): Promise<boolean> {
       console.log(`· classement — ${r.rated} joueurs en ${r.durationMs} ms ${JSON.stringify(r.timings)}`);
     } catch (error) {
       console.log(`::warning::Classement échoué : ${message(error)}`);
-    }
-    try {
-      const m = await refreshMaterialized();
-      console.log(`· matérialisation en ${m.durationMs} ms`);
-    } catch (error) {
-      console.log(`::warning::Matérialisation échouée, publication sur la précédente : ${message(error)}`);
     }
     try {
       const s = await refreshSnapshots();

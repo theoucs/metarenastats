@@ -205,6 +205,12 @@ export default async function PlayerPage({
               <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_minmax(0,380px)]">
                 <div className="min-w-0">
                   <h2 className="font-display text-h2 font-semibold text-primary">Match History</h2>
+                  {result.ok && result.missing > 0 && (
+                    <p className="mt-2 text-small text-muted">
+                      {result.missing} recent {result.missing === 1 ? "game" : "games"} couldn&apos;t be loaded
+                      from Riot. They&apos;ll be added within the hour.
+                    </p>
+                  )}
                   {result.ok && result.matches.length > 0 ? (
                     <div className="mt-4 flex flex-col gap-3">
                       {result.matches.map((match) => (
