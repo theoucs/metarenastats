@@ -114,40 +114,41 @@ export default async function ChampionSummaryPage({
           </section>
 
           <section className="mt-10 border-t border-subtle pt-8">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div>
-                <SectionHeading title="Item Build" href={tab("items")} />
-                {detail.itemBuild.length === 0 ? (
-                  <p className="mt-3 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
-                    No item data yet.
-                  </p>
-                ) : (
-                  <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
-                    {detail.itemBuild.map((slot) => (
-                      <ItemSlotBlock key={slot.slot} slot={slot} />
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-8">
-                  <h3 className="mb-2 text-small font-semibold text-secondary">Top prismatic items</h3>
-                  <MiniStatTable
-                    rows={prismaticItemMiniRows(detail.topPrismaticItems)}
-                    scale={statScale(itemRows?.prismatic ?? [])}
-                  />
-                </div>
+            <SectionHeading title="Item Build" href={tab("items")} />
+            {detail.itemBuild.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-subtle bg-raised/20 p-3 text-small text-muted">
+                No item data yet.
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
+                {detail.itemBuild.map((slot) => (
+                  <ItemSlotBlock key={slot.slot} slot={slot} />
+                ))}
               </div>
-              {detail.anvilStat.games > 0 && (
-                <AnvilRunPanel
-                  stat={detail.anvilStat}
-                  shardbladeRate={detail.anvilShardbladeRate}
-                  topPrismaticItems={detail.anvilTopPrismaticItems}
-                  seeAllHref={tab("anvil")}
-                  scale={statScale(anvilItemRows?.prismatic ?? [])}
-                />
-              )}
+            )}
+
+            <div className="mt-8">
+              <h3 className="mb-2 text-small font-semibold text-secondary">Top prismatic items</h3>
+              <MiniStatTable
+                rows={prismaticItemMiniRows(detail.topPrismaticItems)}
+                scale={statScale(itemRows?.prismatic ?? [])}
+              />
             </div>
           </section>
+
+          {detail.anvilStat.games > 0 && (
+            <section className="mt-10 border-t border-subtle pt-8">
+              <SectionHeading title="Anvil Run" href={tab("anvil")}>
+                Stat anvils only, no items bought.
+              </SectionHeading>
+              <AnvilRunPanel
+                stat={detail.anvilStat}
+                shardbladeRate={detail.anvilShardbladeRate}
+                topPrismaticItems={detail.anvilTopPrismaticItems}
+                scale={statScale(anvilItemRows?.prismatic ?? [])}
+              />
+            </section>
+          )}
 
           <section className="mt-10 border-t border-subtle pt-8">
             <SectionHeading title="Top Combos" href={tab("combos")}>

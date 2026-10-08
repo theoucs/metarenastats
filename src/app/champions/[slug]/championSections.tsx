@@ -367,34 +367,31 @@ export function AnvilStatRow({ stat }: { stat: Stat }) {
 // Sits beside Item Build in a 2-column layout — full-height sidebar panel
 // rather than a small header-row card, so it no longer leaves a hole under
 // itself when Item Build's slots take up more vertical space.
+/** Le corps de la section Anvil Run, sur toute la largeur : les chiffres
+ *  globaux à gauche, les prismatiques à droite. En colonne latérale à côté
+ *  d'Item Build, ses 3 prismatiques face aux 6 d'à côté laissaient un trou. */
 export function AnvilRunPanel({
   stat,
   shardbladeRate,
   topPrismaticItems,
-  seeAllHref,
   scale,
 }: {
   stat: Stat;
   shardbladeRate: number;
   topPrismaticItems: ChampionItemSlotStat[];
-  seeAllHref: string;
   /** Built on the champion's whole anvil item list, see MiniStatTable. */
   scale?: StatScale;
 }) {
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-h2 font-semibold text-primary">Anvil Run</h2>
-        <SeeAllLink href={seeAllHref}>See all</SeeAllLink>
+    <div className="mt-4 grid gap-8 md:grid-cols-[320px_minmax(0,1fr)]">
+      <div>
+        <h3 className="mb-2 text-small font-semibold text-secondary">All anvil games</h3>
+        <AnvilStatRow stat={stat} />
+        <ShardbladeRateBlock rate={shardbladeRate} />
       </div>
-      <p className="mt-0.5 text-small text-secondary">Stat anvils only, no items bought.</p>
-
-      <AnvilStatRow stat={stat} />
-      <ShardbladeRateBlock rate={shardbladeRate} />
-
-      <div className="mt-4">
+      <div className="min-w-0">
         <h3 className="mb-2 text-small font-semibold text-secondary">Top prismatic items</h3>
-        <MiniStatTable rows={prismaticItemMiniRows(topPrismaticItems)} columns="short" scale={scale} />
+        <MiniStatTable rows={prismaticItemMiniRows(topPrismaticItems)} scale={scale} />
       </div>
     </div>
   );
