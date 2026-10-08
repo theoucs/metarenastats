@@ -33,7 +33,8 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Classement ~1 min, matérialisation ~1 min, publication ~5 min (05/10).
+    # Classement ~3 min, publication ~3 min (08/10). La matérialisation tourne
+    # dans la base, par pg_cron à :11.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -44,10 +45,13 @@ jobs:
       # `npm install` et non `npm ci` : le lock, généré sur macOS, ne liste pas
       # certains paquets optionnels propres à Linux, et `npm ci` refuse alors.
       - run: npm install --no-audit --no-fund
-      # Classement → matérialisation → snapshots, sous le bail de publication
-      # (voir scripts/jobs.ts). Rouge si la publication elle-même échoue.
+      # Classement → snapshots, sous le bail de publication (voir
+      # scripts/jobs.ts). Rouge si la publication elle-même échoue.
       - name: Recalculer et publier
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Tas de 6 Go (le runner en a 16) : voir MAX_PAGES dans lib/aggregate.ts,
+          # réglé pour tenir deux patchs de 2 M de participations à la fois.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npx tsx scripts/jobs.ts publish

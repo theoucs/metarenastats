@@ -102,12 +102,19 @@ const PAGE_SIZE = 10000;
 // à 491 652 lignes et 82 % de l'ancien plafond, retombe à 49 % et a de quoi
 // doubler.
 //
+// 2026-10-08 : 16.19 atteint 1 188 762 lignes et la publication sort en
+// « lecture tronquée ». Le plafond de 2 Go était celui des fonctions Vercel ;
+// les jobs tournent depuis le 2026-10-05 sur un runner GitHub (16 Go), avec un
+// tas porté à 6 Go (NODE_OPTIONS dans refresh-stats.yml). D'où 200 pages :
+// 2 000 000 de lignes par patch, 4 000 000 au pire cas, ~1,9 Go à 475 octets
+// par ligne plus les agrégations — un tiers du tas.
+//
 // Ce n'est pas une limite de conception, c'est un garde-fou : au-delà, il
 // faudra soit cesser de tenir les deux patchs à la fois — ils sont lus en
 // parallèle par choix, pas par nécessité — soit finir de descendre
 // l'agrégation en SQL. La troncature, elle, reste bruyante : elle fait passer
 // le job au rouge plutôt que de publier des chiffres partiels en silence.
-const MAX_PAGES = 100;
+const MAX_PAGES = 200;
 
 /**
  * Wrapped in React's `cache` so a page that runs two aggregators pays for one
